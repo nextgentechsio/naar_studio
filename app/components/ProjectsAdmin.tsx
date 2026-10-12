@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import ProjectAvatar from "@/app/components/ProjectAvatar";
+import { useFileDrop } from "@/app/components/ui/useFileDrop";
 import { prepareProjectPhoto } from "@/lib/prepare-image";
 import type { PublicProject } from "@/lib/roles";
 
@@ -202,7 +203,12 @@ export default function ProjectsAdmin({
     // Allow re-picking the same file after removing it
     event.target.value = "";
 
-    if (!file || !form) return;
+    if (file) acceptPhoto(file);
+  }
+
+  // From the picker or a drag & drop
+  function acceptPhoto(file: File) {
+    if (!form) return;
 
     if (!PHOTO_ACCEPT.split(",").includes(file.type)) {
       setError("Photo must be a PNG, JPEG, WebP or GIF image.");
@@ -222,6 +228,10 @@ export default function ProjectsAdmin({
       removePhoto: false,
     });
   }
+
+  const photoDrop = useFileDrop((files) => acceptPhoto(files[0]), {
+    disabled: !form,
+  });
 
   function clearPhoto() {
     if (!form) return;
@@ -404,7 +414,14 @@ export default function ProjectsAdmin({
               : `Edit ${form.name}`}
           </h2>
 
-          <div className="flex flex-wrap items-center gap-4">
+          <div
+            {...photoDrop.dropProps}
+            className={`flex flex-wrap items-center gap-4 rounded-xl border border-dashed p-3 transition-colors ${
+              photoDrop.dragging
+                ? "border-accent bg-accent-soft"
+                : "border-line-strong"
+            }`}
+          >
             <ProjectAvatar
               name={form.name}
               imageUrl={
@@ -455,8 +472,9 @@ export default function ProjectsAdmin({
               </div>
 
               <p className="text-xs text-fg-subtle">
-                PNG, JPEG, WebP or GIF. Large photos are
-                resized before upload.
+                {photoDrop.dragging
+                  ? "Drop the photo to use it."
+                  : "Or drag & drop it here. PNG, JPEG, WebP or GIF; large photos are resized before upload."}
               </p>
             </div>
           </div>

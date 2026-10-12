@@ -394,7 +394,7 @@ export default function GenerateView() {
                         {(control) => (
                           <StableTextArea
                             {...control}
-                            rows={5}
+                            rows={12}
                             value={String(inputs.prompt ?? "")}
                             onChange={(next) => updateInput("prompt", next)}
                             placeholder="A product photo of a ceramic mug on a marble counter, soft morning light…"

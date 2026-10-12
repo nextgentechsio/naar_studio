@@ -6,7 +6,7 @@ import type { AddressInfo } from "net";
 //
 // Just enough of api.replicate.com for the app: models
 // (with an input schema), predictions, cancel, files and
-// search. Tests steer it through /__control endpoints,
+// search. Also a minimal Vercel Blob API (list, delete). Tests steer it through /__control endpoints,
 // e.g. "this prediction has now succeeded".
 //
 // Special model names: */missing → 404, */reject → 422,
@@ -39,10 +39,17 @@ const SCHEMA = {
   },
 };
 
+// Format: vercel_blob_rw_<storeId>_<secret>
+export const FAKE_BLOB_TOKEN = "vercel_blob_rw_teststore_secret123";
+
 export async function startFakeReplicate() {
   const predictions = new Map<string, Prediction>();
   const requests: { method: string; path: string; body: unknown; bytes: number }[] = [];
   let counter = 0;
+  let blobs: { url: string; pathname: string; size: number; uploadedAt: string }[] = [];
+  const blobRequests: { method: string; path: string; body: unknown }[] = [];
+  // Multipart upload id → bytes received so far
+  const multipart = new Map<string, number>();
 
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://fake");
@@ -64,6 +71,95 @@ export async function startFakeReplicate() {
       res.writeHead(status, { "content-type": "application/json" });
       res.end(JSON.stringify(data));
     };
+
+    // ---------- fake Vercel Blob API (/blob) ----------
+
+    if (path === "/blob" || path.startsWith("/blob/")) {
+      // The browser uploads here directly (another origin)
+      res.setHeader("access-control-allow-origin", "*");
+      res.setHeader("access-control-allow-headers", "*");
+      res.setHeader("access-control-allow-methods", "GET, POST, PUT, DELETE");
+      res.setHeader("access-control-expose-headers", "*");
+      if (req.method === "OPTIONS") {
+        res.writeHead(204);
+        return res.end();
+      }
+
+      blobRequests.push({ method: req.method ?? "", path: path + url.search, body });
+
+      const auth = req.headers.authorization ?? "";
+      const serverToken = auth === `Bearer ${FAKE_BLOB_TOKEN}`;
+      // Tokens the app signed for a browser upload
+      const clientToken = auth.startsWith("Bearer vercel_blob_client_teststore_");
+
+      if (!serverToken && !clientToken) {
+        return send(403, { error: { code: "forbidden", message: "Bad token" } });
+      }
+
+      const pathname = url.searchParams.get("pathname") ?? "";
+      const stored = (bytes: number) => {
+        const name = pathname.replace(/(\.[^.]+)?$/, "-rnd$1");
+        const blob = {
+          url: `https://teststore.public.blob.vercel-storage.com/${name}`,
+          pathname: name,
+          size: bytes,
+          uploadedAt: new Date().toISOString(),
+        };
+        blobs.push(blob);
+        return send(200, { ...blob, downloadUrl: blob.url, contentType: req.headers["x-content-type"] ?? "", contentDisposition: "inline" });
+      };
+
+      // Single upload
+      if (path === "/blob/" && req.method === "PUT" && clientToken) {
+        return stored(raw.length);
+      }
+
+      // Multipart: create → upload parts → complete
+      if (path === "/blob/mpu" && clientToken) {
+        const action = req.headers["x-mpu-action"];
+        const id = String(req.headers["x-mpu-upload-id"] ?? "");
+
+        if (action === "create") {
+          const uploadId = `mpu-${++counter}`;
+          multipart.set(uploadId, 0);
+          return send(200, { key: `key-${uploadId}`, uploadId });
+        }
+        if (action === "upload" && multipart.has(id)) {
+          multipart.set(id, multipart.get(id)! + raw.length);
+          return send(200, { etag: `etag-${req.headers["x-mpu-part-number"]}` });
+        }
+        if (action === "complete" && multipart.has(id)) {
+          const total = multipart.get(id)!;
+          multipart.delete(id);
+          return stored(total);
+        }
+      }
+
+      if (!serverToken) {
+        return send(403, { error: { code: "forbidden", message: "Client tokens can only upload" } });
+      }
+
+      if (path === "/blob" && req.method === "GET") {
+        const prefix = url.searchParams.get("prefix") ?? "";
+        return send(200, {
+          blobs: blobs.filter((blob) => blob.pathname.startsWith(prefix)),
+          hasMore: false,
+        });
+      }
+
+      if (path === "/blob/delete" && req.method === "POST") {
+        const urls = (body as { urls?: string[] })?.urls ?? [];
+        blobs = blobs.filter((blob) => !urls.includes(blob.url));
+        return send(200, {});
+      }
+
+      return send(404, { error: { code: "not_found", message: "No fake" } });
+    }
+
+    if (path === "/__control/blobs") {
+      if (req.method === "POST") blobs = body as typeof blobs;
+      return send(200, { blobs, requests: blobRequests });
+    }
 
     if (!path.startsWith("/__control")) {
       requests.push({ method: req.method ?? "", path, body, bytes: raw.length });

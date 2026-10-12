@@ -4,7 +4,7 @@ import net from "net";
 import path from "path";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import type { TestProject } from "vitest/node";
-import { startFakeReplicate } from "./fake-replicate";
+import { FAKE_BLOB_TOKEN, startFakeReplicate } from "./fake-replicate";
 
 // --------------------------------------------------
 // INTEGRATION SETUP
@@ -101,6 +101,10 @@ async function start(
     MONGODB_DB: DB_NAME,
     REPLICATE_API_URL: `${replicate.url}/v1`,
     REPLICATE_API_TOKEN: "test-token",
+    BLOB_READ_WRITE_TOKEN: FAKE_BLOB_TOKEN,
+    VERCEL_BLOB_API_URL: `${replicate.url}/blob`,
+    // Browser side (inlined into the test build only)
+    NEXT_PUBLIC_VERCEL_BLOB_API_URL: `${replicate.url}/blob`,
     SESSION_SECRET: "integration-test-secret-0123456789abcdef",
     SUPER_ADMIN_USERNAME: SUPER_ADMIN.username,
     SUPER_ADMIN_PASSWORD: SUPER_ADMIN.password,

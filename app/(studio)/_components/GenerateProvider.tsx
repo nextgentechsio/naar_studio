@@ -14,6 +14,7 @@ import {
   type Schema,
 } from "@/app/(studio)/generate/fields";
 import { errorMessage, fetchJson } from "@/lib/client/http";
+import { uploadInputFile } from "@/lib/client/upload";
 import type { ModelKind } from "@/lib/model-catalog";
 import type { BrowsableModel } from "@/lib/replicate-models";
 import { useStudio } from "./StudioProvider";
@@ -363,19 +364,7 @@ export function GenerateProvider({
       setError("");
 
       try {
-        const body = new FormData();
-        body.append("file", file, file.name);
-
-        const data = await fetchJson<{ url?: string }>("/api/upload", {
-          method: "POST",
-          body,
-        });
-
-        if (!data.url) {
-          throw new Error("Upload did not return a file URL.");
-        }
-
-        const url = data.url;
+        const url = await uploadInputFile(file);
 
         // The user switched models meanwhile: this file
         // belongs to the old form

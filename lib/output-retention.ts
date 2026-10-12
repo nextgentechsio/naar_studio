@@ -1,6 +1,7 @@
 import type { GridFSFile } from "mongodb";
 import { generationsCollection, getDb } from "@/lib/mongodb";
 import { deleteOutputFile } from "@/lib/generation-outputs";
+import { pruneOldInputs } from "@/lib/input-uploads";
 import { OUTPUT_RETENTION_DAYS } from "@/lib/output-retention-days";
 
 // --------------------------------------------------
@@ -11,6 +12,8 @@ import { OUTPUT_RETENTION_DAYS } from "@/lib/output-retention-days";
 // generation record and its expense stay forever (history
 // and spend reports are unaffected); the record is marked
 // `outputExpiredAt` so the UI can say why it's gone.
+// Uploaded input files (lib/input-uploads.ts) follow the
+// same period.
 //
 // Runs at most once an hour per server process, after a
 // response (see scheduleOutputPrune), so no cron needed.
@@ -94,10 +97,19 @@ export async function maybePruneOutputs(): Promise<void> {
   globalForPrune.outputPruneLastRun = Date.now();
 
   try {
-    const removed = await pruneExpiredOutputs();
-    if (removed) console.log(`Deleted ${removed} saved output(s) older than ${OUTPUT_RETENTION_DAYS} days`);
-  } catch (error) {
-    console.error("Output cleanup failed:", error);
+    // Independent: one failing doesn't stop the other
+    const [outputs, inputs] = await Promise.allSettled([
+      pruneExpiredOutputs(),
+      pruneOldInputs(),
+    ]);
+
+    if (outputs.status === "rejected") console.error("Output cleanup failed:", outputs.reason);
+    if (inputs.status === "rejected") console.error("Input upload cleanup failed:", inputs.reason);
+
+    const removed =
+      (outputs.status === "fulfilled" ? outputs.value : 0) +
+      (inputs.status === "fulfilled" ? inputs.value : 0);
+    if (removed) console.log(`Deleted ${removed} file(s) older than ${OUTPUT_RETENTION_DAYS} days`);
   } finally {
     globalForPrune.outputPruneRunning = false;
   }

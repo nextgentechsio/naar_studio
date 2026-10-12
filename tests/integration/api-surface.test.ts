@@ -6,6 +6,7 @@ import {
   createUser,
   fakeOutputUrl,
   loginRoot,
+  replicateRequests,
   setPrediction,
   startGeneration,
   type Session,
@@ -173,6 +174,17 @@ describe("uploads", () => {
     const { status, data } = await upload(new Blob([PNG], { type: "image/png" }), "a.png");
     expect(status).toBe(200);
     expect(data.url).toMatch(/^https:\/\/replicate\.delivery\//);
+  });
+
+  it("accepts large images in full (past the proxy's 10 MB default)", async () => {
+    const big = new Uint8Array(30 * 1024 * 1024);
+    big.set(PNG);
+
+    const { status, data } = await upload(new Blob([big], { type: "image/png" }), "big.png");
+    expect(status, JSON.stringify(data)).toBe(200);
+
+    const sent = (await replicateRequests()).filter((r) => r.path === "/v1/files").at(-1);
+    expect(sent?.bytes).toBeGreaterThan(big.length);
   });
 
   it("refuses other file types and empty uploads", async () => {

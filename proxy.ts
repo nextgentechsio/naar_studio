@@ -82,6 +82,11 @@ export const config = {
     // files (favicon, logos), which the login page needs.
     // API routes and public/history outputs are
     // intentionally included.
-    "/((?!_next/static|_next/image|favicon.ico|icon.svg|brand/).*)",
+    //
+    // Except /api/upload: the proxy buffers request bodies
+    // and cuts them off at 10 MB, which broke larger input
+    // files. That route checks the session itself
+    // (requireUser), so it loses nothing.
+    "/((?!_next/static|_next/image|favicon.ico|icon.svg|brand/|api/upload$).*)",
   ],
 };

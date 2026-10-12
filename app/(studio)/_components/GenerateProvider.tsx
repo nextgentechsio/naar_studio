@@ -31,7 +31,8 @@ import { useStudio } from "./StudioProvider";
 const POLL_INTERVAL_MS = 2000;
 const POLL_TIMEOUT_MS = 15 * 60 * 1000;
 const MAX_CONSECUTIVE_POLL_ERRORS = 10;
-const MAX_IMAGE_BYTES = 26 * 1024 * 1024;
+// Same as /api/upload (Replicate's per-file limit)
+const MAX_FILE_BYTES = 100 * 1024 * 1024;
 
 export type SearchModel = BrowsableModel;
 
@@ -346,8 +347,8 @@ export function GenerateProvider({
       const isMedia =
         file.type.startsWith("video/") || file.type.startsWith("audio/");
 
-      if (!isMedia && file.size > MAX_IMAGE_BYTES) {
-        setError("Please use an image smaller than 26 MB.");
+      if (file.size > MAX_FILE_BYTES) {
+        setError("Files must be 100 MB or smaller.");
         return;
       }
 

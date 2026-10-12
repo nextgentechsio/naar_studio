@@ -27,9 +27,9 @@ import {
 // --------------------------------------------------
 
 const ACCEPT_HINTS = {
-  image: "PNG, JPG or WEBP · up to 26 MB · drop several at once",
-  video: "MP4, MOV or WEBM · one file",
-  audio: "MP3, WAV or M4A · one file",
+  image: "PNG, JPG or WEBP · up to 100 MB · drop several at once",
+  video: "MP4, MOV or WEBM · up to 100 MB · one file",
+  audio: "MP3, WAV or M4A · up to 100 MB · one file",
 };
 
 export default function SchemaField({

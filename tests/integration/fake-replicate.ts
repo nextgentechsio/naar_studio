@@ -41,7 +41,7 @@ const SCHEMA = {
 
 export async function startFakeReplicate() {
   const predictions = new Map<string, Prediction>();
-  const requests: { method: string; path: string; body: unknown }[] = [];
+  const requests: { method: string; path: string; body: unknown; bytes: number }[] = [];
   let counter = 0;
 
   const server = http.createServer(async (req, res) => {
@@ -66,7 +66,7 @@ export async function startFakeReplicate() {
     };
 
     if (!path.startsWith("/__control")) {
-      requests.push({ method: req.method ?? "", path, body });
+      requests.push({ method: req.method ?? "", path, body, bytes: raw.length });
 
       if (req.headers.authorization !== "Bearer test-token") {
         return send(401, { detail: "Invalid token" });

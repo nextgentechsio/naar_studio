@@ -113,7 +113,7 @@ export async function deletePrediction(id: string) {
 }
 
 export async function replicateRequests(): Promise<
-  { method: string; path: string; body: unknown }[]
+  { method: string; path: string; body: unknown; bytes: number }[]
 > {
   return (await fetch(`${replicateUrl}/__control/requests`)).json();
 }

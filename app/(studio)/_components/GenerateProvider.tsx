@@ -15,6 +15,7 @@ import {
 } from "@/app/(studio)/generate/fields";
 import { errorMessage, fetchJson } from "@/lib/client/http";
 import type { ModelKind } from "@/lib/model-catalog";
+import type { BrowsableModel } from "@/lib/replicate-models";
 import { useStudio } from "./StudioProvider";
 
 // --------------------------------------------------
@@ -32,14 +33,7 @@ const POLL_TIMEOUT_MS = 15 * 60 * 1000;
 const MAX_CONSECUTIVE_POLL_ERRORS = 10;
 const MAX_IMAGE_BYTES = 26 * 1024 * 1024;
 
-export type SearchModel = {
-  id: string;
-  owner: string;
-  name: string;
-  description?: string | null;
-  coverImageUrl?: string | null;
-  runCount?: number;
-};
+export type SearchModel = BrowsableModel;
 
 export type Prediction = {
   id: string;
@@ -111,6 +105,9 @@ type GenerateContextValue = {
   search: string;
   setSearch: (query: string) => void;
   searchResults: SearchModel[];
+  // The query those results are for: until it matches
+  // what's typed, a search is still pending
+  searchResultsFor: string;
   searching: boolean;
 
   // Inputs
@@ -157,6 +154,7 @@ export function GenerateProvider({
   const [showOtherModels, setShowOtherModels] = useState(false);
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState<SearchModel[]>([]);
+  const [searchResultsFor, setSearchResultsFor] = useState("");
   const [searching, setSearching] = useState(false);
 
   const [schema, setSchema] = useState<Schema>({});
@@ -207,11 +205,13 @@ export function GenerateProvider({
 
         if (isLatest()) {
           setSearchResults(Array.isArray(data.models) ? data.models : []);
+          setSearchResultsFor(query);
         }
       } catch (err) {
         console.error(err);
         if (isLatest()) {
           setSearchResults([]);
+          setSearchResultsFor(query);
           setError("Unable to search models.");
         }
       } finally {
@@ -598,6 +598,7 @@ export function GenerateProvider({
     search,
     setSearch,
     searchResults,
+    searchResultsFor,
     searching,
     schema,
     schemaLoading,

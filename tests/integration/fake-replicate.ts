@@ -151,7 +151,37 @@ export async function startFakeReplicate() {
     }
 
     if (path === "/v1/search") {
-      return send(200, { models: [{ model: { owner: "fake", name: "found" } }] });
+      return send(200, {
+        models: [
+          { model: { owner: "fake", name: "rare", run_count: 5 } },
+          { model: { owner: "google", name: "nano-banana", run_count: 100 } },
+          { model: { owner: "fake", name: "popular", run_count: 9000, cover_image_url: "http://insecure/x.png" } },
+          { metadata: {} },
+        ],
+      });
+    }
+
+    if (path === "/v1/collections") {
+      return send(200, {
+        results: [
+          { slug: "upscale", name: "Upscale images", description: "Make images bigger" },
+          { slug: "official", name: "Official models", description: "Always on" },
+        ],
+      });
+    }
+
+    const collection = path.match(/^\/v1\/collections\/([^/]+)$/);
+    if (collection) {
+      if (collection[1] === "missing") return send(404, { detail: "Not found" });
+
+      return send(200, {
+        slug: collection[1],
+        models: [
+          { owner: "someone", name: "small", run_count: 10, cover_image_url: "https://img/s.png" },
+          { owner: "philz1337x", name: "crystal-upscaler", run_count: 50 },
+          { owner: "someone", name: "big", run_count: 5000 },
+        ],
+      });
     }
 
     send(404, { detail: `No fake for ${req.method} ${path}` });

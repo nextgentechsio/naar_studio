@@ -121,18 +121,20 @@ describe("generate → poll → expense", () => {
     expect(beyond.status).toBe(416);
   });
 
-  it("plain users run approved models only; admins can run any", async () => {
-    const asUser = await api("/api/generate", {
+  it("anyone can run any Replicate model; unlisted ones are billed as unpriced", async () => {
+    const { status, data } = await api("/api/generate", {
       session: user.session,
       json: { project: project.name, model: "someone/unlisted", inputs: { prompt: "x" } },
     });
-    expect(asUser.status).toBe(403);
+    expect(status).toBe(200);
 
-    const asRoot = await api("/api/generate", {
-      session: root,
-      json: { project: project.name, model: "someone/unlisted", inputs: { prompt: "x" } },
-    });
-    expect(asRoot.status).toBe(200);
+    const id = (data.tracking as { predictionId: string }).predictionId;
+    await setPrediction(id, { status: "succeeded", output: [fakeOutputUrl()] });
+    await poll(user.session, id);
+
+    const expenses = await expensesFor(id);
+    expect(expenses).toHaveLength(1);
+    expect(expenses[0].amountUsd).toBeNull();
   });
 
   it("never lets a stale 'processing' answer undo a finished run", async () => {

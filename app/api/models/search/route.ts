@@ -7,14 +7,11 @@ import {
   upstreamStatus,
 } from "@/lib/replicate-api";
 
-type SearchItem = {
-  owner?: string;
-  name?: string;
-  description?: string | null;
-  url?: string | null;
-  cover_image_url?: string | null;
-  run_count?: number;
-};
+import {
+  sortModels,
+  toBrowsable,
+  type BrowsableModel,
+} from "@/lib/replicate-models";
 
 export async function GET(request: Request) {
   const auth = await requireUser();
@@ -65,19 +62,12 @@ export async function GET(request: Request) {
 
     const items = Array.isArray(data.models) ? data.models : [];
 
-    const models = items.map((item: { model?: SearchItem } & SearchItem) => {
-      const model: SearchItem = item.model ?? item;
-
-      return {
-        id: `${model.owner}/${model.name}`,
-        owner: model.owner,
-        name: model.name,
-        description: model.description ?? null,
-        url: model.url ?? null,
-        coverImageUrl: model.cover_image_url ?? null,
-        runCount: model.run_count ?? 0,
-      };
-    });
+    // Search items wrap the model: { model, metadata }
+    const models = sortModels(
+      items
+        .map((item: { model?: unknown }) => toBrowsable(item?.model ?? item))
+        .filter((model): model is BrowsableModel => model !== null)
+    );
 
     return NextResponse.json({
       query,

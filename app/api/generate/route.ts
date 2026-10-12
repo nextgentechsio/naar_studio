@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { recordGeneration } from "@/lib/generations";
-import { findCatalogModel } from "@/lib/model-catalog";
 import { findActiveProjectByName } from "@/lib/projects";
 import {
   readReplicateJson,
@@ -12,7 +11,6 @@ import {
 import { calculateReplicateCost } from "@/lib/replicate-cost";
 import { inputSchemaFromModel, shapeInputs } from "@/lib/replicate-inputs";
 import { isValidModelId, modelPath } from "@/lib/replicate-model";
-import { canManageUsers } from "@/lib/roles";
 
 export const runtime = "nodejs";
 
@@ -61,14 +59,6 @@ export async function POST(request: Request) {
     return badRequest("Invalid model ID");
   }
 
-  // Plain users run approved (priced) models only, so all
-  // their spend is tracked; admins can try any model
-  if (!findCatalogModel(model) && !canManageUsers(auth.user)) {
-    return badRequest(
-      "This model isn't on the approved list. Ask an admin to run it.",
-      403
-    );
-  }
 
   if (!inputs || typeof inputs !== "object" || Array.isArray(inputs)) {
     return badRequest("Model inputs are required");

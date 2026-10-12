@@ -32,7 +32,7 @@ import {
   MODEL_CATALOG,
 } from "@/lib/model-catalog";
 import { calculateReplicateCost } from "@/lib/replicate-cost";
-import { canManageProjects, canManageUsers } from "@/lib/roles";
+import { canManageProjects } from "@/lib/roles";
 import {
   ASPECT_RATIOS,
   buildGenerationInputs,
@@ -40,6 +40,7 @@ import {
   orderSchemaFields,
   StableTextArea,
 } from "./fields";
+import ModelBrowser from "./ModelBrowser";
 import SchemaField from "./SchemaField";
 
 // --------------------------------------------------
@@ -61,12 +62,6 @@ export default function GenerateView() {
     chooseModel,
     catalogFilter,
     setCatalogFilter,
-    showOtherModels,
-    toggleOtherModels,
-    search,
-    setSearch,
-    searchResults,
-    searching,
     schema,
     schemaLoading,
     inputs,
@@ -357,98 +352,8 @@ export default function GenerateView() {
                 </div>
               )}
 
-              {/* Escape hatch: any Replicate model. Admins only:
-                  plain users run approved (priced) models */}
-              {canManageUsers(currentUser) && (
-                <div className="mt-4 border-t border-line pt-4">
-                  <button
-                    type="button"
-                    aria-expanded={showOtherModels}
-                    onClick={toggleOtherModels}
-                    className="flex items-center gap-1.5 text-sm font-medium text-fg-muted hover:text-fg"
-                  >
-                    <Icon
-                      name="chevronDown"
-                      size={16}
-                      className={cx(
-                        "transition-transform",
-                        showOtherModels ? "" : "-rotate-90",
-                      )}
-                    />
-                    Use another Replicate model
-                  </button>
-
-                  {showOtherModels && (
-                    <div className="mt-3 space-y-3">
-                      <Alert tone="warning">
-                        Models outside the approved list have no price on file.
-                        Their spend can&apos;t be tracked.
-                      </Alert>
-
-                      <div className="relative">
-                        <Icon
-                          name="search"
-                          size={16}
-                          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-subtle"
-                        />
-
-                        <input
-                          type="search"
-                          value={search}
-                          onChange={(event) => setSearch(event.target.value)}
-                          placeholder="Search Replicate, e.g. flux or whisper"
-                          aria-label="Search Replicate models"
-                          className={cx(inputClass, "pl-9")}
-                        />
-                      </div>
-
-                      {searching ? (
-                        <p className="flex items-center gap-2 text-sm text-fg-muted">
-                          <Spinner /> Searching…
-                        </p>
-                      ) : search.trim() && search !== model ? (
-                        searchResults.length ? (
-                          <ul className="max-h-72 divide-y divide-line overflow-y-auto rounded-lg border border-line">
-                            {searchResults.map((item) => (
-                              <li key={item.id}>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    chooseModel(item.id, { fromSearch: true })
-                                  }
-                                  className="block w-full px-3.5 py-3 text-left transition-colors hover:bg-raised"
-                                >
-                                  <span className="flex items-center justify-between gap-2">
-                                    <span className="truncate text-sm font-medium text-fg">
-                                      {item.id}
-                                    </span>
-
-                                    {findCatalogModel(item.id) ? (
-                                      <Badge tone="success">Approved</Badge>
-                                    ) : (
-                                      <Badge tone="warning">Unpriced</Badge>
-                                    )}
-                                  </span>
-
-                                  {item.description && (
-                                    <span className="mt-0.5 line-clamp-2 block text-xs text-fg-subtle">
-                                      {item.description}
-                                    </span>
-                                  )}
-                                </button>
-                              </li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <p className="text-sm text-fg-subtle">
-                            No models match “{search.trim()}”.
-                          </p>
-                        )
-                      ) : null}
-                    </div>
-                  )}
-                </div>
-              )}
+              {/* Any Replicate model: search or browse by category */}
+              <ModelBrowser />
             </StepBody>
           </Card>
 

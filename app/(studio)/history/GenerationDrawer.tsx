@@ -214,9 +214,10 @@ export default function GenerationDrawer({
                 <OutputPreview
                   key={generation.outputUrl ?? "none"}
                   url={generation.outputUrl}
-          contentType={generation.outputContentType}
+                  contentType={generation.outputContentType}
                   status={generation.status}
                   variant="full"
+                  expired={generation.outputExpired}
                 />
               </div>
 

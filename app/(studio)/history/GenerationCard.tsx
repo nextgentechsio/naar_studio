@@ -39,6 +39,7 @@ export default function GenerationCard({
           contentType={generation.outputContentType}
           status={status}
           variant="thumb"
+          expired={generation.outputExpired}
         />
 
         {statusBadge && (

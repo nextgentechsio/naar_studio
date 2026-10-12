@@ -98,6 +98,9 @@ export type GenerationDoc = {
   outputFileId?: ObjectId | null;
   outputContentType?: string | null;
   outputSize?: number | null;
+  // Saved copy deleted by the retention cleanup
+  // (lib/output-retention.ts)
+  outputExpiredAt?: Date | null;
   predictTime: number | null;
   // Reconcile attempts that found no prediction
   reconcileFailures?: number;

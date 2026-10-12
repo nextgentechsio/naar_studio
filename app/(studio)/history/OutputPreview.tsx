@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Icon } from "@/app/components/ui/Icon";
 import { Spinner, cx } from "@/app/components/ui/primitives";
 import { getOutputType } from "@/lib/client/outputs";
+import { OUTPUT_RETENTION_DAYS } from "@/lib/output-retention-days";
 
 // --------------------------------------------------
 // OUTPUT PREVIEW
@@ -22,11 +23,14 @@ export default function OutputPreview({
   contentType,
   status,
   variant,
+  expired = false,
 }: {
   url: string | null;
   contentType?: string | null;
   status: string;
   variant: "thumb" | "full";
+  // Deleted by the retention cleanup
+  expired?: boolean;
 }) {
   // Replicate URLs expire; show a placeholder instead of
   // a broken image
@@ -58,6 +62,19 @@ export default function OutputPreview({
             : status === "canceled"
               ? "Canceled"
               : "Lost: Replicate no longer has this run"}
+        </span>
+      </Placeholder>
+    );
+  }
+
+  if (expired && !url) {
+    return (
+      <Placeholder>
+        <Icon name="clock" size={20} />
+        <span>
+          {thumb
+            ? `Deleted after ${OUTPUT_RETENTION_DAYS} days`
+            : `Files are kept for ${OUTPUT_RETENTION_DAYS} days, so this one was deleted. Use Run again to recreate it.`}
         </span>
       </Placeholder>
     );
@@ -130,7 +147,7 @@ export default function OutputPreview({
 
 function Placeholder({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex h-full min-h-40 w-full flex-col items-center justify-center gap-2 text-xs text-fg-subtle">
+    <div className="flex h-full min-h-40 w-full flex-col items-center justify-center gap-2 px-4 text-center text-xs text-fg-subtle">
       {children}
     </div>
   );

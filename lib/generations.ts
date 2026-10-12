@@ -67,6 +67,8 @@ export type PublicGeneration = {
   // file extension to go by)
   outputContentType: string | null;
   replicateOutputUrl: string | null;
+  // Saved copy deleted after the retention period
+  outputExpired: boolean;
   predictTime: number | null;
   createdAt: string;
   completedAt: string | null;
@@ -93,6 +95,7 @@ function toPublicGeneration(
     outputUrl: doc.localOutputUrl ?? doc.outputUrl,
     outputContentType: doc.outputContentType ?? null,
     replicateOutputUrl: doc.outputUrl,
+    outputExpired: Boolean(doc.outputExpiredAt),
     predictTime: doc.predictTime,
     createdAt: doc.createdAt.toISOString(),
     completedAt: doc.completedAt?.toISOString() ?? null,

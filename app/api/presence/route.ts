@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
+import { maybePruneOutputs } from "@/lib/output-retention";
 import { recordHeartbeat } from "@/lib/users";
 
 export const runtime = "nodejs";
@@ -12,6 +13,9 @@ export async function POST() {
 
   try {
     await recordHeartbeat(auth.user.id);
+    // Hourly cleanup of old saved outputs, after the
+    // response so nobody waits for it
+    after(maybePruneOutputs);
     return new NextResponse(null, { status: 204 });
   } catch (error) {
     console.error("Presence heartbeat error:", error);

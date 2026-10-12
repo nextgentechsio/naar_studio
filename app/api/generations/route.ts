@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
+import { maybePruneOutputs } from "@/lib/output-retention";
 import {
   HISTORY_STATUSES,
   listGenerations,
@@ -30,6 +31,10 @@ export async function GET(request: Request) {
         reconcileError
       );
     }
+
+    // Hourly cleanup of old saved outputs, after the
+    // response so nobody waits for it
+    after(maybePruneOutputs);
 
     const params = new URL(request.url).searchParams;
     const status = params.get("status");

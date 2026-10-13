@@ -134,7 +134,7 @@ export default function ModelBrowser() {
             Expenses.
           </Alert>
 
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="flex flex-col gap-2 sm:flex-row xl:flex-col">
             <div className="relative min-w-0 flex-1">
               <Icon
                 name="search"
@@ -159,7 +159,7 @@ export default function ModelBrowser() {
                 setCollection(event.target.value);
                 setSearch("");
               }}
-              className={cx(inputClass, "sm:w-60")}
+              className={cx(inputClass, "sm:w-60 xl:w-full")}
             >
               {!collections.some((item) => item.slug === DEFAULT_COLLECTION) && (
                 <option value={DEFAULT_COLLECTION}>Official models</option>
@@ -194,7 +194,7 @@ export default function ModelBrowser() {
           ) : shown.length ? (
             <ul
               className={cx(
-                "grid max-h-[28rem] gap-2 overflow-y-auto pr-1 sm:grid-cols-2",
+                "grid max-h-[28rem] gap-2 overflow-y-auto pr-1 sm:grid-cols-2 xl:grid-cols-1",
                 loading && "opacity-60"
               )}
             >

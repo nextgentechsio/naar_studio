@@ -229,7 +229,7 @@ function FileField({
             htmlFor={control.id}
             {...dropProps}
             className={cx(
-              "flex min-h-28 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed px-4 py-5 text-center transition-colors",
+              "flex min-h-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed px-4 py-4 text-center transition-colors",
               dragging
                 ? "border-accent bg-accent-soft ring-2 ring-accent/30"
                 : "border-line-strong bg-sunken hover:border-accent hover:bg-accent-soft/40"

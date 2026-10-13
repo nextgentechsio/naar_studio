@@ -6,7 +6,8 @@ import type { AddressInfo } from "net";
 //
 // Just enough of api.replicate.com for the app: models
 // (with an input schema), predictions, cancel, files and
-// search. Also a minimal Vercel Blob API (list, delete). Tests steer it through /__control endpoints,
+// search. Also a minimal Vercel Blob API (uploads,
+// multipart, list, delete) that serves stored files. Tests steer it through /__control endpoints,
 // e.g. "this prediction has now succeeded".
 //
 // Special model names: */missing → 404, */reject → 422,
@@ -48,8 +49,10 @@ export async function startFakeReplicate() {
   let counter = 0;
   let blobs: { url: string; pathname: string; size: number; uploadedAt: string }[] = [];
   const blobRequests: { method: string; path: string; body: unknown }[] = [];
-  // Multipart upload id → bytes received so far
-  const multipart = new Map<string, number>();
+  // Stored bytes, served at /blobfiles/<pathname>
+  const blobBytes = new Map<string, Buffer>();
+  // Multipart upload id → parts received so far
+  const multipart = new Map<string, Map<number, Buffer>>();
 
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://fake");
@@ -97,41 +100,43 @@ export async function startFakeReplicate() {
       }
 
       const pathname = url.searchParams.get("pathname") ?? "";
-      const stored = (bytes: number) => {
-        const name = pathname.replace(/(\.[^.]+)?$/, "-rnd$1");
+      const stored = (bytes: Buffer) => {
+        const name = pathname.replace(/(\.[^.]+)?$/, `-rnd${++counter}$1`);
+        const { port } = server.address() as AddressInfo;
         const blob = {
-          url: `https://teststore.public.blob.vercel-storage.com/${name}`,
+          url: `http://127.0.0.1:${port}/blobfiles/${name}`,
           pathname: name,
-          size: bytes,
+          size: bytes.length,
           uploadedAt: new Date().toISOString(),
         };
         blobs.push(blob);
+        blobBytes.set(name, bytes);
         return send(200, { ...blob, downloadUrl: blob.url, contentType: req.headers["x-content-type"] ?? "", contentDisposition: "inline" });
       };
 
       // Single upload
-      if (path === "/blob/" && req.method === "PUT" && clientToken) {
-        return stored(raw.length);
+      if (path === "/blob/" && req.method === "PUT") {
+        return stored(raw);
       }
 
       // Multipart: create → upload parts → complete
-      if (path === "/blob/mpu" && clientToken) {
+      if (path === "/blob/mpu") {
         const action = req.headers["x-mpu-action"];
         const id = String(req.headers["x-mpu-upload-id"] ?? "");
 
         if (action === "create") {
           const uploadId = `mpu-${++counter}`;
-          multipart.set(uploadId, 0);
+          multipart.set(uploadId, new Map());
           return send(200, { key: `key-${uploadId}`, uploadId });
         }
         if (action === "upload" && multipart.has(id)) {
-          multipart.set(id, multipart.get(id)! + raw.length);
+          multipart.get(id)!.set(Number(req.headers["x-mpu-part-number"]), raw);
           return send(200, { etag: `etag-${req.headers["x-mpu-part-number"]}` });
         }
         if (action === "complete" && multipart.has(id)) {
-          const total = multipart.get(id)!;
+          const parts = [...multipart.get(id)!.entries()].sort(([a], [b]) => a - b);
           multipart.delete(id);
-          return stored(total);
+          return stored(Buffer.concat(parts.map(([, part]) => part)));
         }
       }
 
@@ -149,11 +154,34 @@ export async function startFakeReplicate() {
 
       if (path === "/blob/delete" && req.method === "POST") {
         const urls = (body as { urls?: string[] })?.urls ?? [];
+        for (const blob of blobs) {
+          if (urls.includes(blob.url)) blobBytes.delete(blob.pathname);
+        }
         blobs = blobs.filter((blob) => !urls.includes(blob.url));
         return send(200, {});
       }
 
       return send(404, { error: { code: "not_found", message: "No fake" } });
+    }
+
+    // Public blob links (what a browser or the app fetches)
+    if (path.startsWith("/blobfiles/") && req.method === "GET") {
+      const bytes = blobBytes.get(decodeURIComponent(path.slice("/blobfiles/".length)));
+      if (!bytes) return send(404, { error: "Not found" });
+
+      const range = /^bytes=(\d+)-(\d*)$/.exec(String(req.headers.range ?? ""));
+      if (range) {
+        const start = Number(range[1]);
+        const end = range[2] ? Math.min(Number(range[2]), bytes.length - 1) : bytes.length - 1;
+        res.writeHead(206, {
+          "content-range": `bytes ${start}-${end}/${bytes.length}`,
+          "content-length": String(end - start + 1),
+        });
+        return res.end(bytes.subarray(start, end + 1));
+      }
+
+      res.writeHead(200, { "content-length": String(bytes.length) });
+      return res.end(bytes);
     }
 
     if (path === "/__control/blobs") {

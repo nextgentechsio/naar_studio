@@ -94,7 +94,11 @@ export type GenerationDoc = {
   // URL of our saved copy: /api/generations/<id>/output
   // (older records: /history/<file> in public/)
   localOutputUrl: string | null;
-  // The saved copy in GridFS "generationOutputs"
+  // The saved copy: in Vercel Blob (newer records, and
+  // older ones once migrated; never sent to browsers) or
+  // in GridFS "generationOutputs". Blob wins when both
+  // are set.
+  outputBlobUrl?: string | null;
   outputFileId?: ObjectId | null;
   outputContentType?: string | null;
   outputSize?: number | null;

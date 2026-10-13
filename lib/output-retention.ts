@@ -1,14 +1,18 @@
 import type { GridFSFile } from "mongodb";
 import { generationsCollection, getDb } from "@/lib/mongodb";
-import { deleteOutputFile } from "@/lib/generation-outputs";
+import {
+  deleteOutputBlob,
+  deleteOutputFile,
+  deleteSavedOutput,
+} from "@/lib/generation-outputs";
 import { pruneOldInputs } from "@/lib/input-uploads";
 import { OUTPUT_RETENTION_DAYS } from "@/lib/output-retention-days";
 
 // --------------------------------------------------
 // OUTPUT RETENTION
 //
-// Saved images and videos are the bulk of the database,
-// so they are kept for OUTPUT_RETENTION_DAYS only. The
+// Saved images and videos (Vercel Blob, or GridFS for
+// older records) are kept for OUTPUT_RETENTION_DAYS only. The
 // generation record and its expense stay forever (history
 // and spend reports are unaffected); the record is marked
 // `outputExpiredAt` so the UI can say why it's gone.
@@ -31,14 +35,65 @@ export function outputCutoff(now: Date): Date {
   return new Date(now.getTime() - OUTPUT_RETENTION_DAYS * DAY_MS);
 }
 
-// Deletes saved outputs older than the retention period.
-// Returns how many files were removed.
+// What an expired record looks like: no saved copy left
+function expiredFields(now: Date) {
+  return {
+    outputFileId: null,
+    outputBlobUrl: null,
+    localOutputUrl: null,
+    // Replicate's copy expired long ago too
+    outputUrl: null,
+    outputSize: null,
+    outputExpiredAt: now,
+    updatedAt: now,
+  };
+}
+
+// Deletes saved outputs older than the retention period,
+// in Blob and in GridFS. Returns how many were removed.
 export async function pruneExpiredOutputs(now = new Date()): Promise<number> {
-  // The "generationOutputs" GridFS bucket's file list
-  const files = (await getDb()).collection<GridFSFile>("generationOutputs.files");
   const generations = await generationsCollection();
   const cutoff = outputCutoff(now);
   let removed = 0;
+
+  // 1. Records finished before the cutoff that still hold
+  //    a saved copy (either store)
+  for (let batch = 0; batch < MAX_BATCHES; batch++) {
+    const expired = await generations
+      .find(
+        {
+          completedAt: { $lt: cutoff },
+          $or: [{ outputBlobUrl: { $ne: null } }, { outputFileId: { $ne: null } }],
+        },
+        { projection: { _id: 1, outputBlobUrl: 1, outputFileId: 1 } }
+      )
+      .limit(BATCH_SIZE)
+      .toArray();
+
+    if (!expired.length) break;
+
+    // Unlink first, so no record ever points at a
+    // deleted file
+    await generations.updateMany(
+      { _id: { $in: expired.map((doc) => doc._id) } },
+      { $set: expiredFields(now) }
+    );
+
+    for (const doc of expired) {
+      await deleteSavedOutput({
+        fileId: doc.outputFileId ?? null,
+        blobUrl: doc.outputBlobUrl ?? null,
+      });
+    }
+
+    removed += expired.length;
+
+    if (expired.length < BATCH_SIZE) break;
+  }
+
+  // 2. Old GridFS files no finished record accounted for
+  //    (e.g. a record without completedAt)
+  const files = (await getDb()).collection<GridFSFile>("generationOutputs.files");
 
   for (let batch = 0; batch < MAX_BATCHES; batch++) {
     const ids = (
@@ -50,25 +105,20 @@ export async function pruneExpiredOutputs(now = new Date()): Promise<number> {
 
     if (!ids.length) break;
 
-    // Unlink first, so no record ever points at a
-    // deleted file
+    const linked = await generations
+      .find({ outputFileId: { $in: ids } }, { projection: { outputBlobUrl: 1 } })
+      .toArray();
+
     await generations.updateMany(
       { outputFileId: { $in: ids } },
-      {
-        $set: {
-          outputFileId: null,
-          localOutputUrl: null,
-          // Replicate's copy expired long ago too
-          outputUrl: null,
-          outputSize: null,
-          outputExpiredAt: now,
-          updatedAt: now,
-        },
-      }
+      { $set: expiredFields(now) }
     );
 
     for (const id of ids) {
       await deleteOutputFile(id);
+    }
+    for (const doc of linked) {
+      await deleteOutputBlob(doc.outputBlobUrl);
     }
 
     removed += ids.length;

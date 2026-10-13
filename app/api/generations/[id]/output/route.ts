@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
-import { openOutput, parseRange } from "@/lib/generation-outputs";
+import { createHash } from "crypto";
+import { openBlobOutput, openOutput, parseRange } from "@/lib/generation-outputs";
 import { canViewGeneration, getGeneration } from "@/lib/generations";
 
 export const runtime = "nodejs";
@@ -26,14 +27,16 @@ export async function GET(request: Request, context: RouteContext) {
     if (
       !generation ||
       !canViewGeneration(auth.user, generation) ||
-      !generation.outputFileId ||
+      !(generation.outputBlobUrl || generation.outputFileId) ||
       typeof generation.outputSize !== "number"
     ) {
       return NextResponse.json({ error: "Output not found" }, { status: 404 });
     }
 
     const size = generation.outputSize;
-    const etag = `"${generation.outputFileId.toHexString()}"`;
+    const etag = generation.outputBlobUrl
+      ? `"${createHash("sha256").update(generation.outputBlobUrl).digest("hex").slice(0, 32)}"`
+      : `"${generation.outputFileId!.toHexString()}"`;
 
     const headers: Record<string, string> = {
       "Content-Type": generation.outputContentType ?? "application/octet-stream",
@@ -58,7 +61,9 @@ export async function GET(request: Request, context: RouteContext) {
       });
     }
 
-    const body = await openOutput(generation.outputFileId, range);
+    const body = generation.outputBlobUrl
+      ? await openBlobOutput(generation.outputBlobUrl, range)
+      : await openOutput(generation.outputFileId!, range);
 
     if (range) {
       return new Response(body, {

@@ -1,6 +1,6 @@
 import { recordExpense } from "@/lib/expenses";
 import {
-  deleteOutputFile,
+  deleteSavedOutput,
   outputUrlFor,
   saveOutput,
   type SavedOutput,
@@ -460,6 +460,7 @@ export async function applyPrediction(
     set.outputUrl = firstUrl(prediction.output);
     set.localOutputUrl = localOutputUrl;
     set.outputFileId = saved?.fileId ?? null;
+    set.outputBlobUrl = saved?.blobUrl ?? null;
     set.outputContentType = saved?.contentType ?? null;
     set.outputSize = saved?.size ?? null;
     set.error =
@@ -483,7 +484,7 @@ export async function applyPrediction(
 
   if (!updated) {
     // Another request finished it first; its copy wins
-    await deleteOutputFile(saved?.fileId);
+    await deleteSavedOutput(saved);
 
     const current = await getGeneration(generation._id);
 

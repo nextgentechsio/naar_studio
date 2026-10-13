@@ -30,9 +30,9 @@ export const metadata: Metadata = {
     "Naar's AI generation workspace with per-project spend tracking.",
 };
 
-// Apply the saved theme before first paint (no flash).
-// No saved value = follow the OS setting via CSS.
-const THEME_SCRIPT = `(function(){try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}})()`;
+// Apply the saved theme and sidebar state before first
+// paint (no flash). No saved theme = follow the OS.
+const THEME_SCRIPT = `(function(){try{var d=document.documentElement,t=localStorage.getItem("theme");if(t==="light"||t==="dark")d.setAttribute("data-theme",t);if(localStorage.getItem("sidebar")==="collapsed")d.setAttribute("data-sidebar","collapsed")}catch(e){}})()`;
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (

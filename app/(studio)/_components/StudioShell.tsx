@@ -19,13 +19,14 @@ import {
 import { signOut, useStudio } from "./StudioProvider";
 import Greeting from "./Greeting";
 import SessionTimer from "./SessionTimer";
+import SidebarToggle from "./SidebarToggle";
 import { useDialog } from "./useDialog";
 
 // --------------------------------------------------
 // STUDIO SHELL
 //
-// Sidebar (desktop rail + mobile drawer), top bar and
-// main area. Navigation is real links, so every page
+// Sidebar (desktop rail, collapsible to icons; mobile
+// drawer), top bar and main area. Navigation is real links, so every page
 // has a URL: refresh, Back and shared links all work.
 // Grouped by job: Create → Library → Spend → Admin.
 // --------------------------------------------------
@@ -102,21 +103,30 @@ export default function StudioShell({
           href="/generate"
           onClick={closeNav}
           aria-label="Naar Studio home"
-          className="flex h-16 items-center gap-2 px-5 text-fg"
+          className="flex h-16 items-center gap-2 px-5 text-fg rail-collapsed:justify-center rail-collapsed:px-0"
         >
-          <NaarLogo height={24} />
-          <span className="pt-0.5 text-[15px] font-medium tracking-tight text-fg-muted">
-            Studio
+          <span className="contents rail-collapsed:hidden">
+            <NaarLogo height={24} />
+            <span className="pt-0.5 text-[15px] font-medium tracking-tight text-fg-muted">
+              Studio
+            </span>
+          </span>
+          {/* Collapsed rail: just the wordmark, smaller */}
+          <span className="hidden rail-collapsed:inline-flex">
+            <NaarLogo height={14} />
           </span>
         </Link>
 
         <nav
           aria-label="Main"
-          className="flex-1 space-y-6 overflow-y-auto px-3 py-3"
+          className="flex-1 space-y-6 overflow-y-auto px-3 py-3 rail-collapsed:space-y-3 rail-collapsed:px-2"
         >
           {navGroups.map((group) => (
-            <div key={group.label}>
-              <p className="px-2.5 pb-2 text-[10px] font-medium uppercase tracking-[0.2em] text-fg-subtle">
+            <div
+              key={group.label}
+              className="rail-collapsed:border-t rail-collapsed:border-line rail-collapsed:pt-3 rail-collapsed:first:border-t-0 rail-collapsed:first:pt-0"
+            >
+              <p className="px-2.5 pb-2 text-[10px] font-medium uppercase tracking-[0.2em] text-fg-subtle rail-collapsed:sr-only">
                 {group.label}
               </p>
 
@@ -130,8 +140,9 @@ export default function StudioShell({
                         href={item.href}
                         onClick={closeNav}
                         aria-current={active ? "page" : undefined}
+                        title={item.label}
                         className={cx(
-                          "relative flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors",
+                          "relative flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors rail-collapsed:justify-center rail-collapsed:px-0",
                           active
                             ? "bg-accent-soft font-medium text-accent"
                             : "text-fg-muted hover:bg-raised hover:text-fg"
@@ -145,7 +156,9 @@ export default function StudioShell({
                           />
                         )}
                         <Icon name={item.icon} size={17} />
-                        {item.label}
+                        <span className="rail-collapsed:sr-only">
+                          {item.label}
+                        </span>
                       </Link>
                     </li>
                   );
@@ -157,7 +170,10 @@ export default function StudioShell({
 
         {/* Signed-in user */}
         <div className="border-t border-line p-3">
-          <div className="flex items-center gap-2.5 rounded-lg px-1.5 py-1.5">
+          <div
+            className="flex items-center gap-2.5 rounded-lg px-1.5 py-1.5 rail-collapsed:justify-center rail-collapsed:px-0"
+            title={`${currentUser.name} · ${ROLE_LABELS[currentUser.role]}`}
+          >
             <span
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-raised text-xs font-semibold text-fg"
               aria-hidden
@@ -165,7 +181,7 @@ export default function StudioShell({
               {currentUser.name.charAt(0).toUpperCase() || "?"}
             </span>
 
-            <span className="min-w-0 flex-1">
+            <span className="min-w-0 flex-1 rail-collapsed:hidden">
               <span className="block truncate text-sm font-medium text-fg">
                 {currentUser.name}
               </span>
@@ -175,31 +191,33 @@ export default function StudioShell({
             </span>
           </div>
 
-          <div className="mt-2 flex items-center justify-between gap-2 px-1.5">
+          <div className="mt-2 flex items-center justify-between gap-2 px-1.5 rail-collapsed:hidden">
             <span className="text-xs text-fg-subtle">Theme</span>
             <ThemeToggle />
           </div>
 
-          <div className="mt-2 grid grid-cols-2 gap-1">
+          <div className="mt-2 grid grid-cols-2 gap-1 rail-collapsed:grid-cols-1">
             <Link
               href="/account"
               onClick={closeNav}
               aria-current={
                 isActive(pathname, "/account") ? "page" : undefined
               }
+              title="Account"
               className={buttonClass("ghost", "sm")}
             >
               <Icon name="settings" size={16} />
-              Account
+              <span className="rail-collapsed:sr-only">Account</span>
             </Link>
 
             <Button
               size="sm"
               variant="ghost"
               icon="logout"
+              title="Sign out"
               onClick={signOut}
             >
-              Sign out
+              <span className="rail-collapsed:sr-only">Sign out</span>
             </Button>
           </div>
         </div>
@@ -217,14 +235,15 @@ export default function StudioShell({
       </a>
 
       {/* DESKTOP SIDEBAR */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 border-r border-line bg-surface lg:block">
+      {/* studio-rail: target of the rail-collapsed variant */}
+      <aside className="studio-rail fixed inset-y-0 left-0 z-30 hidden w-60 border-r border-line bg-surface transition-[width] duration-200 lg:block rail-collapsed:w-16">
         {renderNav()}
       </aside>
 
       {/* MOBILE DRAWER */}
       {navOpen && <MobileDrawer onClose={closeNav}>{renderNav()}</MobileDrawer>}
 
-      <div className="lg:pl-60">
+      <div className="transition-[padding] duration-200 lg:pl-60 lg:sidebar-collapsed:pl-16">
         {/* TOP BAR */}
         <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-3 border-b border-line bg-canvas/90 px-4 backdrop-blur lg:px-8">
           <div className="flex min-w-0 items-center gap-2">
@@ -237,6 +256,7 @@ export default function StudioShell({
               onClick={() => setNavOpen(true)}
               className="lg:hidden"
             />
+            <SidebarToggle />
 
             {/* Phones: where am I. Desktop: a welcome (the
                 heading and active nav already say the page) */}
@@ -254,7 +274,7 @@ export default function StudioShell({
 
         <main
           id="main-content"
-          className="mx-auto max-w-[1400px] px-4 py-6 lg:px-8 lg:py-8"
+          className="px-4 py-6 lg:px-6 lg:py-6"
         >
           {children}
         </main>

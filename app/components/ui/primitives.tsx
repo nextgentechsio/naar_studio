@@ -128,9 +128,16 @@ export function Field({
   error,
   required,
   hideLabel,
+  info,
+  className,
   children,
 }: {
   label: string;
+  // Help shown as an ⓘ tooltip instead of a line of text
+  // (compact forms); still read out by screen readers
+  info?: string;
+  // Extra classes for the wrapper (e.g. to let it grow)
+  className?: string;
   hint?: ReactNode;
   error?: string;
   required?: boolean;
@@ -145,9 +152,10 @@ export function Field({
 }) {
   const id = useId();
   const hintId = `${id}-hint`;
+  const described = hint || error || info;
 
   return (
-    <div className="space-y-1.5">
+    <div className={cx("space-y-1.5", className)}>
       <label
         htmlFor={id}
         className={cx(
@@ -161,14 +169,28 @@ export function Field({
             *
           </span>
         )}
+        {info && (
+          <span
+            title={info}
+            aria-hidden
+            className="ml-1 inline-flex translate-y-0.5 cursor-help text-fg-subtle"
+          >
+            <Icon name="info" size={13} />
+          </span>
+        )}
       </label>
 
       {children({
         id,
-        "aria-describedby":
-          hint || error ? hintId : undefined,
+        "aria-describedby": described ? hintId : undefined,
         "aria-invalid": error ? true : undefined,
       })}
+
+      {info && !error && !hint && (
+        <p id={hintId} className="sr-only">
+          {info}
+        </p>
+      )}
 
       {(error || hint) && (
         <p

@@ -26,10 +26,12 @@ import {
 // and help text.
 // --------------------------------------------------
 
+// Second line of the upload row; the full detail is in
+// its tooltip
 const ACCEPT_HINTS = {
-  image: "PNG, JPG or WEBP · up to 100 MB · drop several at once",
-  video: "MP4, MOV or WEBM · up to 100 MB · one file",
-  audio: "MP3, WAV or M4A · up to 100 MB · one file",
+  image: "or drag & drop · up to 100 MB each",
+  video: "or drag & drop · MP4, MOV, WEBM · 100 MB",
+  audio: "or drag & drop · MP3, WAV, M4A · 100 MB",
 };
 
 export default function SchemaField({
@@ -52,7 +54,7 @@ export default function SchemaField({
   // ENUM
   if (field.enum?.length) {
     return (
-      <Field label={label} hint={field.description}>
+      <Field label={label} info={field.description}>
         {(control) => (
           <select
             {...control}
@@ -71,27 +73,34 @@ export default function SchemaField({
     );
   }
 
-  // BOOLEAN
+  // BOOLEAN: same shape as the other settings (label on
+  // top, a 40px control below), so it lines up with
+  // dropdowns in the settings grid
   if (field.type === "boolean") {
+    const on = Boolean(value);
+
     return (
-      <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-line bg-sunken p-3.5 transition-colors hover:border-line-strong">
-        <input
-          type="checkbox"
-          checked={Boolean(value)}
-          onChange={(event) => updateInput(key, event.target.checked)}
-          className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
-        />
-
-        <span>
-          <span className="block text-sm font-medium text-fg">{label}</span>
-
-          {field.description && (
-            <span className="mt-0.5 block text-xs leading-5 text-fg-subtle">
-              {field.description}
-            </span>
-          )}
-        </span>
-      </label>
+      <Field label={label} info={field.description}>
+        {(control) => (
+          <label
+            className={cx(
+              "flex h-10 cursor-pointer items-center gap-2.5 rounded-lg border px-3 text-sm transition-colors",
+              on
+                ? "border-accent bg-accent-soft text-fg"
+                : "border-line bg-sunken text-fg-muted hover:border-line-strong",
+            )}
+          >
+            <input
+              {...control}
+              type="checkbox"
+              checked={on}
+              onChange={(event) => updateInput(key, event.target.checked)}
+              className="h-4 w-4 accent-[var(--accent)]"
+            />
+            {on ? "On" : "Off"}
+          </label>
+        )}
+      </Field>
     );
   }
 
@@ -105,7 +114,7 @@ export default function SchemaField({
     return (
       <Field
         label={label}
-        hint={[field.description, range].filter(Boolean).join(" ") || undefined}
+        info={[field.description, range].filter(Boolean).join(" ") || undefined}
       >
         {(control) => (
           <input
@@ -137,7 +146,7 @@ export default function SchemaField({
   // LONG TEXT
   if (isLong) {
     return (
-      <Field label={label} hint={field.description}>
+      <Field label={label} info={field.description}>
         {(control) => (
           <StableTextArea
             {...control}
@@ -154,7 +163,7 @@ export default function SchemaField({
 
   // NORMAL TEXT
   return (
-    <Field label={label} hint={field.description}>
+    <Field label={label} info={field.description}>
       {(control) => (
         <input
           {...control}
@@ -222,37 +231,42 @@ function FileField({
     single && typeof value === "string" && value ? value : null;
 
   return (
-    <Field label={label} hint={field.description}>
+    <Field label={label} info={field.description}>
       {(control) => (
         <div className="space-y-3">
           <label
             htmlFor={control.id}
             {...dropProps}
             className={cx(
-              "flex min-h-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed px-4 py-4 text-center transition-colors",
+              // One slim row, so uploads don't crowd the prompt
+              "flex min-h-14 cursor-pointer items-center gap-3 rounded-lg border border-dashed px-3 py-2 text-left transition-colors",
               dragging
                 ? "border-accent bg-accent-soft ring-2 ring-accent/30"
                 : "border-line-strong bg-sunken hover:border-accent hover:bg-accent-soft/40"
             )}
           >
-            {busy ? (
-              <Spinner className="text-accent" />
-            ) : (
-              <Icon name="upload" size={20} className="text-fg-muted" />
-            )}
-
-            <span className="text-sm font-medium text-fg">
-              {dragging
-                ? `Drop ${single ? `the ${kind}` : "images"} here`
-                : busy
-                  ? "Uploading…"
-                  : singleUrl
-                    ? `Replace ${kind} — click or drop a file`
-                    : `Click to upload or drag & drop ${single ? `a ${kind}` : "images"}`}
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-raised">
+              {busy ? (
+                <Spinner className="text-accent" />
+              ) : (
+                <Icon name="upload" size={16} className="text-fg-muted" />
+              )}
             </span>
 
-            <span className="text-xs text-fg-subtle">
-              {ACCEPT_HINTS[kind]}
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-medium text-fg">
+                {dragging
+                  ? `Drop ${single ? `the ${kind}` : "images"} here`
+                  : busy
+                    ? "Uploading…"
+                    : singleUrl
+                      ? `Replace ${kind}`
+                      : `Add ${single ? `a ${kind}` : "images"}`}
+              </span>
+
+              <span className="block truncate text-xs text-fg-subtle" title={ACCEPT_HINTS[kind]}>
+                {ACCEPT_HINTS[kind]}
+              </span>
             </span>
 
             <input
@@ -295,7 +309,7 @@ function FileField({
 
           {/* IMAGE PREVIEWS */}
           {images.length > 0 && (
-            <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+            <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6">
               {images.map((image, index) => (
                 <li
                   key={`${String(image)}-${index}`}

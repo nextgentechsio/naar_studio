@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useGenerate } from "@/app/(studio)/_components/GenerateProvider";
 import { useStudio } from "@/app/(studio)/_components/StudioProvider";
 import ProjectAvatar from "@/app/components/ProjectAvatar";
@@ -9,16 +9,12 @@ import {
   Alert,
   Badge,
   Button,
-  Card,
   cx,
   EmptyState,
   Field,
   formatCost,
   inputClass,
-  PageHeader,
   Spinner,
-  StepBody,
-  StepHeader,
   textareaClass,
 } from "@/app/components/ui/primitives";
 import { errorMessage } from "@/lib/client/http";
@@ -41,16 +37,19 @@ import {
   orderSchemaFields,
   StableTextArea,
 } from "./fields";
-import ModelBrowser from "./ModelBrowser";
+import ModelBrowserDialog from "./ModelBrowserDialog";
 import SchemaField from "./SchemaField";
 
 // --------------------------------------------------
 // GENERATE PAGE
 //
-// Guided flow: 1 Project → 2 Model → 3 Inputs. Project
-// and model sit in a sticky right panel; inputs, the
-// sticky "Run" bar (live cost estimate + Generate) and
-// the output in the wide left column. State lives in
+// One screen, two panels, no page scroll on laptops and
+// up: Inputs on the left (project + model, prompt,
+// settings, and a pinned cost + Generate bar) and the
+// Output on the right. Only the prompt grows to fill
+// the space and scrolls inside itself; long settings
+// scroll inside the Inputs panel. Phones stack the two
+// panels and scroll normally. State lives in
 // GenerateProvider (studio layout).
 // --------------------------------------------------
 
@@ -79,8 +78,11 @@ export default function GenerateView() {
 
   const projects = projectList.map((item) => item.name);
 
-  // Bring the output into view when a run starts
-  const outputRef = useRef<HTMLDivElement>(null);
+  const [browsing, setBrowsing] = useState(false);
+
+  // Phones (stacked panels): bring the output into view
+  // when a run starts. On wider screens it's already there.
+  const outputRef = useRef<HTMLElement>(null);
   const runId = result?.prediction.id;
 
   useEffect(() => {
@@ -183,586 +185,557 @@ export default function GenerateView() {
     });
   }
 
+  const panelClass =
+    "flex min-w-0 flex-col rounded-xl border border-line bg-surface shadow-card lg:min-h-0";
+  const smallLabel = "mb-1.5 block text-xs font-medium text-fg-muted";
+
   return (
-    <div className="space-y-6">
-      <PageHeader
-        eyebrow="Create"
-        title="Generate"
-        description="Create images and video. Every run is costed and charged to a project."
-      />
+    <>
+      <h1 className="sr-only">Generate</h1>
 
-      {/* Project and model on the right, inputs → run →
-          output on the left. On narrow screens the right
-          column comes first, so the order stays
-          project → model → inputs. */}
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
-        {/* ================= RIGHT: PROJECT + MODEL ================= */}
-        {/* Sticky on desktop, scrolling on its own if taller
-            than the screen, so the choice stays in view while
-            filling in inputs */}
-        <div className="min-w-0 xl:sticky xl:top-20 xl:col-start-2 xl:row-start-1 xl:max-h-[calc(100dvh-6rem)] xl:self-start xl:overflow-y-auto xl:rounded-xl">
-          <Card className="divide-y divide-line">
-            {/* STEP 1: PROJECT */}
-            <div className="p-5">
-              <StepHeader
-                step={1}
-                title="Project"
-                description="Who pays for this run."
-                done={Boolean(project)}
-              />
-
-              {/* The step title names the control, so the
-                field label is for screen readers only */}
-              <div className="mt-3 flex items-start gap-3">
+      {/* Fills the screen below the top bar on laptops and
+          up: 3.5rem top bar + 3rem page padding */}
+      <div className="flex flex-col gap-4 lg:grid lg:h-[calc(100dvh-6.5rem)] lg:grid-cols-2 lg:gap-5">
+        {/* ================= INPUTS ================= */}
+        <section aria-label="Inputs" className={panelClass}>
+          {/* Project + model */}
+          <div className="grid gap-3 border-b border-line p-4 sm:grid-cols-2">
+            <div className="min-w-0">
+              <label htmlFor="generate-project" className={smallLabel}>
+                Project{" "}
+                <span className="text-danger" aria-hidden>
+                  *
+                </span>
+              </label>
+              <div className="flex items-center gap-2">
                 <ProjectAvatar
                   name={project}
                   imageUrl={
                     projectList.find((item) => item.name === project)?.imageUrl
                   }
-                  size={40}
+                  size={36}
                 />
-
-                <div className="min-w-0 flex-1">
-                  <Field label="Project" hideLabel required hint={projectHint}>
-                    {(control) => (
-                      <select
-                        {...control}
-                        value={project}
-                        onChange={(event) => setProject(event.target.value)}
-                        className={cx(inputClass, !project && "text-fg-subtle")}
-                      >
-                        <option value="" disabled>
-                          Select project
-                        </option>
-
-                        {projects.map((item) => (
-                          <option key={item} value={item}>
-                            {item}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  </Field>
-                </div>
+                <select
+                  id="generate-project"
+                  required
+                  value={project}
+                  onChange={(event) => setProject(event.target.value)}
+                  className={cx(
+                    inputClass,
+                    "min-w-0",
+                    !project && "text-fg-subtle",
+                  )}
+                >
+                  <option value="" disabled>
+                    Select project
+                  </option>
+                  {projects.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
               </div>
+              {/* Lined up under the select (avatar 36px + gap) */}
+              {projectHint && (
+                <p className="mt-1.5 pl-11 text-xs text-warning">
+                  {projectHint}
+                </p>
+              )}
             </div>
 
-            {/* STEP 2: MODEL */}
-            <div className="p-5">
-              <StepHeader
-                step={2}
-                title="Model"
-                description="Approved models have known prices, so spend is tracked exactly."
-                done={Boolean(model)}
-              />
-
-              {/* Same pattern as Project: icon + native select.
-                  Grouped by type, each option shows its price. */}
-              <div className="mt-3">
-                <div className="flex items-start gap-3">
-                  <span
-                    className={cx(
-                      "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border",
-                      model
-                        ? "border-accent bg-accent text-on-accent"
-                        : "border-line bg-sunken text-fg-subtle",
-                    )}
-                    aria-hidden
-                  >
-                    <Icon
-                      name={
-                        catalogModel
-                          ? catalogModel.kind === "upscale"
-                            ? "upscale"
-                            : catalogModel.kind
-                          : "sparkles"
-                      }
-                      size={18}
-                    />
-                  </span>
-
-                  <div className="min-w-0 flex-1">
-                    <Field
-                      label="Model"
-                      hideLabel
-                      required
-                      hint={
-                        catalogModel
-                          ? `${catalogModel.vendor} · ${catalogModel.summary}`
-                          : undefined
-                      }
-                    >
-                      {(control) => (
-                        <select
-                          {...control}
-                          value={model}
-                          onChange={(event) => chooseModel(event.target.value)}
-                          className={cx(inputClass, !model && "text-fg-subtle")}
-                        >
-                          <option value="" disabled>
-                            Select model
+            <div className="min-w-0">
+              <label htmlFor="generate-model" className={smallLabel}>
+                Model{" "}
+                <span className="text-danger" aria-hidden>
+                  *
+                </span>
+              </label>
+              <div className="flex items-center gap-2">
+                <span
+                  className={cx(
+                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border",
+                    model
+                      ? "border-accent bg-accent text-on-accent"
+                      : "border-line bg-sunken text-fg-subtle",
+                  )}
+                  aria-hidden
+                >
+                  <Icon
+                    name={
+                      catalogModel
+                        ? catalogModel.kind === "upscale"
+                          ? "upscale"
+                          : catalogModel.kind
+                        : "sparkles"
+                    }
+                    size={16}
+                  />
+                </span>
+                <select
+                  id="generate-model"
+                  required
+                  value={model}
+                  onChange={(event) => chooseModel(event.target.value)}
+                  className={cx(
+                    inputClass,
+                    "min-w-0",
+                    !model && "text-fg-subtle",
+                  )}
+                >
+                  <option value="" disabled>
+                    Select model
+                  </option>
+                  {MODEL_KINDS.map((kind) => (
+                    <optgroup key={kind} label={KIND_LABELS[kind]}>
+                      {MODEL_CATALOG.filter((item) => item.kind === kind).map(
+                        (item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.label} · {item.priceHint}
                           </option>
-
-                          {MODEL_KINDS.map((kind) => (
-                            <optgroup key={kind} label={KIND_LABELS[kind]}>
-                              {MODEL_CATALOG.filter(
-                                (item) => item.kind === kind,
-                              ).map((item) => (
-                                <option key={item.id} value={item.id}>
-                                  {item.label} · {item.priceHint}
-                                </option>
-                              ))}
-                            </optgroup>
-                          ))}
-
-                          {/* Picked from "Browse all Replicate models" */}
-                          {model && !catalogModel && (
-                            <optgroup label="Other Replicate model">
-                              <option value={model}>{model} · unpriced</option>
-                            </optgroup>
-                          )}
-                        </select>
+                        ),
                       )}
-                    </Field>
-                  </div>
-                </div>
+                    </optgroup>
+                  ))}
+                  {/* Picked in "Browse all models" */}
+                  {model && !catalogModel && (
+                    <optgroup label="Other Replicate model">
+                      <option value={model}>{model} · unpriced</option>
+                    </optgroup>
+                  )}
+                </select>
+              </div>
+              {/* Under the select: what the chosen model is, and
+                  the way to any other Replicate model */}
+              <div className="mt-1.5 flex min-w-0 items-center justify-between gap-3 pl-11 text-xs">
+                <p
+                  className={cx(
+                    "min-w-0 truncate",
+                    catalogModel ? "text-fg-subtle" : "text-warning",
+                  )}
+                  title={
+                    catalogModel
+                      ? `${catalogModel.vendor} · ${catalogModel.summary}`
+                      : model
+                        ? "Replicate doesn't report this model's cost, so its runs are recorded as unpriced in Expenses."
+                        : undefined
+                  }
+                >
+                  {catalogModel
+                    ? `${catalogModel.vendor} · ${catalogModel.summary}`
+                    : model
+                      ? "Unpriced: no cost on file"
+                      : ""}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setBrowsing(true)}
+                  className="inline-flex shrink-0 items-center gap-1 font-medium text-accent hover:underline"
+                >
+                  <Icon name="search" size={12} />
+                  Browse all models
+                </button>
+              </div>
+            </div>
+          </div>
 
-                {/* Selected model from outside the catalog */}
-                {model && !catalogModel && (
-                  <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-warning/40 bg-warning/10 px-3.5 py-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-fg">
-                        {model}
-                      </p>
-                      <p className="mt-0.5 text-xs text-warning">
-                        Unpriced model: runs are recorded in Expenses as
-                        unpriced ($0).
-                      </p>
-                    </div>
+          {/* Settings: the prompt takes all spare height */}
+          <div className="@container flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
+            {!model ? (
+              <EmptyState
+                compact
+                icon="sparkles"
+                title="Choose a model"
+                description="Its prompt and settings appear here."
+              />
+            ) : schemaLoading ? (
+              <div
+                className="flex flex-1 flex-col gap-3"
+                aria-busy="true"
+                aria-label="Loading model settings"
+              >
+                <div className="min-h-32 flex-1 animate-pulse rounded-lg bg-raised" />
+                <div className="h-10 w-2/3 animate-pulse rounded-lg bg-raised" />
+              </div>
+            ) : (
+              // Remount per model so uncontrolled text areas
+              // reset with the new defaults
+              <div key={model} className="flex min-h-0 flex-1 flex-col gap-3">
+                {hasPrompt && (
+                  <Field
+                    label="Prompt"
+                    required
+                    className="flex min-h-28 flex-1 flex-col"
+                  >
+                    {(control) => (
+                      <StableTextArea
+                        {...control}
+                        rows={7}
+                        value={String(inputs.prompt ?? "")}
+                        onChange={(next) => updateInput("prompt", next)}
+                        placeholder="Describe what you want to create. Be specific about subject, style and lighting…"
+                        className={cx(
+                          textareaClass,
+                          "min-h-0 flex-1 resize-none",
+                        )}
+                      />
+                    )}
+                  </Field>
+                )}
 
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => chooseModel("")}
-                    >
-                      Clear
-                    </Button>
+                {mediaFields.length > 0 && (
+                  <div
+                    className={cx(
+                      "grid shrink-0 gap-3",
+                      mediaFields.length > 1 && "grid-cols-2",
+                    )}
+                  >
+                    {mediaFields.map(([key, field]) => (
+                      <SchemaField key={key} fieldKey={key} field={field} />
+                    ))}
                   </div>
                 )}
 
-                {/* Any Replicate model: search or browse by category */}
-                <ModelBrowser />
-              </div>
-            </div>
-          </Card>
-        </div>
+                {/* Every short setting in one grid: 3 across when
+                    the panel is wide enough, else 2 */}
+                {(hasAspectRatio || hasResolution || mainFields.length > 0) && (
+                  <div className="grid shrink-0 grid-cols-2 gap-3 @md:grid-cols-3">
+                    {hasAspectRatio && (
+                      <Field label="Aspect ratio">
+                        {(control) => (
+                          <select
+                            {...control}
+                            value={String(
+                              inputs.aspect_ratio ?? aspectRatioOptions[0],
+                            )}
+                            onChange={(event) =>
+                              updateInput("aspect_ratio", event.target.value)
+                            }
+                            className={inputClass}
+                          >
+                            {aspectRatioOptions.map((ratio) => (
+                              <option key={ratio} value={ratio}>
+                                {ratio === "match_input_image"
+                                  ? "Match input image"
+                                  : ratio}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </Field>
+                    )}
 
-        {/* ================= LEFT: INPUTS + RUN + OUTPUT ================= */}
-        <div className="min-w-0 space-y-4 xl:col-start-1 xl:row-start-1">
-          {/* STEP 3: INPUTS */}
-          <Card className="p-5">
-            <StepHeader
-              step={3}
-              title="Inputs"
-              description={
-                !model
-                  ? "Settings for the model you choose."
-                  : catalogModel
-                    ? `Settings for ${catalogModel.label}.`
-                    : "Settings for the selected model."
-              }
-            />
+                    {hasResolution && (
+                      <Field label="Resolution">
+                        {(control) => (
+                          <select
+                            {...control}
+                            value={String(
+                              inputs.resolution ?? resolutionOptions[0],
+                            )}
+                            onChange={(event) =>
+                              updateInput("resolution", event.target.value)
+                            }
+                            className={inputClass}
+                          >
+                            {resolutionOptions.map((value) => (
+                              <option key={value} value={value}>
+                                {value}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </Field>
+                    )}
+                    {mainFields.map(([key, field]) => (
+                      <div
+                        key={key}
+                        className={cx(
+                          // Long text spans the whole row
+                          /description|negative/i.test(key) && "col-span-full",
+                        )}
+                      >
+                        <SchemaField fieldKey={key} field={field} />
+                      </div>
+                    ))}
+                  </div>
+                )}
 
-            <StepBody>
-              {!model ? (
-                <EmptyState
-                  compact
-                  icon="sparkles"
-                  title="Choose a model"
-                  description="Pick a project and a model, and its settings appear here."
-                />
-              ) : schemaLoading ? (
-                <div
-                  className="space-y-3"
-                  aria-busy="true"
-                  aria-label="Loading model settings"
-                >
-                  <div className="h-24 animate-pulse rounded-lg bg-raised" />
-                  <div className="h-10 w-2/3 animate-pulse rounded-lg bg-raised" />
-                  <div className="h-10 w-1/2 animate-pulse rounded-lg bg-raised" />
-                </div>
-              ) : (
-                // Remount per model so uncontrolled text
-                // areas reset with the new defaults
-                <div key={model} className="space-y-5">
-                  {hasPrompt && (
-                    <Field
-                      label="Prompt"
-                      required
-                      hint="Describe what you want to create. Be specific about subject, style and lighting."
-                    >
-                      {(control) => (
-                        <StableTextArea
-                          {...control}
-                          rows={12}
-                          value={String(inputs.prompt ?? "")}
-                          onChange={(next) => updateInput("prompt", next)}
-                          placeholder="A product photo of a ceramic mug on a marble counter, soft morning light…"
-                          className={textareaClass}
-                        />
-                      )}
-                    </Field>
-                  )}
-
-                  {(hasAspectRatio || hasResolution) && (
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      {hasAspectRatio && (
-                        <Field label="Aspect ratio">
-                          {(control) => (
-                            <select
-                              {...control}
-                              value={String(
-                                inputs.aspect_ratio ?? aspectRatioOptions[0],
-                              )}
-                              onChange={(event) =>
-                                updateInput("aspect_ratio", event.target.value)
-                              }
-                              className={inputClass}
-                            >
-                              {aspectRatioOptions.map((ratio) => (
-                                <option key={ratio} value={ratio}>
-                                  {ratio === "match_input_image"
-                                    ? "Match input image"
-                                    : ratio}
-                                </option>
-                              ))}
-                            </select>
-                          )}
-                        </Field>
-                      )}
-
-                      {hasResolution && (
-                        <Field
-                          label="Resolution"
-                          hint="Higher resolution costs more."
-                        >
-                          {(control) => (
-                            <select
-                              {...control}
-                              value={String(
-                                inputs.resolution ?? resolutionOptions[0],
-                              )}
-                              onChange={(event) =>
-                                updateInput("resolution", event.target.value)
-                              }
-                              className={inputClass}
-                            >
-                              {resolutionOptions.map((value) => (
-                                <option key={value} value={value}>
-                                  {value}
-                                </option>
-                              ))}
-                            </select>
-                          )}
-                        </Field>
-                      )}
-                    </div>
-                  )}
-
-                  {mediaFields.length > 0 && (
-                    <div
-                      className={cx(
-                        "grid gap-5",
-                        mediaFields.length > 1 && "sm:grid-cols-2",
-                      )}
-                    >
-                      {mediaFields.map(([key, field]) => (
+                {advancedFields.length > 0 && (
+                  <details
+                    className="group shrink-0 rounded-lg border border-line"
+                    // Once open (after the height animation), make
+                    // sure the new options are in view
+                    onToggle={(event) => {
+                      const details = event.currentTarget;
+                      if (!details.open) return;
+                      setTimeout(
+                        () =>
+                          details.scrollIntoView({
+                            block: "nearest",
+                            behavior: "smooth",
+                          }),
+                        260,
+                      );
+                    }}
+                  >
+                    <summary className="flex cursor-pointer list-none items-center justify-between px-3.5 py-2.5 text-sm font-medium text-fg-muted hover:text-fg">
+                      <span>
+                        Advanced settings
+                        <span className="ml-1.5 text-fg-subtle">
+                          ({advancedFields.length})
+                        </span>
+                      </span>
+                      <Icon
+                        name="chevronDown"
+                        size={16}
+                        className="transition-transform duration-200 group-open:rotate-180"
+                      />
+                    </summary>
+                    <div className="space-y-4 border-t border-line p-3.5">
+                      {advancedFields.map(([key, field]) => (
                         <SchemaField key={key} fieldKey={key} field={field} />
                       ))}
                     </div>
-                  )}
+                  </details>
+                )}
 
-                  {mainFields.length > 0 && (
-                    <div className="grid gap-5 sm:grid-cols-2">
-                      {mainFields.map(([key, field]) => (
-                        <div
-                          key={key}
-                          className={cx(
-                            // Long text and toggles span both columns
-                            (field.type === "boolean" ||
-                              /description|negative/i.test(key)) &&
-                              "sm:col-span-2",
-                          )}
-                        >
-                          <SchemaField fieldKey={key} field={field} />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {advancedFields.length > 0 && (
-                    <details className="group rounded-lg border border-line">
-                      <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-medium text-fg-muted hover:text-fg">
-                        <span>
-                          Advanced settings
-                          <span className="ml-1.5 text-fg-subtle">
-                            ({advancedFields.length})
-                          </span>
-                        </span>
-
-                        <Icon
-                          name="chevronDown"
-                          size={16}
-                          className="transition-transform group-open:rotate-180"
-                        />
-                      </summary>
-
-                      <div className="space-y-5 border-t border-line p-4">
-                        {advancedFields.map(([key, field]) => (
-                          <SchemaField key={key} fieldKey={key} field={field} />
-                        ))}
-                      </div>
-                    </details>
-                  )}
-
-                  {!hasPrompt &&
-                    !hasAspectRatio &&
-                    !hasResolution &&
-                    orderedFields.length === 0 && (
-                      <p className="text-sm text-fg-subtle">
-                        This model has no settings.
-                      </p>
-                    )}
-                </div>
-              )}
-            </StepBody>
-          </Card>
-
-          {/* RUN: sticks to the bottom of the screen while
-              scrolling long inputs, so Generate is always
-              in reach */}
-          <div className="sticky bottom-4 z-10">
-            <Card className="px-4 py-3 shadow-lg">
-              {/* One row: cost (and what's missing) on the
-                  left, Generate on the right. Project and
-                  model are already shown in the side panel. */}
-              <div className="flex items-center justify-between gap-4">
-                <div className="min-w-0" aria-live="polite">
-                  <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-fg-subtle">
-                    Estimated cost
-                  </p>
-
-                  <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
-                    {!model ? (
-                      <span className="text-sm text-fg-muted">
-                        Choose a model to see its price
-                      </span>
-                    ) : !catalogModel ? (
-                      <>
-                        <span className="text-lg font-semibold text-warning">
-                          Unpriced
-                        </span>
-                        <span className="text-xs text-fg-subtle">
-                          No price on file for this model
-                        </span>
-                      </>
-                    ) : schemaLoading ? (
-                      <span className="inline-block h-7 w-24 animate-pulse rounded-md bg-raised" />
-                    ) : estimate !== null ? (
-                      <>
-                        <span className="font-mono text-2xl font-semibold tracking-tight text-fg">
-                          ≈ {formatCost(estimate)}
-                        </span>
-                        <span className="text-xs text-fg-subtle">
-                          per run
-                          {estimateDetail ? ` · ${estimateDetail}` : ""}
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="font-mono text-base font-semibold text-fg">
-                          {catalogModel.priceHint}
-                        </span>
-                        <span className="text-xs text-fg-subtle">
-                          depends on the output size
-                        </span>
-                      </>
-                    )}
-                  </div>
-
-                  {missing.length > 0 && !generating && (
-                    <p className="mt-0.5 text-xs text-fg-subtle">
-                      To continue, {missing.join(" and ")}.
+                {!hasPrompt &&
+                  !hasAspectRatio &&
+                  !hasResolution &&
+                  orderedFields.length === 0 && (
+                    <p className="text-sm text-fg-subtle">
+                      This model has no settings.
                     </p>
                   )}
-                </div>
+              </div>
+            )}
+          </div>
 
-                <Button
-                  variant="primary"
-                  size="lg"
-                  icon={generating ? undefined : "sparkles"}
-                  onClick={generate}
-                  disabled={!canGenerate}
-                  className="shrink-0 sm:w-48"
-                >
-                  {generating ? (
+          {/* Run: always visible at the bottom of the panel */}
+          <div className="border-t border-line p-4">
+            {error && (
+              <div className="mb-3">
+                <Alert>{error}</Alert>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-4">
+              <div className="min-w-0" aria-live="polite">
+                <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-fg-subtle">
+                  Estimated cost
+                </p>
+                <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
+                  {!model ? (
+                    <span className="text-sm text-fg-muted">—</span>
+                  ) : !catalogModel ? (
+                    <span className="text-base font-semibold text-warning">
+                      Unpriced
+                    </span>
+                  ) : schemaLoading ? (
+                    <span className="inline-block h-7 w-24 animate-pulse rounded-md bg-raised" />
+                  ) : estimate !== null ? (
                     <>
-                      <Spinner /> Starting…
+                      <span className="font-mono text-2xl font-semibold tracking-tight text-fg">
+                        ≈ {formatCost(estimate)}
+                      </span>
+                      <span className="text-xs text-fg-subtle">
+                        per run{estimateDetail ? ` · ${estimateDetail}` : ""}
+                      </span>
                     </>
                   ) : (
-                    "Generate"
+                    <>
+                      <span className="font-mono text-base font-semibold text-fg">
+                        {catalogModel.priceHint}
+                      </span>
+                      <span className="text-xs text-fg-subtle">
+                        depends on output size
+                      </span>
+                    </>
                   )}
-                </Button>
+                </div>
+                {missing.length > 0 && !generating && (
+                  <p className="mt-0.5 text-xs text-fg-subtle">
+                    To continue, {missing.join(" and ")}.
+                  </p>
+                )}
               </div>
 
-              {error && (
-                <div className="mt-3">
-                  <Alert>{error}</Alert>
-                </div>
-              )}
-            </Card>
+              <Button
+                variant="primary"
+                size="lg"
+                icon={generating ? undefined : "sparkles"}
+                onClick={generate}
+                disabled={!canGenerate}
+                className="shrink-0 sm:w-44"
+              >
+                {generating ? (
+                  <>
+                    <Spinner /> Starting…
+                  </>
+                ) : (
+                  "Generate"
+                )}
+              </Button>
+            </div>
           </div>
+        </section>
 
-          {/* OUTPUT */}
-          <div ref={outputRef} className="scroll-mt-20">
-            <Card className="overflow-hidden">
-              <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
-                <h2 className="text-sm font-semibold text-fg">Output</h2>
+        {/* ================= OUTPUT ================= */}
+        <section
+          ref={outputRef}
+          aria-label="Output"
+          className={cx(
+            panelClass,
+            "min-h-[24rem] scroll-mt-20 overflow-hidden",
+          )}
+        >
+          <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <h2 className="text-sm font-semibold text-fg">Output</h2>
+              {status && (
+                <Badge
+                  tone={
+                    status === "succeeded"
+                      ? "success"
+                      : status === "failed" || status === "canceled"
+                        ? "danger"
+                        : status === "unknown"
+                          ? "warning"
+                          : "accent"
+                  }
+                >
+                  {status}
+                </Badge>
+              )}
+            </div>
 
-                {status && (
-                  <Badge
-                    tone={
-                      status === "succeeded"
-                        ? "success"
-                        : status === "failed" || status === "canceled"
-                          ? "danger"
-                          : status === "unknown"
-                            ? "warning"
-                            : "accent"
+            {status === "succeeded" && outputUrls.length > 0 && (
+              <div className="flex flex-wrap justify-end gap-1.5">
+                {outputUrls.map((url, index) => (
+                  <Button
+                    key={`download-${index}`}
+                    variant="secondary"
+                    size="sm"
+                    icon="download"
+                    onClick={() =>
+                      download(
+                        url,
+                        outputUrls.length > 1
+                          ? `generation-${result!.prediction.id}-${index + 1}`
+                          : `generation-${result!.prediction.id}`,
+                      )
                     }
                   >
-                    {status}
-                  </Badge>
-                )}
+                    Download{outputUrls.length > 1 ? ` ${index + 1}` : ""}
+                  </Button>
+                ))}
               </div>
-
-              <div className="p-4" aria-live="polite">
-                {isRunning ? (
-                  <div className="flex min-h-72 flex-col items-center justify-center rounded-lg bg-sunken text-center">
-                    <Spinner className="h-6 w-6 text-accent" />
-
-                    <p className="mt-4 text-sm font-medium text-fg">
-                      Generating…
-                    </p>
-
-                    <p className="mt-1 max-w-xs text-xs text-fg-subtle">
-                      Video can take a few minutes. You can leave this page; the
-                      result is saved to History.
-                    </p>
-                  </div>
-                ) : status === "succeeded" && outputUrls.length > 0 ? (
-                  <div className="space-y-3">
-                    {outputUrls.map((url, index) => {
-                      const outputType = getOutputType(url);
-
-                      return (
-                        <div
-                          key={`${url}-${index}`}
-                          className="overflow-hidden rounded-lg border border-line bg-black"
-                        >
-                          {outputType === "video" ? (
-                            <video
-                              src={url}
-                              className="w-full"
-                              controls
-                              muted
-                              playsInline
-                            />
-                          ) : outputType === "audio" ? (
-                            <audio src={url} controls className="w-full" />
-                          ) : (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={url}
-                              alt={`Generated output ${index + 1}`}
-                              className="max-h-[560px] w-full object-contain"
-                            />
-                          )}
-                        </div>
-                      );
-                    })}
-
-                    <div className="flex flex-wrap gap-2">
-                      {outputUrls.map((url, index) => (
-                        <Button
-                          key={`download-${index}`}
-                          variant="secondary"
-                          size="sm"
-                          icon="download"
-                          onClick={() =>
-                            download(
-                              url,
-                              outputUrls.length > 1
-                                ? `generation-${result!.prediction.id}-${index + 1}`
-                                : `generation-${result!.prediction.id}`,
-                            )
-                          }
-                        >
-                          Download
-                          {outputUrls.length > 1 ? ` ${index + 1}` : ""}
-                        </Button>
-                      ))}
-                    </div>
-
-                    <dl className="grid grid-cols-2 gap-3 rounded-lg bg-sunken p-3.5 text-xs">
-                      <div>
-                        <dt className="text-fg-subtle">Cost</dt>
-                        <dd className="mt-0.5 font-mono font-medium text-fg">
-                          {formatCost(result?.costUsd)}
-                        </dd>
-                      </div>
-
-                      <div>
-                        <dt className="text-fg-subtle">Run time</dt>
-                        <dd className="mt-0.5 font-medium text-fg">
-                          {typeof predictTime === "number"
-                            ? `${predictTime.toFixed(1)}s`
-                            : "—"}
-                        </dd>
-                      </div>
-                    </dl>
-                  </div>
-                ) : status === "unknown" ? (
-                  // Polling gave up; the server still finishes
-                  // the run and records it in History
-                  <Alert tone="warning">
-                    <p className="font-medium">Still waiting on Replicate</p>
-                    <p className="mt-0.5 text-xs opacity-90">
-                      We stopped checking here, but the run is tracked: its
-                      result and cost will appear in History.
-                    </p>
-                  </Alert>
-                ) : status === "failed" || status === "canceled" ? (
-                  <Alert>
-                    <p className="font-medium">Generation {status}</p>
-                    <p className="mt-0.5 text-xs opacity-90">
-                      {result?.prediction.error ||
-                        "The model couldn't complete this run. Failed runs aren't added to Expenses."}
-                    </p>
-                  </Alert>
-                ) : (
-                  <EmptyState
-                    compact
-                    icon="image"
-                    title="Nothing generated yet"
-                    description="Your result will appear here. It's also saved to History."
-                  />
-                )}
-              </div>
-            </Card>
+            )}
           </div>
-        </div>
+
+          {/* The result fills whatever space the panel has */}
+          <div
+            className="relative flex min-h-0 flex-1 items-center justify-center bg-sunken/60 p-4"
+            aria-live="polite"
+          >
+            {isRunning ? (
+              <div className="flex flex-col items-center text-center">
+                <Spinner className="h-6 w-6 text-accent" />
+                <p className="mt-4 text-sm font-medium text-fg">Generating…</p>
+                <p className="mt-1 max-w-xs text-xs text-fg-subtle">
+                  Video can take a few minutes. You can leave this page; the
+                  result is saved to History.
+                </p>
+              </div>
+            ) : status === "succeeded" && outputUrls.length > 0 ? (
+              <div
+                className={cx(
+                  "grid h-full w-full gap-3",
+                  outputUrls.length > 1 && "grid-cols-2 auto-rows-fr",
+                )}
+              >
+                {outputUrls.map((url, index) => {
+                  const outputType = getOutputType(url);
+
+                  return (
+                    <div
+                      key={`${url}-${index}`}
+                      className="flex min-h-0 items-center justify-center overflow-hidden rounded-lg"
+                    >
+                      {outputType === "video" ? (
+                        <video
+                          src={url}
+                          className="h-full w-full object-contain"
+                          controls
+                          muted
+                          playsInline
+                        />
+                      ) : outputType === "audio" ? (
+                        <audio src={url} controls className="w-full" />
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={url}
+                          alt={`Generated output ${index + 1}`}
+                          className="h-full w-full object-contain"
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : status === "unknown" ? (
+              // Polling gave up; the server still finishes the
+              // run and records it in History
+              <Alert tone="warning">
+                <p className="font-medium">Still waiting on Replicate</p>
+                <p className="mt-0.5 text-xs opacity-90">
+                  We stopped checking here, but the run is tracked: its result
+                  and cost will appear in History.
+                </p>
+              </Alert>
+            ) : status === "failed" || status === "canceled" ? (
+              <Alert>
+                <p className="font-medium">Generation {status}</p>
+                <p className="mt-0.5 text-xs opacity-90">
+                  {result?.prediction.error ||
+                    "The model couldn't complete this run. Failed runs aren't added to Expenses."}
+                </p>
+              </Alert>
+            ) : (
+              <EmptyState
+                compact
+                icon="image"
+                title="Nothing generated yet"
+                description="Your result will appear here. It's also saved to History."
+              />
+            )}
+          </div>
+
+          {status === "succeeded" && outputUrls.length > 0 && (
+            <dl className="flex flex-wrap gap-x-6 gap-y-1 border-t border-line px-4 py-2.5 text-xs">
+              <div className="flex gap-1.5">
+                <dt className="text-fg-subtle">Cost</dt>
+                <dd className="font-mono font-medium text-fg">
+                  {formatCost(result?.costUsd)}
+                </dd>
+              </div>
+              <div className="flex gap-1.5">
+                <dt className="text-fg-subtle">Run time</dt>
+                <dd className="font-medium text-fg">
+                  {typeof predictTime === "number"
+                    ? `${predictTime.toFixed(1)}s`
+                    : "—"}
+                </dd>
+              </div>
+              <div className="text-fg-subtle">Saved to History</div>
+            </dl>
+          )}
+        </section>
       </div>
-    </div>
+
+      {browsing && <ModelBrowserDialog onClose={() => setBrowsing(false)} />}
+    </>
   );
 }

@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+/* Sidebar collapsed to an icon rail (data-sidebar on
+   <html>, set before paint in app/layout.tsx).
+   sidebar-collapsed: anything on the page.
+   rail-collapsed: only inside the desktop rail, so the
+   mobile drawer always shows full labels. */
+@custom-variant sidebar-collapsed (&:where([data-sidebar="collapsed"] *));
+@custom-variant rail-collapsed (&:where([data-sidebar="collapsed"] .studio-rail, [data-sidebar="collapsed"] .studio-rail *));
+
 /* ==================================================
    DESIGN TOKENS
 
@@ -174,5 +182,203 @@ body {
   *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* --------------------------------------------------
+   DROPDOWNS
+   Every <select> gets an on-brand, animated list where
+   the browser supports styleable selects (Chrome, Edge);
+   others keep their native dropdown, which still works.
+   -------------------------------------------------- */
+@supports (appearance: base-select) {
+  :root {
+    --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23626262' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    --select-chevron-open: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23626262' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 15l6-6 6 6'/%3E%3C/svg%3E");
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23959593' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+      --select-chevron-open: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23959593' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 15l6-6 6 6'/%3E%3C/svg%3E");
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23959593' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    --select-chevron-open: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23959593' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 15l6-6 6 6'/%3E%3C/svg%3E");
+  }
+
+  select,
+  ::picker(select) {
+    appearance: base-select;
+  }
+
+  select {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    white-space: nowrap;
+    /* Long labels stop before the chevron (clipped at the
+       content box, inside the right padding) */
+    overflow: clip;
+    overflow-clip-margin: content-box;
+    padding-inline-end: 2.25rem;
+    background-image: var(--select-chevron);
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 14px;
+  }
+
+  select:open {
+    background-image: var(--select-chevron-open);
+  }
+
+  select:disabled {
+    cursor: not-allowed;
+  }
+
+  /* Drawn as the background above instead */
+  select::picker-icon {
+    display: none;
+  }
+
+  ::picker(select) {
+    margin-block: 4px;
+    padding: 4px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--fg);
+    box-shadow: 0 16px 40px -12px rgb(0 0 0 / 0.35);
+    max-block-size: min(22rem, 60dvh);
+    overflow-y: auto;
+
+    /* Closed state; also where opening starts from */
+    opacity: 0;
+    translate: 0 -6px;
+    scale: 0.98;
+    transform-origin: top center;
+    transition:
+      opacity 0.16s ease,
+      translate 0.16s ease,
+      scale 0.16s ease,
+      display 0.16s allow-discrete,
+      overlay 0.16s allow-discrete;
+  }
+
+  select:open::picker(select) {
+    opacity: 1;
+    translate: 0 0;
+    scale: 1;
+  }
+
+  @starting-style {
+    select:open::picker(select) {
+      opacity: 0;
+      translate: 0 -6px;
+      scale: 0.98;
+    }
+  }
+
+  select option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.625rem;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 400;
+    letter-spacing: normal;
+    text-transform: none;
+    color: var(--fg);
+    cursor: pointer;
+    transition: background-color 0.12s ease;
+  }
+
+  select option:hover,
+  select option:focus-visible {
+    background: var(--raised);
+    outline: none;
+  }
+
+  select option:checked {
+    background: var(--accent-soft);
+    font-weight: 500;
+  }
+
+  select option::checkmark {
+    order: 1;
+    margin-inline-start: auto;
+    color: var(--fg-muted);
+  }
+
+  select option:disabled {
+    color: var(--fg-subtle);
+    cursor: default;
+  }
+
+  /* "Select …" placeholders aren't real choices: keep them
+     out of the open list (the closed field still shows
+     them while nothing is chosen) */
+  select option[value=""]:disabled {
+    display: none;
+  }
+
+  /* Group headings (e.g. Image / Video / Upscale) */
+  select optgroup {
+    padding-block-start: 0.375rem;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--fg-subtle);
+  }
+
+  select optgroup + optgroup {
+    margin-block-start: 0.25rem;
+    border-block-start: 1px solid var(--line);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    ::picker(select),
+    select option {
+      transition: none;
+    }
+  }
+}
+
+
+/* --------------------------------------------------
+   EXPANDABLE SECTIONS (<details>, e.g. Advanced settings)
+   Height and fade animate open and closed where the
+   browser supports it (Chrome, Edge); elsewhere they
+   simply open instantly.
+   -------------------------------------------------- */
+@supports selector(::details-content) {
+  details {
+    interpolate-size: allow-keywords;
+  }
+
+  details::details-content {
+    block-size: 0;
+    opacity: 0;
+    overflow-y: clip;
+    transition:
+      block-size 0.25s ease,
+      opacity 0.2s ease,
+      content-visibility 0.25s allow-discrete;
+  }
+
+  details[open]::details-content {
+    block-size: auto;
+    opacity: 1;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    details::details-content {
+      transition: none;
+    }
   }
 }

@@ -31,11 +31,20 @@ const compact = new Intl.NumberFormat(undefined, {
   maximumFractionDigits: 1,
 });
 
-export default function ModelBrowser() {
+// "inline": a collapsible section (the default).
+// "dialog": always open, for the Browse window; calls
+// onPicked after a model is chosen.
+export default function ModelBrowser({
+  variant = "inline",
+  onPicked,
+}: {
+  variant?: "inline" | "dialog";
+  onPicked?: () => void;
+} = {}) {
   const {
     model,
     chooseModel,
-    showOtherModels,
+    showOtherModels: inlineOpen,
     toggleOtherModels,
     search,
     setSearch,
@@ -43,6 +52,8 @@ export default function ModelBrowser() {
     searchResultsFor,
     searching,
   } = useGenerate();
+
+  const showOtherModels = variant === "dialog" || inlineOpen;
 
   const [collections, setCollections] = useState<Collection[]>([]);
   const [collection, setCollection] = useState(DEFAULT_COLLECTION);
@@ -111,30 +122,32 @@ export default function ModelBrowser() {
     : browseLoading;
 
   return (
-    <div className="mt-4 border-t border-line pt-4">
-      <button
-        type="button"
-        aria-expanded={showOtherModels}
-        onClick={toggleOtherModels}
-        className="flex items-center gap-1.5 text-sm font-medium text-fg-muted hover:text-fg"
-      >
-        <Icon
-          name="chevronDown"
-          size={16}
-          className={cx("transition-transform", showOtherModels ? "" : "-rotate-90")}
-        />
-        Browse all Replicate models
-      </button>
+    <div className={variant === "inline" ? "mt-4 border-t border-line pt-4" : ""}>
+      {variant === "inline" && (
+        <button
+          type="button"
+          aria-expanded={showOtherModels}
+          onClick={toggleOtherModels}
+          className="flex items-center gap-1.5 text-sm font-medium text-fg-muted hover:text-fg"
+        >
+          <Icon
+            name="chevronDown"
+            size={16}
+            className={cx("transition-transform", showOtherModels ? "" : "-rotate-90")}
+          />
+          Browse all Replicate models
+        </button>
+      )}
 
       {showOtherModels && (
-        <div className="mt-3 space-y-3">
+        <div className={cx("space-y-3", variant === "inline" && "mt-3")}>
           <Alert tone="warning">
             Models marked <strong>Unpriced</strong> run normally, but Replicate
             doesn&apos;t report their cost, so their spend shows as unpriced in
             Expenses.
           </Alert>
 
-          <div className="flex flex-col gap-2 sm:flex-row xl:flex-col">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <div className="relative min-w-0 flex-1">
               <Icon
                 name="search"
@@ -159,7 +172,7 @@ export default function ModelBrowser() {
                 setCollection(event.target.value);
                 setSearch("");
               }}
-              className={cx(inputClass, "sm:w-60 xl:w-full")}
+              className={cx(inputClass, "sm:w-60")}
             >
               {!collections.some((item) => item.slug === DEFAULT_COLLECTION) && (
                 <option value={DEFAULT_COLLECTION}>Official models</option>
@@ -194,7 +207,7 @@ export default function ModelBrowser() {
           ) : shown.length ? (
             <ul
               className={cx(
-                "grid max-h-[28rem] gap-2 overflow-y-auto pr-1 sm:grid-cols-2 xl:grid-cols-1",
+                "grid max-h-[28rem] gap-2 overflow-y-auto pr-1 sm:grid-cols-2",
                 loading && "opacity-60"
               )}
             >
@@ -203,9 +216,10 @@ export default function ModelBrowser() {
                   <ModelCard
                     item={item}
                     selected={model === item.id}
-                    onSelect={() =>
-                      chooseModel(item.id, { fromSearch: searchingMode })
-                    }
+                    onSelect={() => {
+                      chooseModel(item.id, { fromSearch: searchingMode });
+                      onPicked?.();
+                    }}
                   />
                 </li>
               ))}

@@ -23,6 +23,7 @@ const PATHS = {
   monitor: "M3 4h18v12H3zM8 20h8M12 16v4",
   logout: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9",
   menu: "M3 6h18M3 12h18M3 18h18",
+  sidebar: "M3 4h18v16H3zM9 4v16",
   close: "M18 6L6 18M6 6l12 12",
   search: "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3",
   upload: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12",

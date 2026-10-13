@@ -1,9 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { GridFSBucket, ObjectId } from "mongodb";
 import {
   api,
+  baseUrl,
   closeDb,
   createProject,
   createUser,
+  db,
   fakeOutputUrl,
   loginRoot,
   replicateRequests,
@@ -209,6 +212,43 @@ describe("project photos", () => {
     expect(image.status).toBe(200);
     expect(image.headers.get("content-type")).toBe("image/png");
     expect(image.headers.get("x-content-type-options")).toBe("nosniff");
+    const bytes = await (await fetch(`${baseUrl}${url}`, { headers: { cookie: alice.session.cookie } })).arrayBuffer();
+    expect(new Uint8Array(bytes)).toEqual(PNG);
+  });
+
+  it("keeps new photos in Blob, replaces old ones, and still serves older MongoDB photos", async () => {
+    const database = await db();
+    const read = async (url: string) =>
+      new Uint8Array(await (await fetch(`${baseUrl}${url}`, { headers: { cookie: alice.session.cookie } })).arrayBuffer());
+
+    // New photo: in Blob only
+    const first = await putImage(root, new Blob([PNG], { type: "image/png" }));
+    const firstDoc = await database.collection("projects").findOne({ _id: project.id as never });
+    expect(firstDoc?.image).toMatchObject({ fileId: null, contentType: "image/png" });
+    expect(firstDoc?.image.blobUrl).toBeTruthy();
+    expect(await read(first.data.imageUrl as string)).toEqual(new Uint8Array(PNG));
+
+    // Replacing it deletes the old Blob file
+    await putImage(root, new Blob([PNG], { type: "image/png" }));
+    expect((await fetch(firstDoc!.image.blobUrl)).status).toBe(404);
+
+    // A photo stored before Blob (GridFS only) still works
+    const bucket = new GridFSBucket(database, { bucketName: "projectImages" });
+    const fileId = new ObjectId();
+    await new Promise<void>((resolve, reject) => {
+      const upload = bucket.openUploadStream("legacy", { id: fileId, metadata: { projectId: project.id, contentType: "image/png" } });
+      upload.once("finish", () => resolve());
+      upload.once("error", reject);
+      upload.end(Buffer.from(PNG));
+    });
+    await database.collection("projects").updateOne(
+      { _id: project.id as never },
+      { $set: { image: { fileId, contentType: "image/png", size: PNG.length, updatedAt: new Date() } } }
+    );
+    const list = await api("/api/projects", { session: alice.session });
+    const legacyUrl = (list.data.projects as { id: string; imageUrl: string }[]).find((item) => item.id === project.id)!.imageUrl;
+    expect(legacyUrl).toContain(`v=${fileId.toHexString()}`);
+    expect(await read(legacyUrl)).toEqual(new Uint8Array(PNG));
   });
 
   it("rejects SVG and disguised files, and plain users", async () => {

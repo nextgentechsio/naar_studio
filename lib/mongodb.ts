@@ -36,11 +36,14 @@ export type UserDoc = {
 
 export type ProjectStatus = "active" | "archived";
 
-// Cover photo bytes live in the "projectImages" GridFS
-// bucket (not public/, which doesn't persist on
-// serverless hosts); the project keeps a pointer.
+// Cover photo bytes live in Vercel Blob (blobUrl,
+// never sent to browsers) or, for older photos, the
+// "projectImages" GridFS bucket (fileId). Blob wins when
+// both are set. Not public/: it doesn't persist on
+// serverless hosts.
 export type ProjectImage = {
-  fileId: ObjectId;
+  blobUrl?: string | null;
+  fileId?: ObjectId | null;
   contentType: ProjectImageType;
   size: number;
   updatedAt: Date;

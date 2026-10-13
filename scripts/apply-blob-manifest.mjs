@@ -1,16 +1,16 @@
 // --------------------------------------------------
-// POINT GENERATION RECORDS AT THEIR BLOB COPIES
+// POINT RECORDS AT THEIR BLOB COPIES
 //
-// Step two of moving outputs out of MongoDB, after
-// scripts/copy-files-to-blob.mjs. For every output in
-// the manifest it sets `outputBlobUrl` on the matching
-// generation, and only when that record still points
-// at the very same GridFS file with the same size.
-// From then on the app serves that output from Blob.
+// Step two of moving files out of MongoDB, after
+// scripts/copy-files-to-blob.mjs. From the manifest it
+// sets `outputBlobUrl` on generations and
+// `image.blobUrl` on projects, only where the record
+// still points at the very same GridFS file with the
+// same size. From then on the app serves them from Blob.
 //
 // Additive only: no GridFS file is deleted and no other
 // field changes, so the app keeps working either way.
-// Undo: unset outputBlobUrl on those records.
+// Undo: unset those fields.
 //
 //   node scripts/apply-blob-manifest.mjs --dry-run
 //   node scripts/apply-blob-manifest.mjs
@@ -33,11 +33,13 @@ async function main() {
 
   const manifest = JSON.parse(await readFile(MANIFEST, "utf8"));
   const outputs = Object.values(manifest.files).filter((file) => file.bucket === "generationOutputs");
+  const photos = Object.values(manifest.files).filter((file) => file.bucket === "projectImages");
 
   const client = new MongoClient(process.env.MONGODB_URI);
   await client.connect();
 
   const totals = { applied: 0, already: 0, skipped: 0 };
+  const photoTotals = { applied: 0, already: 0, skipped: 0 };
 
   try {
     const generations = client.db(process.env.MONGODB_DB || "ai_studio").collection("generations");
@@ -77,12 +79,52 @@ async function main() {
 
       totals.applied += 1;
     }
+
+    const projects = client.db(process.env.MONGODB_DB || "ai_studio").collection("projects");
+
+    for (const file of photos) {
+      const match = {
+        _id: file.owner,
+        "image.fileId": new ObjectId(file.gridFsId),
+        "image.size": file.size,
+      };
+
+      const project = await projects.findOne(match, { projection: { "image.blobUrl": 1 } });
+
+      if (!project) {
+        photoTotals.skipped += 1;
+        console.log(`  - project ${file.owner}: photo changed or removed, skipped`);
+        continue;
+      }
+
+      if (project.image?.blobUrl) {
+        photoTotals.already += 1;
+        continue;
+      }
+
+      if (!DRY_RUN) {
+        const result = await projects.updateOne(
+          { ...match, $or: [{ "image.blobUrl": null }, { "image.blobUrl": { $exists: false } }] },
+          { $set: { "image.blobUrl": file.blobUrl } }
+        );
+        if (result.modifiedCount !== 1) {
+          photoTotals.skipped += 1;
+          console.log(`  - project ${file.owner}: changed meanwhile, skipped`);
+          continue;
+        }
+      }
+
+      photoTotals.applied += 1;
+    }
   } finally {
     await client.close();
   }
 
   console.log(
-    `${DRY_RUN ? "Dry run: would point" : "Pointed"} ${totals.applied} records at Blob; ${totals.already} already did, ${totals.skipped} skipped (of ${outputs.length} outputs in the manifest).`
+    `${DRY_RUN ? "Dry run: would point" : "Pointed"} ${totals.applied} generations at Blob; ${totals.already} already did, ${totals.skipped} skipped (of ${outputs.length} outputs in the manifest).`
+  );
+  console.log(
+    `${DRY_RUN ? "Dry run: would point" : "Pointed"} ${photoTotals.applied} project photos at Blob; ${photoTotals.already} already did, ${photoTotals.skipped} skipped (of ${photos.length} in the manifest).`
   );
 }
 

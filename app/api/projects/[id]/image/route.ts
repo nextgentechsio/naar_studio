@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import {
   openProjectImage,
+  projectImageVersion,
   PROJECT_IMAGE_MAX_BYTES,
   removeProjectImage,
   setProjectImage,
@@ -39,7 +40,7 @@ export async function GET(
       );
     }
 
-    const version = opened.image.fileId.toHexString();
+    const version = projectImageVersion(opened.image);
     const etag = `"${version}"`;
 
     // Only the current versioned URL is immutable; an

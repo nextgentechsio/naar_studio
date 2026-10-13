@@ -1,5 +1,8 @@
+import { createHash } from "crypto";
 import { Readable } from "stream";
+import { del, put } from "@vercel/blob";
 import { ObjectId } from "mongodb";
+import { blobUploadsEnabled } from "@/lib/input-uploads";
 import {
   projectImagesBucket,
   projectsCollection,
@@ -11,20 +14,29 @@ import {
 // --------------------------------------------------
 // PROJECT PHOTOS
 //
-// One optional cover photo per project, stored in the
-// "projectImages" GridFS bucket. The type is decided by
+// One optional cover photo per project, stored in
+// Vercel Blob (older ones: GridFS "projectImages"),
+// always served through /api/projects/[id]/image. The
+// type is decided by
 // the file's magic bytes, never the client's claim, and
 // SVG is not accepted (it can carry script).
 // --------------------------------------------------
 
 export const PROJECT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 
+// Changes whenever the photo does (cache busting / ETag)
+export function projectImageVersion(image: ProjectImage): string {
+  return image.blobUrl
+    ? createHash("sha256").update(image.blobUrl).digest("hex").slice(0, 24)
+    : (image.fileId?.toHexString() ?? "none");
+}
+
 export function projectImageUrl(
   doc: Pick<ProjectDoc, "_id" | "image">
 ): string | null {
   if (!doc.image) return null;
 
-  return `/api/projects/${encodeURIComponent(doc._id)}/image?v=${doc.image.fileId.toHexString()}`;
+  return `/api/projects/${encodeURIComponent(doc._id)}/image?v=${projectImageVersion(doc.image)}`;
 }
 
 export function sniffImageType(
@@ -66,15 +78,24 @@ export type ProjectImageResult =
   | { ok: true; imageUrl: string | null }
   | { ok: false; status: number; error: string };
 
-async function deleteImageFile(fileId: ObjectId) {
+// Removes a photo's bytes from wherever they live
+async function deleteImageFile(image: ProjectImage) {
   try {
-    await (await projectImagesBucket()).delete(fileId);
+    if (image.blobUrl) await del(image.blobUrl);
+    if (image.fileId) await (await projectImagesBucket()).delete(image.fileId);
   } catch (error) {
     // Already gone is fine; anything else is only an
     // orphaned file, so log it rather than fail the request
     console.error("Delete project image file error:", error);
   }
 }
+
+const EXTENSIONS: Record<ProjectImageType, string> = {
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/webp": ".webp",
+  "image/gif": ".gif",
+};
 
 export async function setProjectImage(
   projectId: string,
@@ -117,25 +138,39 @@ export async function setProjectImage(
   // Write the new file first, then swap the pointer, then
   // remove the old file: a failure at any step leaves the
   // project pointing at a complete image.
-  const bucket = await projectImagesBucket();
-  const fileId = new ObjectId();
+  const stored: Pick<ProjectImage, "blobUrl" | "fileId"> = {};
 
-  await new Promise<void>((resolve, reject) => {
-    const upload = bucket.openUploadStream(
-      `project-${projectId}`,
-      {
-        id: fileId,
-        metadata: { projectId, contentType },
-      }
+  if (blobUploadsEnabled()) {
+    const blob = await put(
+      `project-images/${projectId.replace(/[^\w.-]+/g, "_")}${EXTENSIONS[contentType]}`,
+      Buffer.from(bytes),
+      { access: "public", addRandomSuffix: true, contentType }
     );
+    stored.blobUrl = blob.url;
+  } else {
+    const bucket = await projectImagesBucket();
+    const fileId = new ObjectId();
 
-    upload.once("finish", () => resolve());
-    upload.once("error", reject);
-    upload.end(Buffer.from(bytes));
-  });
+    await new Promise<void>((resolve, reject) => {
+      const upload = bucket.openUploadStream(
+        `project-${projectId}`,
+        {
+          id: fileId,
+          metadata: { projectId, contentType },
+        }
+      );
+
+      upload.once("finish", () => resolve());
+      upload.once("error", reject);
+      upload.end(Buffer.from(bytes));
+    });
+
+    stored.fileId = fileId;
+  }
 
   const image: ProjectImage = {
-    fileId,
+    blobUrl: stored.blobUrl ?? null,
+    fileId: stored.fileId ?? null,
     contentType,
     size: bytes.length,
     updatedAt: new Date(),
@@ -149,13 +184,13 @@ export async function setProjectImage(
 
   if (!previous) {
     // Deleted while we were uploading
-    await deleteImageFile(fileId);
+    await deleteImageFile(image);
 
     return { ok: false, status: 404, error: "Project not found" };
   }
 
   if (previous.image) {
-    await deleteImageFile(previous.image.fileId);
+    await deleteImageFile(previous.image);
   }
 
   return {
@@ -180,7 +215,7 @@ export async function removeProjectImage(
   }
 
   if (previous.image) {
-    await deleteImageFile(previous.image.fileId);
+    await deleteImageFile(previous.image);
   }
 
   return { ok: true, imageUrl: null };
@@ -191,7 +226,7 @@ export async function deleteProjectImageFile(
   project: Pick<ProjectDoc, "image">
 ) {
   if (project.image) {
-    await deleteImageFile(project.image.fileId);
+    await deleteImageFile(project.image);
   }
 }
 
@@ -208,12 +243,26 @@ export async function openProjectImage(
 
   if (!project?.image) return null;
 
+  const { image } = project;
+
+  if (image.blobUrl) {
+    const response = await fetch(image.blobUrl, { cache: "no-store" });
+
+    if (!response.ok || !response.body) {
+      throw new Error(`Blob read failed: ${response.status}`);
+    }
+
+    return { image, stream: response.body };
+  }
+
+  if (!image.fileId) return null;
+
   const download = (
     await projectImagesBucket()
-  ).openDownloadStream(project.image.fileId);
+  ).openDownloadStream(image.fileId);
 
   return {
-    image: project.image,
+    image,
     stream: Readable.toWeb(
       download
     ) as ReadableStream<Uint8Array>,

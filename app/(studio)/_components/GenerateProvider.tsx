@@ -126,6 +126,9 @@ type GenerateContextValue = {
   // Run
   generating: boolean;
   result: GenerationResult | null;
+  // When the current run succeeded (ms timestamp), for the
+  // loader's landing animation; null otherwise
+  finishedAt: number | null;
   error: string;
   setError: (message: string) => void;
   generate: () => void;
@@ -169,6 +172,7 @@ export function GenerateProvider({
 
   const [generating, setGenerating] = useState(false);
   const [result, setResult] = useState<GenerationResult | null>(null);
+  const [finishedAt, setFinishedAt] = useState<number | null>(null);
   const [error, setError] = useState("");
 
   // Ignore schema responses for a model that is no
@@ -256,6 +260,8 @@ export function GenerateProvider({
       setSearch(options.fromSearch ? id : "");
       setSearchResults([]);
       setResult(null);
+    setFinishedAt(null);
+      setFinishedAt(null);
       setError("");
       clearPreviews();
 
@@ -493,6 +499,10 @@ export function GenerateProvider({
             : previous
         );
 
+        if (prediction.status === "succeeded") {
+          setFinishedAt(Date.now());
+        }
+
         if (
           prediction.status === "succeeded" ||
           prediction.status === "failed" ||
@@ -600,6 +610,7 @@ export function GenerateProvider({
     uploadFile,
     generating,
     result,
+    finishedAt,
     error,
     setError,
     generate,

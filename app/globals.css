@@ -382,3 +382,249 @@ body {
     }
   }
 }
+
+/* --------------------------------------------------
+   NAAR LOADER (app/components/ui/NaarLoader.tsx)
+   A solid 3D "n" turns slowly (stacked layers give it
+   depth). data-phase="orbit": the two cyan balls circle
+   it in 3D. data-phase="land": they fly to their spots
+   (sloped serif top, tail) and bounce. The stage is one
+   3D scene, so balls behind the letter are hidden by it.
+   Landing: fly to the spots, soft squash, then rest.
+   -------------------------------------------------- */
+.naar-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: var(--fg);
+}
+
+.naar-loader__stage {
+  position: relative;
+  display: grid;
+  place-items: end center;
+  inline-size: 260px;
+  block-size: 200px;
+  padding-block-end: 22px;
+  perspective: 600px;
+  transform-style: preserve-3d;
+}
+
+.naar-loader__figure {
+  position: relative;
+  inline-size: 88px;
+  block-size: 82px;
+  transform-style: preserve-3d;
+  animation: naar-turn 5s ease-in-out infinite alternate;
+}
+
+.naar-loader__layer {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+/* The sides of the letter: a little darker than its face */
+.naar-loader__layer--side {
+  color: color-mix(in srgb, var(--fg) 55%, var(--canvas));
+}
+
+/* Soft shadow on the floor under the letter */
+.naar-loader__floor {
+  position: absolute;
+  inset-block-end: 14px;
+  inset-inline-start: 50%;
+  inline-size: 150px;
+  block-size: 14px;
+  translate: -50% 0;
+  border-radius: 50%;
+  background: radial-gradient(
+    closest-side,
+    color-mix(in srgb, var(--fg) 22%, transparent),
+    transparent
+  );
+}
+
+/* A solid cyan sphere: lit top-left, deeper at the edge.
+   14px = the logo's dot in proportion to the n (dot 4.3
+   units across a 25.5-unit letter, drawn 82px tall) */
+.naar-loader__ball {
+  display: block;
+  inline-size: 14px;
+  block-size: 14px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 34% 30%,
+    #6fe9f2 0%,
+    #00ccdd 38%,
+    #00a9b8 72%,
+    #007f8b 100%
+  );
+  box-shadow: inset -1.5px -2px 3px rgb(0 70 80 / 0.35);
+}
+
+/* ---------- Orbit ---------- */
+
+/* Centre of the letter (stage height − padding − half
+   the letter); radius 96px */
+.naar-loader__orbit {
+  position: absolute;
+  inset-inline-start: 50%;
+  inset-block-start: 137px;
+  transform-style: preserve-3d;
+  animation: naar-orbit 2s linear infinite;
+}
+
+.naar-loader__orbiter {
+  position: absolute;
+  transform-style: preserve-3d;
+}
+
+.naar-loader__orbiter--0 {
+  transform: translateX(96px);
+}
+
+.naar-loader__orbiter--1 {
+  transform: rotateY(180deg) translateX(96px);
+}
+
+/* Each ball turns back against the orbit, so its shading
+   always faces the viewer; it also bobs a little */
+.naar-loader__ball--orbit {
+  translate: -7px -7px;
+  animation:
+    naar-face 2s linear infinite,
+    naar-bob 1s ease-in-out infinite alternate;
+}
+
+.naar-loader__orbiter--1 .naar-loader__ball--orbit {
+  animation-delay: 0s, -0.5s;
+}
+
+/* ---------- Landing ---------- */
+
+.naar-loader__spot {
+  position: absolute;
+  inline-size: 0;
+  block-size: 0;
+  transform: translateZ(4px);
+  transform-style: preserve-3d;
+}
+
+/* On the sloped top of the left serif */
+.naar-loader__spot--top {
+  inset-inline-start: 15.2%;
+  inset-block-start: 8.9%;
+}
+
+.naar-loader__spot--tail {
+  inset-inline-start: 90%;
+  inset-block-start: 65%;
+}
+
+/* Resting position: just above the spot, with a small
+   gap between ball and letter */
+.naar-loader__flier {
+  position: absolute;
+  inset-inline-start: -7px;
+  inset-block-end: 7px;
+}
+
+.naar-loader__flier .naar-loader__ball {
+  transform-origin: 50% 100%;
+}
+
+/* Orbit phase: the spots are empty */
+.naar-loader[data-phase="orbit"] .naar-loader__spot {
+  visibility: hidden;
+}
+
+/* Land phase: the orbit stops where it is (so the flight
+   can start from there) and hides; the balls settle on
+   their spots with a soft squash, then rest */
+.naar-loader[data-phase="land"] .naar-loader__orbit,
+.naar-loader[data-phase="land"] .naar-loader__ball--orbit {
+  animation-play-state: paused;
+}
+
+.naar-loader[data-phase="land"] .naar-loader__orbit {
+  visibility: hidden;
+}
+
+.naar-loader[data-phase="land"] .naar-loader__flier .naar-loader__ball {
+  animation: naar-settle 0.45s 0.6s 1 both;
+}
+
+@keyframes naar-turn {
+  from {
+    transform: rotateX(8deg) rotateY(-28deg);
+  }
+  to {
+    transform: rotateX(8deg) rotateY(28deg);
+  }
+}
+
+@keyframes naar-orbit {
+  from {
+    transform: rotateX(-14deg) rotateY(0deg);
+  }
+  to {
+    transform: rotateX(-14deg) rotateY(360deg);
+  }
+}
+
+@keyframes naar-face {
+  from {
+    transform: rotateY(0deg);
+  }
+  to {
+    transform: rotateY(-360deg);
+  }
+}
+
+@keyframes naar-bob {
+  from {
+    translate: -7px -13px;
+  }
+  to {
+    translate: -7px -1px;
+  }
+}
+
+/* Touch-down: a soft squash, then still */
+@keyframes naar-settle {
+  0% {
+    transform: scale(1);
+  }
+  25% {
+    transform: scale(1.16, 0.84);
+  }
+  60% {
+    transform: scale(0.97, 1.03);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .naar-loader *,
+  .naar-loader__figure {
+    animation: none !important;
+  }
+
+  /* Still: a slight turn shows the depth; balls resting */
+  .naar-loader__figure {
+    transform: rotateX(8deg) rotateY(-18deg);
+  }
+
+  .naar-loader__orbit {
+    visibility: hidden;
+  }
+
+  .naar-loader__spot {
+    visibility: visible !important;
+  }
+}
+

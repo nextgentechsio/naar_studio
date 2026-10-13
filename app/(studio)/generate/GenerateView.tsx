@@ -6,6 +6,10 @@ import { useStudio } from "@/app/(studio)/_components/StudioProvider";
 import ProjectAvatar from "@/app/components/ProjectAvatar";
 import { Icon } from "@/app/components/ui/Icon";
 import {
+  NAAR_LOADER_LAND_MS,
+  NaarLoader,
+} from "@/app/components/ui/NaarLoader";
+import {
   Alert,
   Badge,
   Button,
@@ -71,6 +75,7 @@ export default function GenerateView() {
     uploading,
     generating,
     result,
+    finishedAt,
     error,
     setError,
     generate,
@@ -79,6 +84,20 @@ export default function GenerateView() {
   const projects = projectList.map((item) => item.name);
 
   const [browsing, setBrowsing] = useState(false);
+  // When a run succeeds, the loader's balls land on the n
+  // and rest there before the output appears. A run that finished before
+  // this page opened counts as landed (no replay on return).
+  const [landedFor, setLandedFor] = useState<number | null>(() => finishedAt);
+  const landing = finishedAt !== null && landedFor !== finishedAt;
+
+  useEffect(() => {
+    if (!landing) return;
+    const timer = setTimeout(
+      () => setLandedFor(finishedAt),
+      NAAR_LOADER_LAND_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [landing, finishedAt]);
 
   // Phones (stacked panels): bring the output into view
   // when a run starts. On wider screens it's already there.
@@ -177,6 +196,40 @@ export default function GenerateView() {
       ? "No projects yet. Create one in Admin › Projects."
       : "No projects yet. Ask an admin to create one."
     : undefined;
+
+  // ---------- Loader messages ----------
+  // What is being made, from the model while it runs, and
+  // from the actual output once it's ready
+
+  const makingMedia: "image" | "video" | null = catalogModel
+    ? catalogModel.kind === "video" || /video/i.test(model)
+      ? "video"
+      : "image"
+    : null;
+
+  const makingTitle = !makingMedia
+    ? "Generating…"
+    : catalogModel?.kind === "upscale"
+      ? `Upscaling your ${makingMedia}…`
+      : `Creating your ${makingMedia}…`;
+
+  const makingNote =
+    makingMedia === "video"
+      ? "Videos can take a few minutes. You can leave this page; it's saved to History."
+      : makingMedia === "image"
+        ? "Images usually take a few seconds. It's also saved to History."
+        : "You can leave this page; the result is saved to History.";
+
+  const readyType =
+    outputUrls.length > 0 ? getOutputType(outputUrls[0]) : makingMedia;
+  const readyNoun =
+    readyType === "video" ? "video" : readyType === "audio" ? "audio" : "image";
+  const readyTitle =
+    outputUrls.length > 1
+      ? `Your ${outputUrls.length} ${readyNoun}s are ready!`
+      : readyType
+        ? `Your ${readyNoun} is ready!`
+        : "Ready!";
 
   function download(url: string, filename: string) {
     downloadOutput(url, filename).catch((err) => {
@@ -639,14 +692,17 @@ export default function GenerateView() {
             className="relative flex min-h-0 flex-1 items-center justify-center bg-sunken/60 p-4"
             aria-live="polite"
           >
-            {isRunning ? (
+            {isRunning || landing ? (
               <div className="flex flex-col items-center text-center">
-                <Spinner className="h-6 w-6 text-accent" />
-                <p className="mt-4 text-sm font-medium text-fg">Generating…</p>
-                <p className="mt-1 max-w-xs text-xs text-fg-subtle">
-                  Video can take a few minutes. You can leave this page; the
-                  result is saved to History.
+                <NaarLoader phase={landing ? "land" : "orbit"} />
+                <p className="mt-2 text-sm font-medium text-fg">
+                  {landing ? readyTitle : makingTitle}
                 </p>
+                {!landing && (
+                  <p className="mt-1 max-w-xs text-xs text-fg-subtle">
+                    {makingNote}
+                  </p>
+                )}
               </div>
             ) : status === "succeeded" && outputUrls.length > 0 ? (
               <div

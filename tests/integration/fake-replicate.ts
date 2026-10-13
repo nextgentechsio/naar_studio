@@ -199,6 +199,18 @@ export async function startFakeReplicate() {
 
     // ---------- control ----------
 
+    // A download that dies partway: promises `declared`
+    // bytes, sends 1 KB, then drops the connection
+    if (path === "/__control/broken.png") {
+      res.writeHead(200, {
+        "content-type": "image/png",
+        "content-length": url.searchParams.get("declared") ?? "1048576",
+      });
+      res.write(Buffer.alloc(1024));
+      setTimeout(() => res.destroy(), 50);
+      return;
+    }
+
     if (path === "/__control/output.png") {
       res.writeHead(200, { "content-type": "image/png" });
       return res.end(PNG);

@@ -33,7 +33,7 @@ describe("direct uploads", () => {
     expect((await api("/api/upload/blob")).status).toBe(401);
   });
 
-  it("hands out a short-lived token limited to media and 100 MB", async () => {
+  it("hands out a time-limited token limited to media and 100 MB", async () => {
     const { status, data } = await requestToken(user.session, "inputs/photo.png");
     expect(status).toBe(200);
 
@@ -44,7 +44,7 @@ describe("direct uploads", () => {
       allowedContentTypes: ["image/*", "video/*", "audio/*"],
       addRandomSuffix: true,
     });
-    expect(token.validUntil - Date.now()).toBeLessThanOrEqual(10 * 60 * 1000);
+    expect(token.validUntil - Date.now()).toBeLessThanOrEqual(60 * 60 * 1000);
     // No completion callback: Vercel never calls the app
     expect(token).not.toHaveProperty("onUploadCompleted");
   });
@@ -78,11 +78,12 @@ describe("direct uploads", () => {
 
     const state = await (await fetch(`${replicateUrl}/__control/blobs`)).json();
     expect(state.blobs.map((b: { pathname: string }) => b.pathname)).toEqual(["inputs/new.png"]);
-    // Only ever lists our own folder
+    // Only ever lists the folders it cleans, never the
+    // whole store (project photos must never be swept)
+    const lists = state.requests.filter((r: { method: string; path: string }) => r.method === "GET" && r.path.startsWith("/blob?"));
+    expect(lists.length).toBeGreaterThan(0);
     expect(
-      state.requests.filter((r: { method: string }) => r.method === "GET").every((r: { path: string }) =>
-        r.path.includes("prefix=inputs%2F")
-      )
+      lists.every((r: { path: string }) => /prefix=(inputs|outputs)%2F/.test(r.path))
     ).toBe(true);
   });
 });

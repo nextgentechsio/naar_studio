@@ -28,17 +28,26 @@ export function blobUploadsEnabled(): boolean {
 // Bounded work per pass; the rest goes next time
 const MAX_PAGES = 10;
 
-// Deletes uploaded inputs older than the retention
-// period. Returns how many were removed.
-export async function pruneOldInputs(now = new Date()): Promise<number> {
+// Where each folder's sweep stopped, so a store with more
+// than one pass worth of files still gets fully covered
+const globalForSweep = globalThis as unknown as {
+  blobSweepCursors?: Map<string, string>;
+};
+
+// Deletes files in a Blob folder uploaded before the
+// retention cutoff. Returns how many were removed. Used
+// for inputs/, and for outputs/ as a safety net behind
+// the record-based cleanup (lib/output-retention.ts).
+export async function pruneOldBlobs(prefix: string, now = new Date()): Promise<number> {
   if (!blobUploadsEnabled()) return 0;
 
+  const cursors = (globalForSweep.blobSweepCursors ??= new Map());
   const cutoff = new Date(now.getTime() - OUTPUT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
-  let cursor: string | undefined;
+  let cursor = cursors.get(prefix);
   let removed = 0;
 
   for (let page = 0; page < MAX_PAGES; page++) {
-    const result = await list({ prefix: INPUT_PREFIX, cursor, limit: 1000 });
+    const result = await list({ prefix, cursor, limit: 1000 });
 
     const expired = result.blobs
       .filter((blob) => new Date(blob.uploadedAt) < cutoff)
@@ -49,9 +58,17 @@ export async function pruneOldInputs(now = new Date()): Promise<number> {
       removed += expired.length;
     }
 
-    if (!result.hasMore || !result.cursor) break;
-    cursor = result.cursor;
+    cursor = result.hasMore ? result.cursor : undefined;
+    if (!cursor) break;
   }
 
+  // Resume here next pass, or start over when done
+  if (cursor) cursors.set(prefix, cursor);
+  else cursors.delete(prefix);
+
   return removed;
+}
+
+export function pruneOldInputs(now = new Date()): Promise<number> {
+  return pruneOldBlobs(INPUT_PREFIX, now);
 }

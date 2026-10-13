@@ -14,13 +14,14 @@ export const runtime = "nodejs";
 // DIRECT UPLOADS TO VERCEL BLOB (see lib/input-uploads.ts)
 //
 // GET:  is this available here? (else use /api/upload)
-// POST: a short-lived upload token for one input file,
+// POST: a time-limited upload token for one input file,
 //       limited to media types and 100 MB. Signed-in
 //       users only. No completion callback is used, so
 //       Vercel never calls this route itself.
 // --------------------------------------------------
 
-const TOKEN_TTL_MS = 10 * 60 * 1000;
+// Long enough for a 100 MB upload on a slow connection
+const TOKEN_TTL_MS = 60 * 60 * 1000;
 
 export async function GET() {
   const auth = await requireUser();

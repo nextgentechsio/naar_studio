@@ -29,7 +29,13 @@ function directUploadsEnabled(): Promise<boolean> {
 
 export async function uploadInputFile(file: File): Promise<string> {
   if (await directUploadsEnabled()) {
-    const name = file.name.replace(/[^\w.-]+/g, "_").slice(-100) || "upload";
+    // Safe characters only; no ".." (the server refuses
+    // paths containing it)
+    const name =
+      file.name
+        .replace(/[^\w.-]+/g, "_")
+        .replace(/\.{2,}/g, ".")
+        .slice(-100) || "upload";
 
     const blob = await upload(`inputs/${name}`, file, {
       access: "public",

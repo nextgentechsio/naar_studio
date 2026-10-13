@@ -1,10 +1,11 @@
-import { Readable, Transform } from "stream";
+import { Readable, Transform, Writable } from "stream";
 import { pipeline } from "stream/promises";
 import type { ReadableStream as NodeReadableStream } from "stream/web";
 import { del, put } from "@vercel/blob";
 import { ObjectId } from "mongodb";
 import { blobUploadsEnabled } from "@/lib/input-uploads";
 import { generationOutputsBucket } from "@/lib/mongodb";
+import { fetchAllowed, isAllowedOutputSource } from "@/lib/output-source";
 
 // --------------------------------------------------
 // SAVED OUTPUTS
@@ -31,7 +32,7 @@ export type SavedOutput = {
   size: number;
 };
 
-const BLOB_FOLDER = "outputs/";
+export const OUTPUT_BLOB_FOLDER = "outputs/";
 const MULTIPART_BYTES = 50 * 1024 * 1024;
 
 const EXTENSIONS: Record<string, string> = {
@@ -60,7 +61,8 @@ export async function saveOutput(
   let response: Response;
 
   try {
-    response = await fetch(url, {
+    // Only Replicate's CDN: the URL comes from the model
+    response = await fetchAllowed(new URL(url), isAllowedOutputSource, {
       signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
     });
   } catch (error) {
@@ -70,12 +72,14 @@ export async function saveOutput(
 
   if (!response.ok || !response.body) {
     console.error("Output download failed:", generationId, response.status);
+    await response.body?.cancel();
     return null;
   }
 
   const declared = Number(response.headers.get("content-length"));
   if (declared > MAX_OUTPUT_BYTES) {
     console.error("Output too large:", generationId, declared);
+    await response.body.cancel();
     return null;
   }
 
@@ -94,17 +98,46 @@ export async function saveOutput(
     Readable.fromWeb(response.body as unknown as NodeReadableStream<Uint8Array>);
 
   if (blobUploadsEnabled()) {
+    const pathname = `${OUTPUT_BLOB_FOLDER}${generationId.replace(/[^\w.-]+/g, "_")}${EXTENSIONS[contentType] ?? ""}`;
+    const options = { access: "public" as const, addRandomSuffix: true, contentType };
+
     try {
-      const blob = await put(
-        `${BLOB_FOLDER}${generationId.replace(/[^\w.-]+/g, "_")}${EXTENSIONS[contentType] ?? ""}`,
-        source().pipe(limit()),
-        {
-          access: "public",
-          addRandomSuffix: true,
-          contentType,
-          multipart: !(declared > 0 && declared <= MULTIPART_BYTES),
+      let blob;
+
+      if (declared > 0 && declared <= MULTIPART_BYTES) {
+        // Small, known size: read it all first, so a retried
+        // upload resends the same complete bytes
+        const chunks: Buffer[] = [];
+        await pipeline(
+          source(),
+          limit(),
+          new Writable({
+            write(chunk: Buffer, _encoding, callback) {
+              chunks.push(chunk);
+              callback();
+            },
+          })
+        );
+        blob = await put(pathname, Buffer.concat(chunks), options);
+      } else {
+        // Large or unknown size: stream in parts (each part is
+        // buffered and retried by the SDK). pipeline() carries
+        // a download error or the size cap into the upload,
+        // so it fails instead of waiting forever.
+        const body = limit();
+        const piping = pipeline(source(), body);
+        piping.catch(() => {
+          // Surfaces through put() below
+        });
+
+        try {
+          blob = await put(pathname, body, { ...options, multipart: true });
+        } catch (error) {
+          body.destroy();
+          throw error;
         }
-      );
+        await piping;
+      }
 
       return { fileId: null, blobUrl: blob.url, contentType, size };
     } catch (error) {
@@ -135,17 +168,19 @@ export async function deleteSavedOutput(
 ) {
   await Promise.all([
     deleteOutputFile(saved?.fileId),
-    deleteOutputBlob(saved?.blobUrl),
+    deleteOutputBlobs([saved?.blobUrl]),
   ]);
 }
 
-export async function deleteOutputBlob(url: string | null | undefined) {
-  if (!url) return;
+export async function deleteOutputBlobs(urls: (string | null | undefined)[]) {
+  const present = urls.filter((url): url is string => Boolean(url));
+  if (!present.length) return;
 
   try {
-    await del(url);
+    await del(present);
   } catch (error) {
-    // Only an orphaned file: log, don't fail the request
+    // Only orphaned files (the outputs/ sweep retries
+    // them): log, don't fail the request
     console.error("Delete output blob error:", error);
   }
 }
@@ -223,6 +258,7 @@ export async function openBlobOutput(
         Number(response.headers.get("content-length")) === range.end + 1));
 
   if (!(wholeFile || (range && response.status === 206)) || !response.body) {
+    await response.body?.cancel();
     throw new Error(`Blob read failed: ${response.status}`);
   }
 

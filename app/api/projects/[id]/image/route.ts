@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import {
+  getProjectImage,
   openProjectImage,
   projectImageVersion,
   PROJECT_IMAGE_MAX_BYTES,
@@ -31,16 +32,16 @@ export async function GET(
 
   try {
     const { id } = await context.params;
-    const opened = await openProjectImage(id);
+    const image = await getProjectImage(id);
 
-    if (!opened) {
+    if (!image) {
       return NextResponse.json(
         { error: "No photo for this project" },
         { status: 404 }
       );
     }
 
-    const version = projectImageVersion(opened.image);
+    const version = projectImageVersion(image);
     const etag = `"${version}"`;
 
     // Only the current versioned URL is immutable; an
@@ -59,17 +60,25 @@ export async function GET(
       "Content-Security-Policy": "default-src 'none'; sandbox",
     };
 
+    // Unchanged: answer before fetching any bytes
     if (request.headers.get("if-none-match") === etag) {
-      await opened.stream.cancel();
-
       return new Response(null, { status: 304, headers });
     }
 
-    return new Response(opened.stream, {
+    const stream = await openProjectImage(image);
+
+    if (!stream) {
+      return NextResponse.json(
+        { error: "No photo for this project" },
+        { status: 404 }
+      );
+    }
+
+    return new Response(stream, {
       headers: {
         ...headers,
-        "Content-Type": opened.image.contentType,
-        "Content-Length": String(opened.image.size),
+        "Content-Type": image.contentType,
+        "Content-Length": String(image.size),
       },
     });
   } catch (error) {

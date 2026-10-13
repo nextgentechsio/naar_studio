@@ -105,6 +105,8 @@ export type GenerationDoc = {
   outputFileId?: ObjectId | null;
   outputContentType?: string | null;
   outputSize?: number | null;
+  // Set while one request copies the output to storage
+  outputSavingUntil?: Date | null;
   // Saved copy deleted by the retention cleanup
   // (lib/output-retention.ts)
   outputExpiredAt?: Date | null;

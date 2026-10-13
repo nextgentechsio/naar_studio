@@ -385,6 +385,10 @@ export async function fetchPrediction(
   return { ok: true, prediction: data };
 }
 
+// Longest a save may hold its claim (download timeout is
+// 5 minutes, plus the upload)
+const SAVE_CLAIM_MS = 15 * 60 * 1000;
+
 // Store what Replicate told us about a prediction.
 // Cost is computed from the model stored at creation,
 // never from anything the client sends.
@@ -448,6 +452,33 @@ export async function applyPrediction(
     const replicateUrl = firstUrl(prediction.output);
 
     if (status === "succeeded" && replicateUrl) {
+      // One saver at a time: copying a large output takes a
+      // while, and parallel polls would each copy it again.
+      // The claim expires, so a crashed saver can't block it.
+      const now = new Date();
+      const claim = await (await generationsCollection()).updateOne(
+        {
+          _id: generation._id,
+          status: { $nin: [...TERMINAL_STATUSES] },
+          $or: [
+            { outputSavingUntil: { $exists: false } },
+            { outputSavingUntil: null },
+            { outputSavingUntil: { $lt: now } },
+          ],
+        },
+        { $set: { outputSavingUntil: new Date(now.getTime() + SAVE_CLAIM_MS) } }
+      );
+
+      if (!claim.modifiedCount) {
+        // Another request is saving (or just finished) it
+        const current = await getGeneration(generation._id);
+
+        return {
+          costUsd: current?.costUsd ?? null,
+          localOutputUrl: current?.localOutputUrl ?? null,
+        };
+      }
+
       saved = await saveOutput(generation._id, replicateUrl);
       localOutputUrl = saved ? outputUrlFor(generation._id) : null;
     }
@@ -463,6 +494,7 @@ export async function applyPrediction(
     set.outputBlobUrl = saved?.blobUrl ?? null;
     set.outputContentType = saved?.contentType ?? null;
     set.outputSize = saved?.size ?? null;
+    set.outputSavingUntil = null;
     set.error =
       typeof prediction.error === "string"
         ? prediction.error.slice(0, 2000)

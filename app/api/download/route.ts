@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
+import { fetchAllowed, isReplicateDeliveryUrl } from "@/lib/output-source";
 
 export const runtime = "nodejs";
 
@@ -10,7 +11,7 @@ export const runtime = "nodejs";
 // filename. This route fetches server-side, so an open
 // URL would let callers reach internal hosts (SSRF):
 // only Replicate's output CDN is allowed, and every
-// redirect hop is re-checked.
+// redirect hop is re-checked (lib/output-source.ts).
 //
 // It deliberately does NOT accept api.replicate.com
 // prediction URLs: those are fetched with our account
@@ -18,8 +19,6 @@ export const runtime = "nodejs";
 // Prediction status goes through /api/predictions/[id],
 // which checks ownership.
 // --------------------------------------------------
-
-const MAX_REDIRECTS = 3;
 
 const TYPES: [string, string, string][] = [
   // [content-type match, url suffix, extension]
@@ -33,41 +32,6 @@ const TYPES: [string, string, string][] = [
   ["audio/mpeg", ".mp3", "mp3"],
   ["audio/wav", ".wav", "wav"],
 ];
-
-function isAllowedOutputUrl(url: URL): boolean {
-  return (
-    url.protocol === "https:" &&
-    (url.hostname === "replicate.delivery" ||
-      url.hostname.endsWith(".replicate.delivery"))
-  );
-}
-
-async function fetchAllowedOutput(start: URL): Promise<Response> {
-  let current = start;
-
-  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    if (!isAllowedOutputUrl(current)) {
-      throw new Error("Download source is not allowed");
-    }
-
-    const response = await fetch(current, {
-      method: "GET",
-      cache: "no-store",
-      redirect: "manual",
-    });
-
-    const location = response.headers.get("location");
-
-    if (response.status >= 300 && response.status < 400 && location) {
-      current = new URL(location, current);
-      continue;
-    }
-
-    return response;
-  }
-
-  throw new Error("Too many redirects");
-}
 
 export async function GET(request: Request) {
   const auth = await requireUser();
@@ -83,7 +47,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
   }
 
-  if (!isAllowedOutputUrl(parsedUrl)) {
+  if (!isReplicateDeliveryUrl(parsedUrl)) {
     return NextResponse.json(
       { error: "Download source is not allowed" },
       { status: 400 }
@@ -93,7 +57,7 @@ export async function GET(request: Request) {
   let response: Response;
 
   try {
-    response = await fetchAllowedOutput(parsedUrl);
+    response = await fetchAllowed(parsedUrl, isReplicateDeliveryUrl);
   } catch (error) {
     console.error("Download proxy error:", error);
 

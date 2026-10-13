@@ -230,41 +230,35 @@ export async function deleteProjectImageFile(
   }
 }
 
-export async function openProjectImage(
+export async function getProjectImage(
   projectId: string
-): Promise<{
-  image: ProjectImage;
-  stream: ReadableStream<Uint8Array>;
-} | null> {
+): Promise<ProjectImage | null> {
   const project = await (await projectsCollection()).findOne(
     { _id: projectId },
     { projection: { image: 1 } }
   );
 
-  if (!project?.image) return null;
+  return project?.image ?? null;
+}
 
-  const { image } = project;
-
+// The photo's bytes, from Blob or (older photos) GridFS
+export async function openProjectImage(
+  image: ProjectImage
+): Promise<ReadableStream<Uint8Array> | null> {
   if (image.blobUrl) {
     const response = await fetch(image.blobUrl, { cache: "no-store" });
 
     if (!response.ok || !response.body) {
+      await response.body?.cancel();
       throw new Error(`Blob read failed: ${response.status}`);
     }
 
-    return { image, stream: response.body };
+    return response.body;
   }
 
   if (!image.fileId) return null;
 
-  const download = (
-    await projectImagesBucket()
-  ).openDownloadStream(image.fileId);
-
-  return {
-    image,
-    stream: Readable.toWeb(
-      download
-    ) as ReadableStream<Uint8Array>,
-  };
+  return Readable.toWeb(
+    (await projectImagesBucket()).openDownloadStream(image.fileId)
+  ) as ReadableStream<Uint8Array>;
 }

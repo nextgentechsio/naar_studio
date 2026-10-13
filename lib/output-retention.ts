@@ -1,11 +1,11 @@
 import type { GridFSFile } from "mongodb";
 import { generationsCollection, getDb } from "@/lib/mongodb";
 import {
-  deleteOutputBlob,
+  deleteOutputBlobs,
   deleteOutputFile,
-  deleteSavedOutput,
+  OUTPUT_BLOB_FOLDER,
 } from "@/lib/generation-outputs";
-import { pruneOldInputs } from "@/lib/input-uploads";
+import { pruneOldBlobs, pruneOldInputs } from "@/lib/input-uploads";
 import { OUTPUT_RETENTION_DAYS } from "@/lib/output-retention-days";
 
 // --------------------------------------------------
@@ -79,11 +79,11 @@ export async function pruneExpiredOutputs(now = new Date()): Promise<number> {
       { $set: expiredFields(now) }
     );
 
+    // One call for the whole batch's Blob files (anything
+    // left behind is caught by the outputs/ sweep)
+    await deleteOutputBlobs(expired.map((doc) => doc.outputBlobUrl));
     for (const doc of expired) {
-      await deleteSavedOutput({
-        fileId: doc.outputFileId ?? null,
-        blobUrl: doc.outputBlobUrl ?? null,
-      });
+      await deleteOutputFile(doc.outputFileId);
     }
 
     removed += expired.length;
@@ -117,9 +117,7 @@ export async function pruneExpiredOutputs(now = new Date()): Promise<number> {
     for (const id of ids) {
       await deleteOutputFile(id);
     }
-    for (const doc of linked) {
-      await deleteOutputBlob(doc.outputBlobUrl);
-    }
+    await deleteOutputBlobs(linked.map((doc) => doc.outputBlobUrl));
 
     removed += ids.length;
 
@@ -148,17 +146,19 @@ export async function maybePruneOutputs(): Promise<void> {
 
   try {
     // Independent: one failing doesn't stop the other
-    const [outputs, inputs] = await Promise.allSettled([
+    const results = await Promise.allSettled([
       pruneExpiredOutputs(),
       pruneOldInputs(),
+      // Safety net: output files no record accounts for
+      // (a delete that failed, a save that lost a race)
+      pruneOldBlobs(OUTPUT_BLOB_FOLDER),
     ]);
 
-    if (outputs.status === "rejected") console.error("Output cleanup failed:", outputs.reason);
-    if (inputs.status === "rejected") console.error("Input upload cleanup failed:", inputs.reason);
-
-    const removed =
-      (outputs.status === "fulfilled" ? outputs.value : 0) +
-      (inputs.status === "fulfilled" ? inputs.value : 0);
+    let removed = 0;
+    for (const [index, result] of results.entries()) {
+      if (result.status === "fulfilled") removed += result.value;
+      else console.error(`Cleanup ${["outputs", "inputs", "output sweep"][index]} failed:`, result.reason);
+    }
     if (removed) console.log(`Deleted ${removed} file(s) older than ${OUTPUT_RETENTION_DAYS} days`);
   } finally {
     globalForPrune.outputPruneRunning = false;

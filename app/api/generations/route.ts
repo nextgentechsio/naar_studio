@@ -23,14 +23,19 @@ export async function GET(request: Request) {
   try {
     // Finish generations whose tab closed mid-way, so
     // their status and cost aren't stuck at "starting".
-    try {
-      await reconcilePending(auth.user);
-    } catch (reconcileError) {
-      console.error(
-        "Reconcile pending generations error:",
-        reconcileError
-      );
-    }
+    // After the response: saving outputs can take minutes,
+    // and History re-polls while anything is running.
+    const actor = auth.user;
+    after(async () => {
+      try {
+        await reconcilePending(actor);
+      } catch (reconcileError) {
+        console.error(
+          "Reconcile pending generations error:",
+          reconcileError
+        );
+      }
+    });
 
     // Hourly cleanup of old saved outputs, after the
     // response so nobody waits for it

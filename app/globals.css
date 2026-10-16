@@ -408,14 +408,27 @@ body {
   padding-block-end: 22px;
   perspective: 600px;
   transform-style: preserve-3d;
+  /* Drag to spin */
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
 }
 
+.naar-loader__stage[data-dragging] {
+  cursor: grabbing;
+}
+
+/* Turns toward the cursor: --tx / --ty (-1…1) are set
+   every frame by NaarLoader (eased, and a gentle sway
+   when the mouse is idle); --spin-x / --spin-y (deg)
+   come from dragging */
 .naar-loader__figure {
   position: relative;
   inline-size: 88px;
   block-size: 82px;
   transform-style: preserve-3d;
-  animation: naar-turn 5s ease-in-out infinite alternate;
+  transform: rotateX(calc(8deg - var(--ty, 0) * 18deg + var(--spin-y, 0deg)))
+    rotateY(calc(var(--tx, 0) * 35deg + var(--spin-x, 0deg)));
 }
 
 .naar-loader__layer {
@@ -504,11 +517,14 @@ body {
 
 /* ---------- Landing ---------- */
 
+/* A resting spot, at the middle of the letter's 8px depth
+   (its layers run from 0 to -8px), so ball and letter
+   share one plane in 3D */
 .naar-loader__spot {
   position: absolute;
   inline-size: 0;
   block-size: 0;
-  transform: translateZ(4px);
+  transform: translateZ(-4px);
   transform-style: preserve-3d;
 }
 
@@ -537,6 +553,20 @@ body {
   inset-block-end: 7px;
 }
 
+.naar-loader__flier {
+  transform-style: preserve-3d;
+}
+
+/* Undo the figure's turn (rotateX then rotateY, so the
+   inverse is rotateY then rotateX, both negated): the ball
+   keeps facing the viewer while moving with the letter */
+.naar-loader__face {
+  display: block;
+  transform-origin: 50% 50%;
+  transform: rotateY(calc(-1 * (var(--tx, 0) * 35deg + var(--spin-x, 0deg))))
+    rotateX(calc(-1 * (8deg - var(--ty, 0) * 18deg + var(--spin-y, 0deg))));
+}
+
 .naar-loader__flier .naar-loader__ball {
   transform-origin: 50% 100%;
 }
@@ -562,21 +592,13 @@ body {
   animation: naar-settle 0.45s 0.6s 1 both;
 }
 
-@keyframes naar-turn {
-  from {
-    transform: rotateX(8deg) rotateY(-28deg);
-  }
-  to {
-    transform: rotateX(8deg) rotateY(28deg);
-  }
-}
-
+/* The orbit plane also tilts a little with the cursor */
 @keyframes naar-orbit {
   from {
-    transform: rotateX(-14deg) rotateY(0deg);
+    transform: rotateX(calc(-14deg - var(--ty, 0) * 10deg)) rotateY(0deg);
   }
   to {
-    transform: rotateX(-14deg) rotateY(360deg);
+    transform: rotateX(calc(-14deg - var(--ty, 0) * 10deg)) rotateY(360deg);
   }
 }
 
@@ -620,9 +642,11 @@ body {
     animation: none !important;
   }
 
-  /* Still: a slight turn shows the depth; balls resting */
-  .naar-loader__figure {
-    transform: rotateX(8deg) rotateY(-18deg);
+  /* Still: a slight turn (-18deg) shows the depth; the
+     resting balls read the same value, so they still face
+     the viewer */
+  .naar-loader__stage {
+    --tx: -0.5143;
   }
 
   .naar-loader__orbit {

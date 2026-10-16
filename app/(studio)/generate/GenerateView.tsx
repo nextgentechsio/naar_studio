@@ -99,22 +99,6 @@ export default function GenerateView() {
     return () => clearTimeout(timer);
   }, [landing, finishedAt]);
 
-  // TEMPORARY: loader test buttons in the Output header
-  // ("Test loader" = orbit, "Finish test" = landing).
-  // Remove before release.
-  const [previewLoader, setPreviewLoader] = useState(false);
-  const [testFinishedAt, setTestFinishedAt] = useState<number | null>(null);
-  const testLanding = testFinishedAt !== null;
-
-  useEffect(() => {
-    if (!testLanding) return;
-    const timer = setTimeout(() => {
-      setTestFinishedAt(null);
-      setPreviewLoader(false);
-    }, NAAR_LOADER_LAND_MS);
-    return () => clearTimeout(timer);
-  }, [testLanding]);
-
   // Phones (stacked panels): bring the output into view
   // when a run starts. On wider screens it's already there.
   const outputRef = useRef<HTMLElement>(null);
@@ -662,27 +646,6 @@ export default function GenerateView() {
           <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
             <div className="flex min-w-0 items-center gap-2">
               <h2 className="text-sm font-semibold text-fg">Output</h2>
-              {/* TEMPORARY: loader test buttons. Remove before release. */}
-              <button
-                type="button"
-                onClick={() => {
-                  setTestFinishedAt(null);
-                  setPreviewLoader((on) => !on);
-                }}
-                aria-pressed={previewLoader}
-                className="rounded-md border border-dashed border-warning/60 px-2 py-0.5 text-[11px] font-medium text-warning hover:bg-warning/10"
-              >
-                {previewLoader ? "Stop test" : "Test loader"}
-              </button>
-              {previewLoader && !testLanding && (
-                <button
-                  type="button"
-                  onClick={() => setTestFinishedAt(Date.now())}
-                  className="rounded-md border border-dashed border-warning/60 px-2 py-0.5 text-[11px] font-medium text-warning hover:bg-warning/10"
-                >
-                  Finish test
-                </button>
-              )}
               {status && (
                 <Badge
                   tone={
@@ -729,13 +692,13 @@ export default function GenerateView() {
             className="relative flex min-h-0 flex-1 items-center justify-center bg-sunken/60 p-4"
             aria-live="polite"
           >
-            {isRunning || landing || previewLoader ? (
+            {isRunning || landing ? (
               <div className="flex flex-col items-center text-center">
-                <NaarLoader phase={landing || testLanding ? "land" : "orbit"} />
+                <NaarLoader phase={landing ? "land" : "orbit"} />
                 <p className="mt-2 text-sm font-medium text-fg">
-                  {landing || testLanding ? readyTitle : makingTitle}
+                  {landing ? readyTitle : makingTitle}
                 </p>
-                {!(landing || testLanding) && (
+                {!landing && (
                   <p className="mt-1 max-w-xs text-xs text-fg-subtle">
                     {makingNote}
                   </p>

@@ -9,9 +9,10 @@ import { useLayoutEffect, useRef } from "react";
 //   orbit: while a generation runs, the logo's two cyan
 //          balls circle the n in 3D (in front, behind).
 //   land:  when the result is ready, each ball flies in
-//          an arc from where it is to its spot (the sloped
-//          top of the left serif, and the tail) and rests
-//          there for 2 seconds before the output is shown.
+//          an arc from where it is to its spot (below the
+//          left stem, like the dots in the wordmark, and on
+//          the tail) and rests there for 2 seconds before
+//          the output is shown.
 // Keyframes live in globals.css under "NAAR LOADER".
 // People who prefer reduced motion get a still version.
 // --------------------------------------------------
@@ -29,7 +30,7 @@ export const NAAR_LOADER_FLIGHT_MS = 650;
 // before the output is shown
 export const NAAR_LOADER_LAND_MS = NAAR_LOADER_FLIGHT_MS + 2000;
 
-const SPOTS = ["top", "tail"] as const;
+const SPOTS = ["below", "tail"] as const;
 
 export function NaarLoader({
   phase = "orbit",
@@ -104,9 +105,8 @@ export function NaarLoader({
             <path d={N_GLYPH} />
           </svg>
 
-          {/* Landing spots: the sloped top of the left
-              serif, and the tail (percentages of the
-              letter's box) */}
+          {/* Landing spots: below the left stem, and on the
+              tail (percentages of the letter's box) */}
           {SPOTS.map((spot, index) => (
             <span
               key={spot}

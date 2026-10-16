@@ -388,7 +388,7 @@ body {
    A solid 3D "n" turns slowly (stacked layers give it
    depth). data-phase="orbit": the two cyan balls circle
    it in 3D. data-phase="land": they fly to their spots
-   (sloped serif top, tail) and bounce. The stage is one
+   (below the left stem, on the tail) and rest. The stage is one
    3D scene, so balls behind the letter are hidden by it.
    Landing: fly to the spots, soft squash, then rest.
    -------------------------------------------------- */
@@ -512,10 +512,16 @@ body {
   transform-style: preserve-3d;
 }
 
-/* On the sloped top of the left serif */
-.naar-loader__spot--top {
-  inset-inline-start: 15.2%;
-  inset-block-start: 8.9%;
+/* Below the left stem, like the dots under the wordmark:
+   the ball's bottom edge, 7px gap under the baseline */
+.naar-loader__spot--below {
+  inset-inline-start: 16%;
+  inset-block-start: 93.6%;
+}
+
+/* The gap is built into this spot, so no lift */
+.naar-loader__spot--below .naar-loader__flier {
+  inset-block-end: 0;
 }
 
 .naar-loader__spot--tail {

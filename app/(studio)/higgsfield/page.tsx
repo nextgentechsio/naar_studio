@@ -1,8 +1,14 @@
 import type { Metadata } from "next";
-import HiggsfieldView from "./HiggsfieldView";
+import { ActiveGenerate } from "@/app/(studio)/_components/GenerateProvider";
+import GenerateView from "@/app/(studio)/replicate/GenerateView";
 
 export const metadata: Metadata = { title: "Higgsfield" };
 
+// The Generate page, on the Higgsfield form and run
 export default function Page() {
-  return <HiggsfieldView />;
+  return (
+    <ActiveGenerate provider="higgsfield">
+      <GenerateView />
+    </ActiveGenerate>
+  );
 }

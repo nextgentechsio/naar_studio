@@ -12,6 +12,10 @@ import type { AddressInfo } from "net";
 //
 // Special model names: */missing → 404, */reject → 422,
 // */badtoken → 401 (our token rejected).
+//
+// A fake Higgsfield API lives under /hf (requests and
+// their status, steered via /__control/hf/<id>). Prompts
+// containing "nocredits" get a 403, "reject" a 422.
 // --------------------------------------------------
 
 type Prediction = Record<string, unknown> & { id: string; status: string };
@@ -40,11 +44,59 @@ const SCHEMA = {
   },
 };
 
+export const FAKE_HF_CREDENTIALS = "fake-id:fake-secret";
+
+// A few of Higgsfield's models, with real-shaped schemas
+const HF_MODELS = [
+  {
+    slug: "bytedance/seedance-2.5/text-to-video",
+    title: "Seedance 2.5",
+    description: "Text to video",
+    operation_type: ["text2video"],
+    output_type: "video",
+    base_credits: "0.0000",
+    is_workflow: false,
+    input_schema: {
+      type: "object",
+      required: ["prompt"],
+      properties: {
+        prompt: { type: "string", minLength: 1 },
+        duration: { type: "integer", default: 5, minimum: 4, maximum: 30 },
+        resolution: { type: "string", enum: ["480p", "720p", "1080p"], default: "720p" },
+        aspect_ratio: { type: "string", enum: ["16:9", "9:16"], default: "16:9" },
+        generate_audio: { type: "boolean", default: true },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    slug: "higgsfield-ai/soul/v2/image-to-image",
+    title: "Soul 2",
+    description: "Image to image",
+    operation_type: ["image_edit", "text2image"],
+    output_type: "image",
+    base_credits: "0.0000",
+    is_workflow: false,
+    input_schema: {
+      type: "object",
+      required: ["prompt", "image_urls"],
+      properties: {
+        prompt: { type: "string" },
+        image_urls: { type: "array", items: { type: "string", format: "uri" } },
+        seed: { type: ["integer", "null"] },
+        // Nested: not shown in the form, never sent
+        multi_prompt: { type: "array", items: { type: "object" } },
+      },
+    },
+  },
+];
+
 // Format: vercel_blob_rw_<storeId>_<secret>
 export const FAKE_BLOB_TOKEN = "vercel_blob_rw_teststore_secret123";
 
 export async function startFakeReplicate() {
   const predictions = new Map<string, Prediction>();
+  const hfRequests = new Map<string, Record<string, unknown>>();
   const requests: { method: string; path: string; body: unknown; bytes: number }[] = [];
   let counter = 0;
   let blobs: { url: string; pathname: string; size: number; uploadedAt: string }[] = [];
@@ -182,6 +234,62 @@ export async function startFakeReplicate() {
 
       res.writeHead(200, { "content-length": String(bytes.length) });
       return res.end(bytes);
+    }
+
+    // ---------- fake Higgsfield API (/hf) ----------
+
+    if (path.startsWith("/hf/")) {
+      requests.push({ method: req.method ?? "", path, body, bytes: raw.length });
+
+      if (req.headers.authorization !== `Key ${FAKE_HF_CREDENTIALS}`) {
+        return send(401, { detail: "Invalid credentials" });
+      }
+
+      const hfStatus = path.match(/^\/hf\/requests\/([^/]+)\/(status|cancel)$/);
+      if (hfStatus) {
+        const id = decodeURIComponent(hfStatus[1]);
+        const request = hfRequests.get(id);
+        if (!request) return send(404, { detail: "Not found" });
+        if (hfStatus[2] === "cancel" && req.method === "POST") request.status = "canceled";
+        return send(200, request);
+      }
+
+      if (path === "/hf/models" && req.method === "GET") {
+        return send(200, { total: HF_MODELS.length, items: HF_MODELS });
+      }
+
+      if (req.method === "POST") {
+        const prompt = String((body as { prompt?: unknown })?.prompt ?? "");
+        if (prompt.includes("nocredits")) return send(403, { detail: "Not enough credits" });
+        if (prompt.includes("reject")) return send(422, { detail: "duration: must be at most 30" });
+
+        const id = `hf-${Date.now().toString(36)}-${++counter}`;
+        const request = {
+          status: "queued",
+          request_id: id,
+          status_url: `${url.origin}/hf/requests/${id}/status`,
+          cancel_url: `${url.origin}/hf/requests/${id}/cancel`,
+          model: path.slice("/hf/".length),
+          input: body,
+        };
+        hfRequests.set(id, request);
+        return send(200, request);
+      }
+
+      return send(404, { detail: `No fake for ${req.method} ${path}` });
+    }
+
+    const hfControl = path.match(/^\/__control\/hf\/([^/]+)$/);
+    if (hfControl && req.method === "POST") {
+      const id = decodeURIComponent(hfControl[1]);
+      const existing = hfRequests.get(id) ?? { request_id: id, status: "queued" };
+      hfRequests.set(id, { ...existing, ...(body as object) });
+      return send(200, hfRequests.get(id));
+    }
+
+    if (path === "/__control/output.mp4") {
+      res.writeHead(200, { "content-type": "video/mp4" });
+      return res.end(Buffer.from("fake-mp4-bytes"));
     }
 
     if (path === "/__control/blobs") {

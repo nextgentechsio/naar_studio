@@ -56,13 +56,15 @@ export function outputUrlFor(generationId: string): string {
 // partial file) if anything goes wrong.
 export async function saveOutput(
   generationId: string,
-  url: string
+  url: string,
+  // Where this provider's outputs may come from
+  isAllowed: (url: URL) => boolean = isAllowedOutputSource
 ): Promise<SavedOutput | null> {
   let response: Response;
 
   try {
-    // Only Replicate's CDN: the URL comes from the model
-    response = await fetchAllowed(new URL(url), isAllowedOutputSource, {
+    // Only the provider's CDN: the URL comes from the model
+    response = await fetchAllowed(new URL(url), isAllowed, {
       signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
     });
   } catch (error) {

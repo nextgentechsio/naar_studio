@@ -7,9 +7,12 @@ import {
 } from "@/lib/generation-outputs";
 import { currentNames } from "@/lib/names";
 import type { Filter } from "mongodb";
+import { checkHiggsfieldRequest, isHiggsfieldOutputUrl } from "@/lib/higgsfield";
+import { higgsfieldCostUsd } from "@/lib/higgsfield-models";
 import {
   generationsCollection,
   type GenerationDoc,
+  type Provider,
 } from "@/lib/mongodb";
 import {
   readReplicateJson,
@@ -49,6 +52,7 @@ export function isTerminalStatus(status: unknown) {
 export type PublicGeneration = {
   id: string;
   predictionId: string;
+  provider: Provider;
   userId: string;
   user: string;
   projectId: string;
@@ -80,6 +84,7 @@ function toPublicGeneration(
   return {
     id: doc._id,
     predictionId: doc._id,
+    provider: doc.provider ?? "replicate",
     userId: doc.userId,
     user: doc.userName,
     projectId: doc.projectId,
@@ -149,6 +154,7 @@ export async function recordGeneration(input: {
   inputs: Record<string, unknown>;
   status: string;
   createdAt?: string;
+  provider?: Provider;
 }) {
   const now = new Date();
 
@@ -162,12 +168,15 @@ export async function recordGeneration(input: {
     userName: input.user.name,
     projectId: input.project.id,
     projectName: input.project.name,
-    provider: "replicate",
+    provider: input.provider ?? "replicate",
     model: input.model,
     version: input.version,
     prompt: String(input.inputs.prompt ?? ""),
     inputs: storableInputs(input.inputs),
-    inputImage: firstUrl(input.inputs.image_input),
+    // Replicate's image_input, Higgsfield's image_url(s)
+    inputImage: firstUrl(
+      input.inputs.image_input ?? input.inputs.image_urls ?? input.inputs.image_url
+    ),
     aspectRatio: String(input.inputs.aspect_ratio ?? ""),
     resolution: String(input.inputs.resolution ?? ""),
     status: input.status || "starting",
@@ -240,6 +249,7 @@ export const HISTORY_MAX_PAGE_SIZE = 60;
 // What a list row shows (see toPublicGeneration): the
 // stored inputs stay in the database
 const LIST_PROJECTION = {
+  provider: 1,
   userId: 1,
   userName: 1,
   projectId: 1,
@@ -419,6 +429,16 @@ export async function fetchPrediction(
   return { ok: true, prediction: data };
 }
 
+// The run's current state from whichever provider ran
+// it, in Replicate's shape (see lib/higgsfield.ts)
+export function fetchGenerationStatus(
+  generation: Pick<GenerationDoc, "_id" | "provider">
+): ReturnType<typeof fetchPrediction> {
+  return generation.provider === "higgsfield"
+    ? checkHiggsfieldRequest(generation._id)
+    : fetchPrediction(generation._id);
+}
+
 // Longest a save may hold its claim (download timeout is
 // 5 minutes, plus the upload)
 const SAVE_CLAIM_MS = 15 * 60 * 1000;
@@ -475,10 +495,17 @@ export async function applyPrediction(
       // and the tiers (resolution, duration) must survive.
       const echoed = prediction.input as Record<string, unknown> | undefined;
 
-      costUsd = calculateReplicateCost(generation.model, {
-        ...prediction,
-        input: { ...(generation.inputs ?? {}), ...(echoed ?? {}) },
-      });
+      // Higgsfield bills finished videos by length and
+      // resolution
+      costUsd =
+        generation.provider === "higgsfield"
+          ? status === "succeeded"
+            ? higgsfieldCostUsd(generation.model, generation.inputs ?? {})
+            : null
+          : calculateReplicateCost(generation.model, {
+              ...prediction,
+              input: { ...(generation.inputs ?? {}), ...(echoed ?? {}) },
+            });
     } catch (costError) {
       console.error("Cost calculation error:", costError);
     }
@@ -513,7 +540,11 @@ export async function applyPrediction(
         };
       }
 
-      saved = await saveOutput(generation._id, replicateUrl);
+      saved = await saveOutput(
+        generation._id,
+        replicateUrl,
+        generation.provider === "higgsfield" ? isHiggsfieldOutputUrl : undefined
+      );
       localOutputUrl = saved ? outputUrlFor(generation._id) : null;
     }
 
@@ -596,7 +627,7 @@ export async function reconcilePending(
 
   await Promise.allSettled(
     pending.map(async (generation) => {
-      const result = await fetchPrediction(generation._id);
+      const result = await fetchGenerationStatus(generation);
 
       if (result.ok) {
         await applyPrediction(generation, result.prediction);
@@ -617,7 +648,10 @@ export async function reconcilePending(
               ...(failures >= MAX_RECONCILE_FAILURES
                 ? {
                     status: "unknown",
-                    error: "Replicate no longer has this prediction.",
+                    error:
+                      generation.provider === "higgsfield"
+                        ? "Higgsfield no longer has this request."
+                        : "Replicate no longer has this prediction.",
                     completedAt: new Date(),
                   }
                 : {}),

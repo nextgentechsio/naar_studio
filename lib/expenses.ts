@@ -102,7 +102,7 @@ export async function recordExpense(
     userName: generation.userName,
     projectId: generation.projectId,
     projectName: generation.projectName,
-    provider: "replicate",
+    provider: generation.provider ?? "replicate",
     model: generation.model,
     amountUsd,
     currency: "USD",

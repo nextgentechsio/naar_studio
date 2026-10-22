@@ -27,7 +27,25 @@ import { useStudio } from "./StudioProvider";
 // going while the user looks at History or Expenses.
 // The server also finishes runs on its own (see
 // reconcilePending), so closing the tab loses nothing.
+//
+// One instance per provider (Replicate, Higgsfield), each
+// with its own form and run. useGenerate() reads the
+// Replicate one, or the one an <ActiveGenerate> picks
+// (the Higgsfield page), so the same page and fields
+// work for both.
 // --------------------------------------------------
+
+export type GenerateProviderId = "replicate" | "higgsfield";
+
+// Where each provider loads a model's settings and
+// starts runs; both answer in the same shapes
+const ENDPOINTS: Record<GenerateProviderId, { schema: string; generate: string }> = {
+  replicate: { schema: "/api/models/schema", generate: "/api/generate" },
+  higgsfield: {
+    schema: "/api/higgsfield/models/schema",
+    generate: "/api/higgsfield/generate",
+  },
+};
 
 const POLL_INTERVAL_MS = 2000;
 const POLL_TIMEOUT_MS = 15 * 60 * 1000;
@@ -98,6 +116,8 @@ export type Draft = {
 };
 
 type GenerateContextValue = {
+  provider: GenerateProviderId;
+
   // Project (by name; blank until the user picks one)
   project: string;
   setProject: (name: string) => void;
@@ -131,7 +151,9 @@ type GenerateContextValue = {
   uploading: Record<string, number>;
   // Files still uploading, shown from a local preview
   pendingUploads: Record<string, PendingUpload[]>;
-  uploadFile: (key: string, file: File) => void;
+  // multiple: add to the field's list (default: images
+  // do, a video or audio replaces the field's one file)
+  uploadFile: (key: string, file: File, multiple?: boolean) => void;
 
   // Run
   generating: boolean;
@@ -144,13 +166,26 @@ type GenerateContextValue = {
   generate: () => void;
 };
 
+// The one useGenerate() reads
 const GenerateContext = createContext<GenerateContextValue | null>(null);
 
+// Every instance, by provider
+const StoreContexts: Record<
+  GenerateProviderId,
+  React.Context<GenerateContextValue | null>
+> = {
+  replicate: createContext<GenerateContextValue | null>(null),
+  higgsfield: createContext<GenerateContextValue | null>(null),
+};
+
 export function GenerateProvider({
+  provider = "replicate",
   children,
 }: {
+  provider?: GenerateProviderId;
   children: React.ReactNode;
 }) {
+  const endpoints = ENDPOINTS[provider];
   const { projects } = useStudio();
 
   const [selectedProject, setProject] = useState("");
@@ -288,7 +323,7 @@ export function GenerateProvider({
       setSchemaLoading(true);
 
       fetchJson<{ inputSchema?: Schema }>(
-        `/api/models/schema?model=${encodeURIComponent(id)}`
+        `${endpoints.schema}?model=${encodeURIComponent(id)}`
       )
         .then((data) => {
           if (latestModelRef.current !== id) return;
@@ -317,7 +352,7 @@ export function GenerateProvider({
           if (latestModelRef.current === id) setSchemaLoading(false);
         });
     },
-    [clearPreviews]
+    [clearPreviews, endpoints]
   );
 
   const loadDraft = useCallback(
@@ -366,9 +401,10 @@ export function GenerateProvider({
   }, [inputs, filePreviews]);
 
   const uploadFile = useCallback(
-    async (key: string, file: File) => {
+    async (key: string, file: File, multiple?: boolean) => {
       const isMedia =
         file.type.startsWith("video/") || file.type.startsWith("audio/");
+      const appends = multiple ?? !isMedia;
 
       if (file.size > MAX_FILE_BYTES) {
         setError("Files must be 100 MB or smaller.");
@@ -420,13 +456,14 @@ export function GenerateProvider({
         kept = true;
         setFilePreviews((previous) => ({ ...previous, [url]: preview }));
 
-        // VIDEO / AUDIO: single file per field
-        if (isMedia) {
+        // One file per field (a video, an audio track)
+        if (!appends) {
           updateInput(key, url);
           return;
         }
 
-        // IMAGE: appended
+        // A list (images, or a model's several videos):
+        // appended
         setInputs((previous) => {
           const current = previous[key];
           const images = Array.isArray(current)
@@ -591,7 +628,7 @@ export function GenerateProvider({
         prediction?: Prediction;
         costUsd?: number | null;
         tracking?: { predictionId?: string };
-      }>("/api/generate", {
+      }>(endpoints.generate, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -605,7 +642,7 @@ export function GenerateProvider({
         data.tracking?.predictionId || data.prediction?.id || "";
 
       if (!data.prediction || !predictionId) {
-        throw new Error("Replicate did not return a prediction.");
+        throw new Error("The run didn't start. Please try again.");
       }
 
       // The user changed model while this was starting
@@ -625,9 +662,10 @@ export function GenerateProvider({
     } finally {
       setGenerating(false);
     }
-  }, [project, model, inputs, pollPrediction]);
+  }, [project, model, inputs, pollPrediction, endpoints]);
 
   const value: GenerateContextValue = {
+    provider,
     project,
     setProject,
     model,
@@ -659,10 +697,18 @@ export function GenerateProvider({
     generate,
   };
 
+  const Store = StoreContexts[provider];
+
   return (
-    <GenerateContext.Provider value={value}>
-      {children}
-    </GenerateContext.Provider>
+    <Store.Provider value={value}>
+      {provider === "replicate" ? (
+        <GenerateContext.Provider value={value}>
+          {children}
+        </GenerateContext.Provider>
+      ) : (
+        children
+      )}
+    </Store.Provider>
   );
 }
 
@@ -674,4 +720,31 @@ export function useGenerate(): GenerateContextValue {
   }
 
   return value;
+}
+
+// A specific provider's state, e.g. to "Run again" a
+// Higgsfield run from History
+export function useGenerateStore(provider: GenerateProviderId): GenerateContextValue {
+  const value = useContext(StoreContexts[provider]);
+
+  if (!value) {
+    throw new Error(`No <GenerateProvider provider="${provider}"> mounted`);
+  }
+
+  return value;
+}
+
+// Makes useGenerate() inside read this provider's state
+export function ActiveGenerate({
+  provider,
+  children,
+}: {
+  provider: GenerateProviderId;
+  children: React.ReactNode;
+}) {
+  return (
+    <GenerateContext.Provider value={useGenerateStore(provider)}>
+      {children}
+    </GenerateContext.Provider>
+  );
 }

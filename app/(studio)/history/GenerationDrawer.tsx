@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { useGenerate } from "@/app/(studio)/_components/GenerateProvider";
+import { useGenerateStore } from "@/app/(studio)/_components/GenerateProvider";
 import { useStudio } from "@/app/(studio)/_components/StudioProvider";
 import {
   Alert,
@@ -53,7 +53,9 @@ export default function GenerationDrawer({
 }) {
   const router = useRouter();
   const { projects } = useStudio();
-  const { loadDraft, setError: setGenerateError } = useGenerate();
+  // "Run again" goes back to the provider that ran it
+  const replicate = useGenerateStore("replicate");
+  const higgsfield = useGenerateStore("higgsfield");
 
   const [loaded, setLoaded] = useState<{
     id: string;
@@ -100,6 +102,11 @@ export default function GenerationDrawer({
     const detail = current?.detail;
     if (!detail) return;
 
+    const isHiggsfield = detail.provider === "higgsfield";
+    const { loadDraft, setError: setGenerateError } = isHiggsfield
+      ? higgsfield
+      : replicate;
+
     const projectActive = projects.some((item) => item.name === detail.project);
 
     loadDraft({
@@ -114,7 +121,7 @@ export default function GenerationDrawer({
       );
     }
 
-    router.push("/replicate");
+    router.push(isHiggsfield ? "/higgsfield" : "/replicate");
   }
 
   function download() {

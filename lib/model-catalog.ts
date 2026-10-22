@@ -119,6 +119,12 @@ export function findCatalogModel(
 
 // Friendly name for display ("Nano Banana"); models
 // outside the catalog keep their Replicate id
+// Higgsfield runs (see lib/higgsfield.ts); not in the
+// catalog, which lists Replicate models
+const OTHER_PROVIDER_LABELS: Record<string, string> = {
+  "bytedance/seedance-2.5/text-to-video": "Seedance 2.5 · Higgsfield",
+};
+
 export function modelLabel(id: string): string {
-  return findCatalogModel(id)?.label ?? id;
+  return findCatalogModel(id)?.label ?? OTHER_PROVIDER_LABELS[id] ?? id;
 }

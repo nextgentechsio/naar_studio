@@ -34,8 +34,11 @@ export default async function StudioLayout({
       currentUser={toPublicUser(user)}
       sessionStartedAt={sessionStartedAt}
     >
+      {/* One per provider, each keeping its own form and run */}
       <GenerateProvider>
-        <StudioShell>{children}</StudioShell>
+        <GenerateProvider provider="higgsfield">
+          <StudioShell>{children}</StudioShell>
+        </GenerateProvider>
       </GenerateProvider>
     </StudioProvider>
   );

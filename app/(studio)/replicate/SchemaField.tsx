@@ -201,8 +201,14 @@ function FileField({
   } = useGenerate();
 
   const value = inputs[key];
-  const single = kind !== "image";
+  // Images, and any list field (e.g. a model's reference
+  // videos), take several files; otherwise one
+  const single = kind !== "image" && field.type !== "array";
   const busy = (uploading[key] ?? 0) > 0;
+
+  const noun = kind === "audio" ? "audio file" : kind;
+  const nouns = `${noun}s`;
+  const aNoun = kind === "image" ? "an image" : kind === "audio" ? "an audio file" : "a video";
 
   // Shared by the picker and drag & drop. A drop can hold
   // any file type, so keep only this field's kind.
@@ -210,12 +216,12 @@ function FileField({
     const matching = files.filter((file) => file.type.startsWith(`${kind}/`));
 
     if (!matching.length) {
-      if (files.length) setError(`Please drop ${single ? `a ${kind}` : "image"} file.`);
+      if (files.length) setError(`Please drop ${single ? aNoun : nouns}.`);
       return;
     }
 
     (single ? matching.slice(0, 1) : matching).forEach((file) =>
-      uploadFile(key, file)
+      uploadFile(key, file, !single)
     );
   }
 
@@ -241,14 +247,14 @@ function FileField({
     });
   }
 
-  const images =
-    kind === "image"
-      ? Array.isArray(value)
-        ? value
-        : typeof value === "string" && value
-          ? [value]
-          : []
-      : [];
+  // The field's files, when it takes several
+  const files = single
+    ? []
+    : Array.isArray(value)
+      ? value
+      : typeof value === "string" && value
+        ? [value]
+        : [];
 
   const singleUrl =
     single && typeof value === "string" && value ? value : null;
@@ -262,17 +268,17 @@ function FileField({
       ? (filePreviews[singleUrl] ?? singleUrl)
       : null;
 
-  // Uploaded images, then those still uploading, in one
+  // Uploaded files, then those still uploading, in one
   // list so a tile stays the same element when done
   const tiles: { src: string; index: number | null; progress?: number | null }[] = [
-    ...images.map((image, index) => ({
-      src: filePreviews[String(image)] ?? String(image),
+    ...files.map((file, index) => ({
+      src: filePreviews[String(file)] ?? String(file),
       index,
     })),
     ...(single ? [] : pending.map((item) => ({ ...item, src: item.preview, index: null }))),
     // A video is one tile too: uploaded, or the newest
     // one still uploading
-    ...(kind === "video" && singleSrc
+    ...(kind === "video" && single && singleSrc
       ? [
           {
             src: singleSrc,
@@ -310,12 +316,12 @@ function FileField({
             <span className="min-w-0">
               <span className="block truncate text-sm font-medium text-fg">
                 {dragging
-                  ? `Drop ${single ? `the ${kind}` : "images"} here`
+                  ? `Drop ${single ? `the ${noun}` : nouns} here`
                   : busy
                     ? "Uploading…"
                     : singleUrl
-                      ? `Replace ${kind}`
-                      : `Add ${single ? `a ${kind}` : "images"}`}
+                      ? `Replace ${noun}`
+                      : `Add ${single ? aNoun : nouns}`}
               </span>
 
               <span className="block truncate text-xs text-fg-subtle" title={ACCEPT_HINTS[kind]}>
@@ -362,8 +368,39 @@ function FileField({
             </PreviewTile>
           )}
 
+          {/* AUDIO LIST: each file played inline */}
+          {kind === "audio" && !single && tiles.length > 0 && (
+            <ul className="space-y-2">
+              {tiles.map((tile) => (
+                <PreviewTile
+                  key={tile.src}
+                  as="li"
+                  className="rounded-lg border border-line bg-sunken p-2 pr-12"
+                  progress={tile.progress}
+                >
+                  {(mediaClass) => (
+                    <>
+                      <audio src={tile.src} controls className={cx("w-full", mediaClass)} />
+
+                      {tile.index !== null && (
+                        <button
+                          type="button"
+                          aria-label={`Remove ${label} ${tile.index + 1}`}
+                          onClick={() => removeImage(key, tile.index!)}
+                          className="absolute right-2 top-1/2 z-10 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-fg-muted hover:bg-raised hover:text-fg"
+                        >
+                          <Icon name="close" size={14} />
+                        </button>
+                      )}
+                    </>
+                  )}
+                </PreviewTile>
+              ))}
+            </ul>
+          )}
+
           {/* IMAGE / VIDEO TILES, keyed by the local preview */}
-          {tiles.length > 0 && (
+          {kind !== "audio" && tiles.length > 0 && (
             <ul className="flex flex-wrap gap-2">
               {tiles.map((tile) => (
                 <PreviewTile
@@ -400,7 +437,7 @@ function FileField({
                         aria-label={`Preview ${
                           tile.index === null
                             ? `${label} (uploading)`
-                            : kind === "video"
+                            : single
                               ? label
                               : `${label} ${tile.index + 1}`
                         }`}
@@ -417,9 +454,9 @@ function FileField({
                       {tile.index !== null && (
                         <button
                           type="button"
-                          aria-label={`Remove ${label}${kind === "video" ? "" : ` ${tile.index + 1}`}`}
+                          aria-label={`Remove ${label}${single ? "" : ` ${tile.index + 1}`}`}
                           onClick={() =>
-                            kind === "video"
+                            single
                               ? updateInput(key, "")
                               : removeImage(key, tile.index!)
                           }
@@ -544,7 +581,7 @@ function PreviewTile({
             )}
           </span>
         )}
-        <span className="sr-only">Uploading</span>
+        {uploading && <span className="sr-only">Uploading</span>}
       </div>
     </Tag>
   );

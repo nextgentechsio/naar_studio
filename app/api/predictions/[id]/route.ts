@@ -3,7 +3,7 @@ import { requireUser } from "@/lib/auth";
 import {
   applyPrediction,
   canViewGeneration,
-  fetchPrediction,
+  fetchGenerationStatus,
   getGeneration,
 } from "@/lib/generations";
 
@@ -46,16 +46,20 @@ export async function GET(
       );
     }
 
-    const result = await fetchPrediction(id);
+    const result = await fetchGenerationStatus(generation);
 
     if (!result.ok) {
-      // Never pass Replicate's status through: its 401
+      // Never pass the provider's status through: its 401
       // (our token) would look like the user's session
       // ending, and sign them out
       console.error("Fetch prediction failed:", id, result.status, result.error);
 
       return NextResponse.json(
-        { error: "Couldn't reach Replicate. Retrying…" },
+        {
+          error: `Couldn't reach ${
+            generation.provider === "higgsfield" ? "Higgsfield" : "Replicate"
+          }. Retrying…`,
+        },
         { status: 502 }
       );
     }

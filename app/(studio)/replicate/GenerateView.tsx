@@ -3,6 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useGenerate } from "@/app/(studio)/_components/GenerateProvider";
 import { useStudio } from "@/app/(studio)/_components/StudioProvider";
+import { useApiData } from "@/app/(studio)/_components/useApiData";
+import HiggsfieldModelBrowser from "@/app/(studio)/higgsfield/HiggsfieldModelBrowser";
+import HiggsfieldModelPicker, {
+  HiggsfieldVariants,
+} from "@/app/(studio)/higgsfield/HiggsfieldModelPicker";
 import ProjectAvatar from "@/app/components/ProjectAvatar";
 import { Icon } from "@/app/components/ui/Icon";
 import {
@@ -21,7 +26,7 @@ import {
   Spinner,
   textareaClass,
 } from "@/app/components/ui/primitives";
-import { errorMessage } from "@/lib/client/http";
+import { errorMessage, fetchJson } from "@/lib/client/http";
 import {
   downloadOutput,
   getOutputType,
@@ -32,6 +37,11 @@ import {
   KIND_LABELS,
   MODEL_CATALOG,
 } from "@/lib/model-catalog";
+import {
+  higgsfieldCostUsd,
+  isPricedHiggsfieldModel,
+  type HiggsfieldModel,
+} from "@/lib/higgsfield-models";
 import { calculateReplicateCost } from "@/lib/replicate-cost";
 import { canManageProjects } from "@/lib/roles";
 import {
@@ -60,10 +70,19 @@ import SchemaField from "./SchemaField";
 // Model dropdown groups, in this order
 const MODEL_KINDS = ["image", "video", "upscale"] as const;
 
+// The Higgsfield page's model list (and whether the
+// server has credentials); the Replicate page needs none
+type HiggsfieldModels = { enabled: boolean; models: HiggsfieldModel[] };
+
+const fetchHiggsfieldModels = () =>
+  fetchJson<HiggsfieldModels>("/api/higgsfield/models");
+const noModels = () => Promise.resolve<HiggsfieldModels>({ enabled: true, models: [] });
+
 export default function GenerateView() {
   const { currentUser, projects: projectList } = useStudio();
 
   const {
+    provider,
     project,
     setProject,
     model,
@@ -113,7 +132,32 @@ export default function GenerateView() {
     }
   }, [runId]);
 
-  const catalogModel = model ? findCatalogModel(model) : undefined;
+  // ---------- Provider ----------
+  // Same page for Replicate and Higgsfield; only the model
+  // list, prices and wording differ
+
+  const isHiggsfield = provider === "higgsfield";
+  const providerName = isHiggsfield ? "Higgsfield" : "Replicate";
+
+  const higgsfield = useApiData(
+    isHiggsfield ? "higgsfield:models" : "higgsfield:none",
+    isHiggsfield ? fetchHiggsfieldModels : noModels,
+    "Unable to load Higgsfield's models."
+  );
+  const higgsfieldModels = higgsfield.data?.models ?? [];
+  const higgsfieldModel = isHiggsfield
+    ? higgsfieldModels.find((item) => item.id === model)
+    : undefined;
+  // Known only once the list arrives
+  const notSetUp = isHiggsfield && higgsfield.data?.enabled === false;
+
+  const catalogModel =
+    model && !isHiggsfield ? findCatalogModel(model) : undefined;
+
+  // Has a price on file, so runs get an estimate and cost
+  const priced = isHiggsfield
+    ? Boolean(model) && isPricedHiggsfieldModel(model)
+    : Boolean(catalogModel);
 
   const has = (key: string) =>
     Object.prototype.hasOwnProperty.call(schema, key);
@@ -147,12 +191,14 @@ export default function GenerateView() {
 
   let estimate: number | null = null;
 
-  if (model && catalogModel && !schemaLoading) {
+  if (model && priced && !schemaLoading) {
     try {
-      estimate = calculateReplicateCost(model, {
-        status: "succeeded",
-        input: buildGenerationInputs(inputs),
-      });
+      estimate = isHiggsfield
+        ? higgsfieldCostUsd(model, buildGenerationInputs(inputs))
+        : calculateReplicateCost(model, {
+            status: "succeeded",
+            input: buildGenerationInputs(inputs),
+          });
     } catch {
       estimate = null;
     }
@@ -171,6 +217,7 @@ export default function GenerateView() {
   const uploadsInFlight = Object.values(uploading).some((count) => count > 0);
 
   const missing = [
+    notSetUp && "ask an admin to set up Higgsfield",
     !project && "choose a project",
     !model && "choose a model",
     uploadsInFlight && "wait for uploads to finish",
@@ -201,11 +248,13 @@ export default function GenerateView() {
   // What is being made, from the model while it runs, and
   // from the actual output once it's ready
 
-  const makingMedia: "image" | "video" | null = catalogModel
-    ? catalogModel.kind === "video" || /video/i.test(model)
-      ? "video"
-      : "image"
-    : null;
+  const makingMedia: "image" | "video" | null = higgsfieldModel
+    ? higgsfieldModel.output
+    : catalogModel
+      ? catalogModel.kind === "video" || /video/i.test(model)
+        ? "video"
+        : "image"
+      : null;
 
   const makingTitle = !makingMedia
     ? "Generating…"
@@ -244,7 +293,7 @@ export default function GenerateView() {
 
   return (
     <>
-      <h1 className="sr-only">Generate</h1>
+      <h1 className="sr-only">{isHiggsfield ? "Higgsfield" : "Generate"}</h1>
 
       {/* Fills the screen below the top bar on laptops and
           up: 3.5rem top bar + 3rem page padding */}
@@ -297,109 +346,144 @@ export default function GenerateView() {
               )}
             </div>
 
-            <div className="min-w-0">
-              <label htmlFor="generate-model" className={smallLabel}>
-                Model{" "}
-                <span className="text-danger" aria-hidden>
-                  *
-                </span>
-              </label>
-              <div className="flex items-center gap-2">
-                <span
-                  className={cx(
-                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border",
-                    model
-                      ? "border-accent bg-accent text-on-accent"
-                      : "border-line bg-sunken text-fg-subtle",
-                  )}
-                  aria-hidden
-                >
-                  <Icon
-                    name={
+            {isHiggsfield ? (
+              <HiggsfieldModelPicker
+                model={model}
+                models={higgsfieldModels}
+                loading={higgsfield.loading}
+                onChoose={chooseModel}
+                onBrowse={() => setBrowsing(true)}
+              />
+            ) : (
+              <div className="min-w-0">
+                <label htmlFor="generate-model" className={smallLabel}>
+                  Model{" "}
+                  <span className="text-danger" aria-hidden>
+                    *
+                  </span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={cx(
+                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border",
+                      model
+                        ? "border-accent bg-accent text-on-accent"
+                        : "border-line bg-sunken text-fg-subtle",
+                    )}
+                    aria-hidden
+                  >
+                    <Icon
+                      name={
+                        catalogModel
+                          ? catalogModel.kind === "upscale"
+                            ? "upscale"
+                            : catalogModel.kind
+                          : "sparkles"
+                      }
+                      size={16}
+                    />
+                  </span>
+                  <select
+                    id="generate-model"
+                    required
+                    value={model}
+                    onChange={(event) => chooseModel(event.target.value)}
+                    className={cx(
+                      inputClass,
+                      "min-w-0",
+                      !model && "text-fg-subtle",
+                    )}
+                  >
+                    <option value="" disabled>
+                      Select model
+                    </option>
+                    {MODEL_KINDS.map((kind) => (
+                      <optgroup key={kind} label={KIND_LABELS[kind]}>
+                        {MODEL_CATALOG.filter((item) => item.kind === kind).map(
+                          (item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.label} · {item.priceHint}
+                            </option>
+                          ),
+                        )}
+                      </optgroup>
+                    ))}
+                    {/* Picked in "Browse all models" */}
+                    {model && !catalogModel && (
+                      <optgroup label="Other Replicate model">
+                        <option value={model}>{model} · unpriced</option>
+                      </optgroup>
+                    )}
+                  </select>
+                </div>
+                {/* Under the select: what the chosen model is, and
+                    the way to any other Replicate model */}
+                <div className="mt-1.5 flex min-w-0 items-center justify-between gap-3 pl-11 text-xs">
+                  <p
+                    className={cx(
+                      "min-w-0 truncate",
+                      catalogModel ? "text-fg-subtle" : "text-warning",
+                    )}
+                    title={
                       catalogModel
-                        ? catalogModel.kind === "upscale"
-                          ? "upscale"
-                          : catalogModel.kind
-                        : "sparkles"
+                        ? `${catalogModel.vendor} · ${catalogModel.summary}`
+                        : model
+                          ? "Replicate doesn't report this model's cost, so its runs are recorded as unpriced in Expenses."
+                          : undefined
                     }
-                    size={16}
-                  />
-                </span>
-                <select
-                  id="generate-model"
-                  required
-                  value={model}
-                  onChange={(event) => chooseModel(event.target.value)}
-                  className={cx(
-                    inputClass,
-                    "min-w-0",
-                    !model && "text-fg-subtle",
-                  )}
-                >
-                  <option value="" disabled>
-                    Select model
-                  </option>
-                  {MODEL_KINDS.map((kind) => (
-                    <optgroup key={kind} label={KIND_LABELS[kind]}>
-                      {MODEL_CATALOG.filter((item) => item.kind === kind).map(
-                        (item) => (
-                          <option key={item.id} value={item.id}>
-                            {item.label} · {item.priceHint}
-                          </option>
-                        ),
-                      )}
-                    </optgroup>
-                  ))}
-                  {/* Picked in "Browse all models" */}
-                  {model && !catalogModel && (
-                    <optgroup label="Other Replicate model">
-                      <option value={model}>{model} · unpriced</option>
-                    </optgroup>
-                  )}
-                </select>
-              </div>
-              {/* Under the select: what the chosen model is, and
-                  the way to any other Replicate model */}
-              <div className="mt-1.5 flex min-w-0 items-center justify-between gap-3 pl-11 text-xs">
-                <p
-                  className={cx(
-                    "min-w-0 truncate",
-                    catalogModel ? "text-fg-subtle" : "text-warning",
-                  )}
-                  title={
-                    catalogModel
+                  >
+                    {catalogModel
                       ? `${catalogModel.vendor} · ${catalogModel.summary}`
                       : model
-                        ? "Replicate doesn't report this model's cost, so its runs are recorded as unpriced in Expenses."
-                        : undefined
-                  }
-                >
-                  {catalogModel
-                    ? `${catalogModel.vendor} · ${catalogModel.summary}`
-                    : model
-                      ? "Unpriced: no cost on file"
-                      : ""}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setBrowsing(true)}
-                  className="inline-flex shrink-0 items-center gap-1 font-medium text-accent hover:underline"
-                >
-                  <Icon name="search" size={12} />
-                  Browse all models
-                </button>
+                        ? "Unpriced: no cost on file"
+                        : ""}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setBrowsing(true)}
+                    className="inline-flex shrink-0 items-center gap-1 font-medium text-accent hover:underline"
+                  >
+                    <Icon name="search" size={12} />
+                    Browse all models
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* Under both pickers: this model's other
+                versions (some take uploads) */}
+            {isHiggsfield && (
+              <HiggsfieldVariants
+                model={model}
+                models={higgsfieldModels}
+                onChoose={chooseModel}
+                className="sm:col-span-2"
+              />
+            )}
           </div>
 
           {/* Settings: the prompt takes all spare height */}
           <div className="@container flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
-            {!model ? (
+            {notSetUp ? (
+              <Alert tone="warning">
+                <p className="font-medium">Higgsfield isn&apos;t set up on the server</p>
+                <p className="mt-0.5 text-xs opacity-90">
+                  An admin needs to add HF_CREDENTIALS to the server&apos;s
+                  environment.
+                </p>
+              </Alert>
+            ) : isHiggsfield && higgsfield.error && !higgsfieldModels.length ? (
+              <Alert>{higgsfield.error}</Alert>
+            ) : !model ? (
               <EmptyState
                 compact
-                icon="sparkles"
+                icon={isHiggsfield ? "video" : "sparkles"}
                 title="Choose a model"
-                description="Its prompt and settings appear here."
+                description={
+                  isHiggsfield
+                    ? "Pick one above or browse all Higgsfield models. Its prompt and settings appear here."
+                    : "Its prompt and settings appear here."
+                }
               />
             ) : schemaLoading ? (
               <div
@@ -581,7 +665,7 @@ export default function GenerateView() {
                 <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
                   {!model ? (
                     <span className="text-sm text-fg-muted">—</span>
-                  ) : !catalogModel ? (
+                  ) : !priced ? (
                     <span className="text-base font-semibold text-warning">
                       Unpriced
                     </span>
@@ -599,7 +683,7 @@ export default function GenerateView() {
                   ) : (
                     <>
                       <span className="font-mono text-base font-semibold text-fg">
-                        {catalogModel.priceHint}
+                        {catalogModel?.priceHint ?? "—"}
                       </span>
                       <span className="text-xs text-fg-subtle">
                         depends on output size
@@ -745,7 +829,7 @@ export default function GenerateView() {
               // Polling gave up; the server still finishes the
               // run and records it in History
               <Alert tone="warning">
-                <p className="font-medium">Still waiting on Replicate</p>
+                <p className="font-medium">Still waiting on {providerName}</p>
                 <p className="mt-0.5 text-xs opacity-90">
                   We stopped checking here, but the run is tracked: its result
                   and cost will appear in History.
@@ -791,7 +875,17 @@ export default function GenerateView() {
         </section>
       </div>
 
-      {browsing && <ModelBrowserDialog onClose={() => setBrowsing(false)} />}
+      {browsing &&
+        (isHiggsfield ? (
+          <HiggsfieldModelBrowser
+            models={higgsfieldModels}
+            current={model}
+            onPick={chooseModel}
+            onClose={() => setBrowsing(false)}
+          />
+        ) : (
+          <ModelBrowserDialog onClose={() => setBrowsing(false)} />
+        ))}
     </>
   );
 }

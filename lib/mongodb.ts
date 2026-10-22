@@ -75,13 +75,16 @@ export type ProjectDoc = {
 
 // One document per Replicate prediction; _id is the
 // Replicate prediction id.
+// Who ran a generation (and bills it)
+export type Provider = "replicate" | "higgsfield";
+
 export type GenerationDoc = {
   _id: string;
   userId: string;
   userName: string;
   projectId: string;
   projectName: string;
-  provider: "replicate";
+  provider: Provider;
   model: string;
   version: string;
   prompt: string;
@@ -128,7 +131,7 @@ export type ExpenseDoc = {
   userName: string;
   projectId: string;
   projectName: string;
-  provider: "replicate";
+  provider: Provider;
   model: string;
   // null = model has no known price (counted, flagged)
   amountUsd: number | null;

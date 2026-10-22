@@ -150,7 +150,10 @@ describe("expenses", () => {
   });
 
   it("page through entries without overlaps, and skip them when asked", async () => {
-    const report = await api(`/api/expenses?${period()}`, { session: root });
+    // Other test files add runs to the shared database:
+    // look at this file's project only
+    const scope = `project=${project.id}`;
+    const report = await api(`/api/expenses?${period()}&${scope}`, { session: root });
     const all = report.data.entries as { id: string }[];
     expect(all.length).toBe(4);
     expect(report.data.nextCursor).toBeNull();
@@ -158,7 +161,7 @@ describe("expenses", () => {
     const seen: string[] = [];
     let cursor: string | null = null;
     do {
-      const query: string = cursor ? `limit=1&cursor=${encodeURIComponent(cursor)}` : "limit=1";
+      const query: string = `${scope}&limit=1${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
       const page = await api(`/api/expenses/entries?${query}`, { session: root });
       expect(page.status).toBe(200);
       seen.push(...(page.data.entries as { id: string }[]).map((entry) => entry.id));
@@ -169,13 +172,13 @@ describe("expenses", () => {
     expect(seen).toEqual(all.map((entry) => entry.id));
 
     // Alice still only sees her own
-    const mine = await api("/api/expenses/entries", { session: alice.session });
+    const mine = await api(`/api/expenses/entries?${scope}`, { session: alice.session });
     expect((mine.data.entries as unknown[]).length).toBe(3);
 
     // Bad cursors are ignored, not errors
     expect((await api("/api/expenses/entries?cursor=nope_", { session: alice.session })).status).toBe(200);
 
-    const totalsOnly = await api(`/api/expenses?${period()}&entries=0`, { session: root });
+    const totalsOnly = await api(`/api/expenses?${period()}&entries=0&${scope}`, { session: root });
     expect(totalsOnly.data.entries).toEqual([]);
     expect((totalsOnly.data.totals as { allTime: { count: number } }).allTime.count).toBe(4);
   });
@@ -196,26 +199,31 @@ describe("expenses", () => {
 
     expect(selected(await report(`project=${project.id}`))).toBe(4);
     expect(selected(await report("project=missing"))).toBe(0);
-    expect(selected(await report("model=google/nano-banana"))).toBe(4);
-    expect(selected(await report("model=nobody/nothing"))).toBe(0);
+
+    // From here on, this file's project only (other test
+    // files add runs to the shared database)
+    const inProject = (query: string, session = root) => report(`project=${project.id}&${query}`, session);
+
+    expect(selected(await inProject("model=google/nano-banana"))).toBe(4);
+    expect(selected(await inProject("model=nobody/nothing"))).toBe(0);
 
     // User filter: managers only; a user can't peek at Bob
-    const bobOnly = await report(`user=${bob.id}`);
+    const bobOnly = await inProject(`user=${bob.id}`);
     expect(selected(bobOnly)).toBe(1);
     expect((bobOnly.entries as { userId: string }[]).every((entry) => entry.userId === bob.id)).toBe(true);
-    expect(selected(await report(`user=${bob.id}`, alice.session))).toBe(3);
+    expect(selected(await inProject(`user=${bob.id}`, alice.session))).toBe(3);
 
     // Date range: the totals cards ignore it, the rest follow
     const future = new Date(Date.now() + 3600_000).toISOString();
-    const empty = await report(`from=${future}`);
+    const empty = await inProject(`from=${future}`);
     expect(selected(empty)).toBe(0);
     expect(empty.entries).toEqual([]);
     expect(empty.byProject).toEqual([]);
     expect((empty.totals as { allTime: { count: number } }).allTime.count).toBe(4);
 
     const past = new Date(Date.now() - 3600_000).toISOString();
-    expect(selected(await report(`from=${past}&to=${future}`))).toBe(4);
-    expect(selected(await report(`to=${past}`))).toBe(0);
+    expect(selected(await inProject(`from=${past}&to=${future}`))).toBe(4);
+    expect(selected(await inProject(`to=${past}`))).toBe(0);
 
     // Load more keeps the filters
     const more = await api(`/api/expenses/entries?user=${bob.id}`, { session: root });

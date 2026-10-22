@@ -86,6 +86,9 @@ export function fileKind(
 
   if (lower.includes("audio")) return "audio";
 
+  // A web link (e.g. a product page) is typed, not uploaded
+  if (lower.includes("link")) return null;
+
   if (lower.includes("image") || field.format === "uri") {
     return "image";
   }
@@ -109,10 +112,25 @@ export function fieldGroup(
 }
 
 export function fieldLabel(key: string, field: SchemaProperty) {
-  return (
-    field.title ||
-    key.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase())
-  );
+  // Higgsfield names uploads by URL: image_urls → Images,
+  // end_image_url → End image
+  const name = key
+    .replace(/audio_urls$/, "audio")
+    .replace(/_urls$/, "s")
+    .replace(/_url$/, "")
+    .replace(/_/g, " ");
+  const fromKey = name.charAt(0).toUpperCase() + name.slice(1);
+
+  if (!field.title) return fromKey;
+
+  // "Image URL" → "Image", "Reference audio URLs" →
+  // "Reference audio": files are uploaded, not linked
+  const title = field.title.replace(/\s+URLs?$/i, "") || field.title;
+
+  // A title that drops the key's start/end/first/last
+  // (two fields both titled "Image URL") would be ambiguous
+  const qualifier = key.match(/^(start|end|first|last)_/)?.[1];
+  return qualifier && !title.toLowerCase().includes(qualifier) ? fromKey : title;
 }
 
 // Fields rendered by the generic renderer; prompt,

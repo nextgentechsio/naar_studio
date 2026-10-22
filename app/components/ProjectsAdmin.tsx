@@ -353,7 +353,7 @@ export default function ProjectsAdmin({
   async function removeProject(project: PublicProject) {
     if (
       !window.confirm(
-        `Delete ${project.name}? This cannot be undone. Archive it instead to keep it out of the Generate page.`
+        `Delete ${project.name}? This cannot be undone. Archive it instead to keep it out of the Replicate page.`
       )
     ) {
       return;
@@ -379,7 +379,7 @@ export default function ProjectsAdmin({
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <p className="text-sm text-fg-muted">
-          Active projects appear in the Generate page.
+          Active projects appear in the Replicate page.
         </p>
 
         <button

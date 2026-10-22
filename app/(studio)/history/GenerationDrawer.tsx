@@ -114,7 +114,7 @@ export default function GenerationDrawer({
       );
     }
 
-    router.push("/generate");
+    router.push("/replicate");
   }
 
   function download() {

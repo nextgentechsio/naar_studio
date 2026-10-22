@@ -12,7 +12,7 @@ import {
   buildGenerationInputs,
   schemaDefaults,
   type Schema,
-} from "@/app/(studio)/generate/fields";
+} from "@/app/(studio)/replicate/fields";
 import { errorMessage, fetchJson } from "@/lib/client/http";
 import { uploadInputFile } from "@/lib/client/upload";
 import type { ModelKind } from "@/lib/model-catalog";

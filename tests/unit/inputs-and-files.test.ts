@@ -3,7 +3,7 @@ import {
   buildGenerationInputs,
   orderSchemaFields,
   schemaDefaults,
-} from "@/app/(studio)/generate/fields";
+} from "@/app/(studio)/replicate/fields";
 import { formatCost } from "@/app/components/ui/primitives";
 import { getOutputType, getOutputUrls } from "@/lib/client/outputs";
 import { sniffImageType } from "@/lib/project-images";

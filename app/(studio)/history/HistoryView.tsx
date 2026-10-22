@@ -279,7 +279,7 @@ export default function HistoryView() {
               title="Nothing generated yet"
               description="Every run you start is saved here, with its cost."
               action={
-                <Link href="/generate" className={buttonClass("primary", "sm")}>
+                <Link href="/replicate" className={buttonClass("primary", "sm")}>
                   Start generating
                 </Link>
               }

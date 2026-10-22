@@ -49,7 +49,10 @@ export default function StudioShell({
   const navGroups: { label: string; items: NavItem[] }[] = [
     {
       label: "Create",
-      items: [{ href: "/generate", label: "Generate", icon: "sparkles" }],
+      items: [
+        { href: "/replicate", label: "Replicate", icon: "sparkles" },
+        { href: "/higgsfield", label: "Higgsfield", icon: "video" },
+      ],
     },
     {
       label: "Library",
@@ -100,7 +103,7 @@ export default function StudioShell({
       <div className="flex h-full flex-col">
         {/* Brand lockup: naar wordmark + "Studio" */}
         <Link
-          href="/generate"
+          href="/replicate"
           onClick={closeNav}
           aria-label="Naar Studio home"
           className="flex h-16 items-center gap-2 px-5 text-fg rail-collapsed:justify-center rail-collapsed:px-0"

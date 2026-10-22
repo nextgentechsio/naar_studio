@@ -12,7 +12,7 @@ export const metadata: Metadata = { title: "Users" };
 export default async function Page() {
   const user = await getCurrentUser();
 
-  if (!user || !canManageUsers(user)) redirect("/generate");
+  if (!user || !canManageUsers(user)) redirect("/replicate");
 
   return <UsersView />;
 }

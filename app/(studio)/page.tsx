@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-// The studio starts on Generate
+// The studio starts on Replicate
 export default function StudioHome() {
-  redirect("/generate");
+  redirect("/replicate");
 }

@@ -30,7 +30,7 @@ describe("one session per account", () => {
     const old = user.session;
     await login(user.username, user.password);
 
-    const response = await fetch(`${baseUrl}/generate`, {
+    const response = await fetch(`${baseUrl}/replicate`, {
       headers: { cookie: old.cookie },
       redirect: "manual",
     });

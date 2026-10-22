@@ -1,5 +1,6 @@
 "use client";
 
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useGenerate } from "@/app/(studio)/_components/GenerateProvider";
 import { Icon } from "@/app/components/ui/Icon";
 import {
@@ -11,6 +12,7 @@ import {
   textareaClass,
 } from "@/app/components/ui/primitives";
 import { useFileDrop } from "@/app/components/ui/useFileDrop";
+import MediaPreviewDialog, { type MediaPreview } from "./MediaPreviewDialog";
 import {
   fieldLabel,
   fileKind,
@@ -191,6 +193,7 @@ function FileField({
     inputs,
     updateInput,
     uploading,
+    pendingUploads,
     uploadFile,
     filePreviews,
     removeImage,
@@ -218,6 +221,26 @@ function FileField({
 
   const { dragging, dropProps } = useFileDrop(addFiles);
 
+  const [viewing, setViewing] = useState<MediaPreview | null>(null);
+
+  // Open from a tile: its box and the media's real size
+  // let the popup grow out of it
+  function openPreview(trigger: HTMLElement, src: string) {
+    const tile = trigger.parentElement!;
+    const media = tile.querySelector<HTMLImageElement | HTMLVideoElement>("img, video");
+    const video = media instanceof HTMLVideoElement ? media : null;
+    const image = media instanceof HTMLImageElement ? media : null;
+
+    setViewing({
+      src,
+      kind: kind === "video" ? "video" : "image",
+      alt: label,
+      origin: tile.getBoundingClientRect(),
+      width: video?.videoWidth ?? image?.naturalWidth ?? 0,
+      height: video?.videoHeight ?? image?.naturalHeight ?? 0,
+    });
+  }
+
   const images =
     kind === "image"
       ? Array.isArray(value)
@@ -229,6 +252,37 @@ function FileField({
 
   const singleUrl =
     single && typeof value === "string" && value ? value : null;
+
+  // Files of this field still uploading
+  const pending = pendingUploads[key] ?? [];
+  const singlePending = single ? (pending.at(-1) ?? null) : null;
+  const singleSrc = singlePending
+    ? singlePending.preview
+    : singleUrl
+      ? (filePreviews[singleUrl] ?? singleUrl)
+      : null;
+
+  // Uploaded images, then those still uploading, in one
+  // list so a tile stays the same element when done
+  const tiles: { src: string; index: number | null; progress?: number | null }[] = [
+    ...images.map((image, index) => ({
+      src: filePreviews[String(image)] ?? String(image),
+      index,
+    })),
+    ...(single ? [] : pending.map((item) => ({ ...item, src: item.preview, index: null }))),
+    // A video is one tile too: uploaded, or the newest
+    // one still uploading
+    ...(kind === "video" && singleSrc
+      ? [
+          {
+            src: singleSrc,
+            index: singlePending ? null : 0,
+            progress: singlePending ? singlePending.progress : undefined,
+          },
+        ]
+      : []),
+  ];
+
 
   return (
     <Field label={label} info={field.description}>
@@ -282,60 +336,216 @@ function FileField({
             />
           </label>
 
-          {/* VIDEO / AUDIO PREVIEW */}
-          {singleUrl && (
-            <div className="relative overflow-hidden rounded-lg border border-line bg-black">
-              {kind === "video" ? (
-                <video
-                  src={singleUrl}
-                  controls
-                  playsInline
-                  className="max-h-64 w-full object-contain"
-                />
-              ) : (
-                <audio src={singleUrl} controls className="w-full" />
-              )}
+          {/* AUDIO: the newest file, played inline */}
+          {kind === "audio" && singleSrc && (
+            <PreviewTile
+              key={singleSrc}
+              className="rounded-lg border border-line bg-sunken p-2 pr-24"
+              progress={singlePending ? singlePending.progress : undefined}
+            >
+              {(mediaClass) => (
+                <>
+                  <audio src={singleSrc} controls className={cx("w-full", mediaClass)} />
 
-              <Button
-                size="sm"
-                variant="secondary"
-                className="absolute right-2 top-2"
-                onClick={() => updateInput(key, "")}
-              >
-                Remove
-              </Button>
-            </div>
+                  {!singlePending && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="absolute right-2 top-1/2 z-10 -translate-y-1/2"
+                      onClick={() => updateInput(key, "")}
+                    >
+                      Remove
+                    </Button>
+                  )}
+                </>
+              )}
+            </PreviewTile>
           )}
 
-          {/* IMAGE PREVIEWS */}
-          {images.length > 0 && (
-            <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6">
-              {images.map((image, index) => (
-                <li
-                  key={`${String(image)}-${index}`}
-                  className="group relative aspect-square overflow-hidden rounded-lg border border-line bg-black"
+          {/* IMAGE / VIDEO TILES, keyed by the local preview */}
+          {tiles.length > 0 && (
+            <ul className="flex flex-wrap gap-2">
+              {tiles.map((tile) => (
+                <PreviewTile
+                  key={tile.src}
+                  as="li"
+                  className={cx(
+                    "group h-16 rounded-lg border border-line bg-black",
+                    kind === "video" ? "w-28" : "w-16"
+                  )}
+                  progress={tile.progress}
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={filePreviews[String(image)] ?? String(image)}
-                    alt={`${label} ${index + 1}`}
-                    className="h-full w-full object-cover"
-                  />
+                  {(mediaClass) => (
+                    <>
+                      {kind === "video" ? (
+                        <video
+                          src={tile.src}
+                          muted
+                          playsInline
+                          preload="metadata"
+                          className={cx("h-full w-full object-cover", mediaClass)}
+                        />
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={tile.src}
+                          alt=""
+                          className={cx("h-full w-full object-cover", mediaClass)}
+                        />
+                      )}
 
-                  <button
-                    type="button"
-                    aria-label={`Remove ${label} ${index + 1}`}
-                    onClick={() => removeImage(key, index)}
-                    className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-md bg-black/70 text-white opacity-90 transition-opacity hover:opacity-100"
-                  >
-                    <Icon name="close" size={14} />
-                  </button>
-                </li>
+                      {/* Whole tile opens the full-size preview */}
+                      <button
+                        type="button"
+                        aria-label={`Preview ${
+                          tile.index === null
+                            ? `${label} (uploading)`
+                            : kind === "video"
+                              ? label
+                              : `${label} ${tile.index + 1}`
+                        }`}
+                        onClick={(event) => openPreview(event.currentTarget, tile.src)}
+                        className="absolute inset-0 flex cursor-zoom-in items-center justify-center rounded-lg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+                      >
+                        {kind === "video" && tile.progress === undefined && (
+                          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white transition-transform group-hover:scale-110">
+                            <Icon name="play" size={14} />
+                          </span>
+                        )}
+                      </button>
+
+                      {tile.index !== null && (
+                        <button
+                          type="button"
+                          aria-label={`Remove ${label}${kind === "video" ? "" : ` ${tile.index + 1}`}`}
+                          onClick={() =>
+                            kind === "video"
+                              ? updateInput(key, "")
+                              : removeImage(key, tile.index!)
+                          }
+                          className="absolute right-1 top-1 z-10 flex h-5 w-5 items-center justify-center rounded-md bg-black/70 text-white opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-90"
+                        >
+                          <Icon name="close" size={12} />
+                        </button>
+                      )}
+                    </>
+                  )}
+                </PreviewTile>
               ))}
             </ul>
+          )}
+
+          {viewing && (
+            <MediaPreviewDialog preview={viewing} onClose={() => setViewing(null)} />
           )}
         </div>
       )}
     </Field>
+  );
+}
+
+// --------------------------------------------------
+// PREVIEW TILE
+//
+// Grows in when added. While its file uploads (progress
+// set), the media is dimmed and soft under a progress
+// ring; when the upload finishes it eases into focus.
+// --------------------------------------------------
+
+const RING_RADIUS = 15;
+const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
+
+function PreviewTile({
+  as: Tag = "div",
+  className,
+  progress,
+  children,
+}: {
+  as?: "div" | "li";
+  className?: string;
+  // undefined: not uploading; null: uploading, no progress
+  progress?: number | null;
+  children: (mediaClass: string) => ReactNode;
+}) {
+  const tile = useRef<HTMLElement>(null);
+  const uploading = progress !== undefined;
+
+  // Web Animations, not a CSS class: reordering tiles
+  // must not replay it
+  useLayoutEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    tile.current?.animate(
+      [
+        { opacity: 0, transform: "scale(0.88)", filter: "blur(6px)" },
+        { opacity: 1, transform: "scale(1)", filter: "blur(0)" },
+      ],
+      { duration: 380, easing: "cubic-bezier(0.22, 1.2, 0.36, 1)" }
+    );
+  }, []);
+
+  return (
+    <Tag
+      ref={tile as never}
+      className={cx("relative overflow-hidden", className)}
+      aria-busy={uploading || undefined}
+    >
+      {children(
+        cx(
+          "transition-[filter,transform] duration-500 ease-out",
+          uploading && "scale-[1.04] blur-[2px] brightness-75"
+        )
+      )}
+
+      <div
+        aria-hidden={!uploading}
+        className={cx(
+          "pointer-events-none absolute inset-0 flex items-center justify-center bg-black/30 transition-opacity duration-500",
+          uploading ? "opacity-100" : "opacity-0"
+        )}
+      >
+        {uploading && (
+          <span className="relative flex h-10 w-10 items-center justify-center">
+            <svg
+              viewBox="0 0 36 36"
+              className={cx(
+                "absolute inset-0 -rotate-90",
+                progress === null && "animate-spin"
+              )}
+            >
+              <circle
+                cx="18"
+                cy="18"
+                r={RING_RADIUS}
+                fill="none"
+                strokeWidth="3"
+                className="stroke-white/25"
+              />
+              <circle
+                cx="18"
+                cy="18"
+                r={RING_RADIUS}
+                fill="none"
+                strokeWidth="3"
+                strokeLinecap="round"
+                stroke="#00CCDD"
+                strokeDasharray={RING_LENGTH}
+                strokeDashoffset={
+                  RING_LENGTH * (1 - (progress === null ? 0.3 : progress / 100))
+                }
+                className="transition-[stroke-dashoffset] duration-300 ease-out"
+              />
+            </svg>
+
+            {progress !== null && (
+              <span className="text-[10px] font-semibold tabular-nums text-white">
+                {Math.round(progress)}
+              </span>
+            )}
+          </span>
+        )}
+        <span className="sr-only">Uploading</span>
+      </div>
+    </Tag>
   );
 }

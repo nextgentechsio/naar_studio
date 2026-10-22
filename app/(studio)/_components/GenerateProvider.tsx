@@ -75,6 +75,14 @@ function predictionCost(
   );
 }
 
+export type PendingUpload = {
+  // Local object URL; once uploaded it becomes the
+  // file's entry in filePreviews, so the preview stays put
+  preview: string;
+  // 0–100, or null when the upload can't report progress
+  progress: number | null;
+};
+
 type ChooseModelOptions = {
   // Keeps the id in the search box, so the search
   // doesn't re-run for the previous query
@@ -121,6 +129,8 @@ type GenerateContextValue = {
   filePreviews: Record<string, string>;
   removeImage: (key: string, index: number) => void;
   uploading: Record<string, number>;
+  // Files still uploading, shown from a local preview
+  pendingUploads: Record<string, PendingUpload[]>;
   uploadFile: (key: string, file: File) => void;
 
   // Run
@@ -169,6 +179,9 @@ export function GenerateProvider({
     {}
   );
   const [uploading, setUploading] = useState<Record<string, number>>({});
+  const [pendingUploads, setPendingUploads] = useState<
+    Record<string, PendingUpload[]>
+  >({});
 
   const [generating, setGenerating] = useState(false);
   const [result, setResult] = useState<GenerationResult | null>(null);
@@ -260,8 +273,8 @@ export function GenerateProvider({
       setSearch(options.fromSearch ? id : "");
       setSearchResults([]);
       setResult(null);
-    setFinishedAt(null);
       setFinishedAt(null);
+      setPendingUploads({});
       setError("");
       clearPreviews();
 
@@ -327,27 +340,30 @@ export function GenerateProvider({
     (key: string, index: number) => {
       const value = inputs[key];
       const images = Array.isArray(value) ? value : value ? [value] : [];
-      const removed = images[index];
 
+      // Its local preview is freed by the effect below
       setInputs((previous) => ({
         ...previous,
         [key]: images.filter((_, i) => i !== index),
       }));
-
-      // Free that image's local preview
-      if (typeof removed === "string") {
-        setFilePreviews((previous) => {
-          if (!previous[removed]) return previous;
-
-          URL.revokeObjectURL(previous[removed]);
-          const next = { ...previous };
-          delete next[removed];
-          return next;
-        });
-      }
     },
     [inputs]
   );
+
+  // Free the local copy of files no input points at any
+  // more (removed or replaced). Their entries stay until
+  // the form resets, but nothing looks them up.
+  useEffect(() => {
+    const used = new Set(
+      Object.values(inputs).flatMap((value) =>
+        Array.isArray(value) ? value.map(String) : [String(value)]
+      )
+    );
+
+    Object.entries(filePreviews).forEach(([url, preview]) => {
+      if (!used.has(url)) URL.revokeObjectURL(preview);
+    });
+  }, [inputs, filePreviews]);
 
   const uploadFile = useCallback(
     async (key: string, file: File) => {
@@ -369,12 +385,40 @@ export function GenerateProvider({
       }));
       setError("");
 
+      // Shown right away from the local file, with progress
+      const preview = URL.createObjectURL(file);
+      let kept = false;
+
+      const updatePending = (
+        change: (list: PendingUpload[]) => PendingUpload[]
+      ) => {
+        if (!sameForm()) return;
+
+        setPendingUploads((previous) => ({
+          ...previous,
+          [key]: change(previous[key] ?? []),
+        }));
+      };
+
+      updatePending((list) => [...list, { preview, progress: null }]);
+
       try {
-        const url = await uploadInputFile(file);
+        const url = await uploadInputFile(file, (percent) =>
+          updatePending((list) =>
+            list.map((item) =>
+              item.preview === preview ? { ...item, progress: percent } : item
+            )
+          )
+        );
 
         // The user switched models meanwhile: this file
         // belongs to the old form
         if (!sameForm()) return;
+
+        // The uploaded file keeps the same local preview,
+        // so it doesn't reload or flash
+        kept = true;
+        setFilePreviews((previous) => ({ ...previous, [url]: preview }));
 
         // VIDEO / AUDIO: single file per field
         if (isMedia) {
@@ -382,12 +426,7 @@ export function GenerateProvider({
           return;
         }
 
-        // IMAGE: appended, with a local preview
-        setFilePreviews((previous) => ({
-          ...previous,
-          [url]: URL.createObjectURL(file),
-        }));
-
+        // IMAGE: appended
         setInputs((previous) => {
           const current = previous[key];
           const images = Array.isArray(current)
@@ -404,6 +443,9 @@ export function GenerateProvider({
           setError(errorMessage(err, "Unable to upload the file."));
         }
       } finally {
+        if (!kept) URL.revokeObjectURL(preview);
+        updatePending((list) => list.filter((item) => item.preview !== preview));
+
         // A model change already reset the counters
         if (sameForm()) {
           setUploading((previous) => ({
@@ -607,6 +649,7 @@ export function GenerateProvider({
     filePreviews,
     removeImage,
     uploading,
+    pendingUploads,
     uploadFile,
     generating,
     result,

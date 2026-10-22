@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
-import { getExpenseReport } from "@/lib/expenses";
+import { getExpenseReport, readExpenseFilters } from "@/lib/expenses";
 
 export const runtime = "nodejs";
 
@@ -30,7 +30,11 @@ function periodStart(
 // Expense report for the signed-in user: their own spend,
 // or everyone's for admins and the super admin.
 // ?todayStart=&weekStart=&monthStart= (ISO, viewer's local
-// midnights) define the period totals.
+// midnights) define the period totals. The first page of
+// entries comes along; &entries=0 leaves them out, and
+// /api/expenses/entries pages through the rest.
+// &project=&user=&model=&from=&to= filter it (see
+// readExpenseFilters).
 export async function GET(request: Request) {
   const auth = await requireUser();
   if (auth.response) return auth.response;
@@ -47,7 +51,7 @@ export async function GET(request: Request) {
       )
     );
 
-    const report = await getExpenseReport(auth.user, {
+    const periods = {
       todayStart: periodStart(
         searchParams.get("todayStart"),
         utcToday,
@@ -65,7 +69,14 @@ export async function GET(request: Request) {
         ),
         32
       ),
-    });
+    };
+
+    const report = await getExpenseReport(
+      auth.user,
+      periods,
+      searchParams.get("entries") === "0" ? 0 : undefined,
+      readExpenseFilters(searchParams)
+    );
 
     return NextResponse.json(report);
   } catch (error) {

@@ -172,15 +172,18 @@ async function setupIndexes(db: Db) {
     db
       .collection<ProjectDoc>("projects")
       .createIndex({ nameKey: 1 }, { unique: true }),
+    // Lists sort newest first with _id breaking ties, so
+    // the indexes end the same way and Mongo can walk
+    // them in order instead of sorting in memory
     db.collection<GenerationDoc>("generations").createIndexes([
-      { key: { createdAt: -1 } },
-      { key: { userId: 1, createdAt: -1 } },
-      { key: { projectId: 1, createdAt: -1 } },
-      { key: { status: 1, createdAt: -1 } },
+      { key: { createdAt: -1, _id: -1 } },
+      { key: { userId: 1, createdAt: -1, _id: -1 } },
+      { key: { projectId: 1, createdAt: -1, _id: -1 } },
+      { key: { status: 1, createdAt: -1, _id: -1 } },
     ]),
     db.collection<ExpenseDoc>("expenses").createIndexes([
-      { key: { incurredAt: -1 } },
-      { key: { userId: 1, incurredAt: -1 } },
+      { key: { incurredAt: -1, _id: -1 } },
+      { key: { userId: 1, incurredAt: -1, _id: -1 } },
       { key: { projectId: 1, incurredAt: -1 } },
     ]),
   ]);

@@ -16,6 +16,7 @@ export const runtime = "nodejs";
 //
 // ?page=1&pageSize=24&project=<id>&user=<id>
 // &model=<owner/name>&status=succeeded|failed|running&q=<text>
+// &options=0 leaves out the filter dropdown values
 export async function GET(request: Request) {
   const auth = await requireUser();
   if (auth.response) return auth.response;
@@ -55,6 +56,7 @@ export async function GET(request: Request) {
           ? (status as HistoryStatus)
           : undefined,
         q: params.get("q") || undefined,
+        withOptions: params.get("options") !== "0",
       })
     );
   } catch (error) {

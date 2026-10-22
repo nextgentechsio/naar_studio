@@ -1,3 +1,4 @@
+import type { Filter } from "mongodb";
 import {
   expensesCollection,
   generationsCollection,
@@ -48,11 +49,28 @@ export type ExpenseReport = {
     week: SpendTotal;
     month: SpendTotal;
     allTime: SpendTotal;
+    // Everything the filters (date range included) match
+    selected: SpendTotal;
   };
   byProject: SpendGroup[];
   byUser: SpendGroup[];
+  // For the filter dropdowns: what the viewer may see
+  options: {
+    projects: { id: string; name: string }[];
+    users: { id: string; name: string }[];
+    models: string[];
+  };
+} & ExpensePage;
+
+// One page of ledger entries, newest first. Pass
+// nextCursor back for the following page; null at the end.
+export type ExpensePage = {
   entries: PublicExpense[];
+  nextCursor: string | null;
 };
+
+export const EXPENSE_PAGE_SIZE = 50;
+export const EXPENSE_MAX_PAGE_SIZE = 100;
 
 function toPublicExpense(doc: ExpenseDoc): PublicExpense {
   return {
@@ -233,70 +251,161 @@ function readGroups(rows: unknown): SpendGroup[] {
   }));
 }
 
+// Narrows the report and the entries. The user filter
+// only applies to managers (others only see their own).
+// from/to are instants (the browser sends its local
+// midnights); to is exclusive.
+export type ExpenseFilters = {
+  projectId?: string;
+  userId?: string;
+  model?: string;
+  from?: Date;
+  to?: Date;
+};
+
+// From a request's query: ?project=&user=&model=&from=&to=
+// (from/to as ISO instants). Anything malformed is left
+// out rather than refused.
+export function readExpenseFilters(params: URLSearchParams): ExpenseFilters {
+  const id = (key: string) => {
+    const value = params.get(key)?.trim();
+    return value && value.length <= 200 ? value : undefined;
+  };
+
+  const date = (key: string) => {
+    const value = params.get(key);
+    const parsed = value ? new Date(value) : null;
+    return parsed && !Number.isNaN(parsed.getTime()) ? parsed : undefined;
+  };
+
+  return {
+    projectId: id("project"),
+    userId: id("user"),
+    model: id("model"),
+    from: date("from"),
+    to: date("to"),
+  };
+}
+
+// What the viewer may see, narrowed by everything but
+// the date range
+function dimensionFilter(
+  actor: StoredUser,
+  filters: ExpenseFilters
+): Filter<ExpenseDoc> {
+  const isManager = canManageUsers(actor);
+
+  // Plain users only ever see their own spend
+  const filter: Filter<ExpenseDoc> = isManager ? {} : { userId: actor.id };
+
+  if (filters.projectId) filter.projectId = filters.projectId;
+  if (filters.userId && isManager) filter.userId = filters.userId;
+  if (filters.model) filter.model = filters.model;
+
+  return filter;
+}
+
+function dateFilter(filters: ExpenseFilters): Filter<ExpenseDoc> {
+  if (!filters.from && !filters.to) return {};
+
+  return {
+    incurredAt: {
+      ...(filters.from && { $gte: filters.from }),
+      ...(filters.to && { $lt: filters.to }),
+    },
+  };
+}
+
 // Period starts come from the browser so "today" and
 // "this week" follow the viewer's local timezone.
+//
+// The period totals follow the project/user/model
+// filters but not the date range; "selected", the
+// groups and the entries follow all of them. The filter
+// dropdown values cover everything the viewer may see.
 export async function getExpenseReport(
   actor: StoredUser,
   periods: { todayStart: Date; weekStart: Date; monthStart: Date },
-  entryLimit = 500
+  // 0 leaves the entries out (the dashboard only needs
+  // the totals)
+  entryLimit = EXPENSE_PAGE_SIZE,
+  filters: ExpenseFilters = {}
 ): Promise<ExpenseReport> {
   await ensureBackfilled();
 
   const isManager = canManageUsers(actor);
-
-  // Plain users only ever see their own spend
-  const scope = isManager ? {} : { userId: actor.id };
+  const scope = dimensionFilter(actor, {});
+  const dimensions = dimensionFilter(actor, filters);
+  const dates = dateFilter(filters);
 
   const expenses = await expensesCollection();
 
+  // One pass over the viewer's entries
   const [result] = await expenses
     .aggregate([
       { $match: scope },
       {
         $facet: {
           today: totalStages({
+            ...dimensions,
             incurredAt: { $gte: periods.todayStart },
           }),
           week: totalStages({
+            ...dimensions,
             incurredAt: { $gte: periods.weekStart },
           }),
           month: totalStages({
+            ...dimensions,
             incurredAt: { $gte: periods.monthStart },
           }),
-          allTime: totalStages(),
-          byProject: groupStages("projectId", "projectName"),
+          allTime: totalStages(dimensions),
+          selected: totalStages({ ...dimensions, ...dates }),
+          byProject: [
+            { $match: { ...dimensions, ...dates } },
+            ...groupStages("projectId", "projectName"),
+          ],
           // Per-user breakdown is for managers only
           ...(isManager
-            ? { byUser: groupStages("userId", "userName") }
+            ? {
+                byUser: [
+                  { $match: { ...dimensions, ...dates } },
+                  ...groupStages("userId", "userName"),
+                ],
+              }
+            : {}),
+          optionProjects: optionStages("projectId", "projectName"),
+          optionModels: [{ $group: { _id: "$model" } }],
+          ...(isManager
+            ? { optionUsers: optionStages("userId", "userName") }
             : {}),
         },
       },
     ])
     .toArray();
 
-  const entries = await expenses
-    .find(scope)
-    .sort({ incurredAt: -1 })
-    .limit(entryLimit)
-    .toArray();
-
   const byProject = readGroups(result?.byProject);
   const byUser = readGroups(result?.byUser);
-  const publicEntries = entries.map(toPublicExpense);
+  const optionProjects = readOptions(result?.optionProjects);
+  const optionUsers = readOptions(result?.optionUsers);
 
-  // Show today's names after a rename
-  const names = await currentNames(
-    [...byProject.map((group) => group.id), ...entries.map((entry) => entry.projectId)],
-    [...byUser.map((group) => group.id), ...entries.map((entry) => entry.userId)]
-  );
+  const [page, names] = await Promise.all([
+    entryLimit > 0
+      ? listExpenses(actor, { limit: entryLimit, filters })
+      : { entries: [], nextCursor: null },
+    // Show today's names after a rename
+    currentNames(
+      [...byProject, ...optionProjects].map((group) => group.id),
+      [...byUser, ...optionUsers].map((group) => group.id)
+    ),
+  ]);
 
-  for (const entry of publicEntries) {
-    entry.project = names.projects.get(entry.projectId) ?? entry.project;
-    entry.user = names.users.get(entry.userId) ?? entry.user;
-  }
+  const rename = <T extends { id: string; name: string }>(
+    groups: T[],
+    map: Map<string, string>
+  ) => groups.map((group) => ({ ...group, name: map.get(group.id) ?? group.name }));
 
-  const rename = (groups: SpendGroup[], map: Map<string, string>) =>
-    groups.map((group) => ({ ...group, name: map.get(group.id) ?? group.name }));
+  const byName = (a: { name: string }, b: { name: string }) =>
+    a.name.localeCompare(b.name);
 
   return {
     totals: {
@@ -304,9 +413,95 @@ export async function getExpenseReport(
       week: readTotal(result?.week),
       month: readTotal(result?.month),
       allTime: readTotal(result?.allTime),
+      selected: readTotal(result?.selected),
     },
     byProject: rename(byProject, names.projects),
     byUser: rename(byUser, names.users),
-    entries: publicEntries,
+    options: {
+      projects: rename(optionProjects, names.projects).sort(byName),
+      users: rename(optionUsers, names.users).sort(byName),
+      models: ((result?.optionModels ?? []) as { _id: string }[])
+        .map((row) => row._id)
+        .filter(Boolean)
+        .sort(),
+    },
+    ...page,
+  };
+}
+
+// Distinct ids with their latest name
+function optionStages(idField: string, nameField: string) {
+  return [
+    { $sort: { incurredAt: 1 as const } },
+    { $group: { _id: `$${idField}`, name: { $last: `$${nameField}` } } },
+  ];
+}
+
+function readOptions(rows: unknown): { id: string; name: string }[] {
+  return ((rows as { _id: string; name: string }[]) ?? [])
+    .filter((row) => row._id)
+    .map((row) => ({ id: row._id, name: row.name }));
+}
+
+// Cursor: the last entry's time and id, so pages never
+// overlap or skip even when entries share a timestamp
+function encodeCursor(doc: ExpenseDoc): string {
+  return `${doc.incurredAt.getTime()}_${doc._id}`;
+}
+
+function decodeCursor(cursor: string): { time: Date; id: string } | null {
+  const at = cursor.indexOf("_");
+  const time = new Date(Number(cursor.slice(0, at)));
+  const id = cursor.slice(at + 1);
+
+  return at > 0 && id && !Number.isNaN(time.getTime()) ? { time, id } : null;
+}
+
+export async function listExpenses(
+  actor: StoredUser,
+  options: { limit?: number; cursor?: string; filters?: ExpenseFilters } = {}
+): Promise<ExpensePage> {
+  const limit = Math.min(
+    Math.max(1, Math.floor(options.limit || EXPENSE_PAGE_SIZE)),
+    EXPENSE_MAX_PAGE_SIZE
+  );
+
+  const filter: Filter<ExpenseDoc> = {
+    ...dimensionFilter(actor, options.filters ?? {}),
+    ...dateFilter(options.filters ?? {}),
+  };
+
+  const after = options.cursor ? decodeCursor(options.cursor) : null;
+  if (after) {
+    filter.$or = [
+      { incurredAt: { $lt: after.time } },
+      { incurredAt: after.time, _id: { $lt: after.id } },
+    ];
+  }
+
+  // One extra tells whether another page follows
+  const docs = await (await expensesCollection())
+    .find(filter)
+    .sort({ incurredAt: -1, _id: -1 })
+    .limit(limit + 1)
+    .toArray();
+
+  const pageDocs = docs.slice(0, limit);
+  const entries = pageDocs.map(toPublicExpense);
+
+  // Show today's names after a rename
+  const names = await currentNames(
+    entries.map((entry) => entry.projectId),
+    entries.map((entry) => entry.userId)
+  );
+
+  for (const entry of entries) {
+    entry.project = names.projects.get(entry.projectId) ?? entry.project;
+    entry.user = names.users.get(entry.userId) ?? entry.user;
+  }
+
+  return {
+    entries,
+    nextCursor: docs.length > limit ? encodeCursor(pageDocs[limit - 1]) : null,
   };
 }

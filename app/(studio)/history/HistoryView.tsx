@@ -18,6 +18,7 @@ import {
   type HistoryPage,
   type HistoryStatus,
 } from "@/lib/client/data";
+import { readCache, writeCache } from "@/lib/client/cache";
 import { errorMessage } from "@/lib/client/http";
 import { canManageUsers } from "@/lib/roles";
 import GenerationCard, { GenerationCardSkeleton } from "./GenerationCard";
@@ -35,6 +36,9 @@ import { isRunningStatus } from "./OutputPreview";
 
 const PAGE_SIZE = 24;
 const RUNNING_REFRESH_MS = 5000;
+
+const OPTIONS_CACHE_KEY = "history:options";
+const pageCacheKey = (listKey: string) => `history:page:${listKey}`;
 const STATUSES: HistoryStatus[] = ["succeeded", "failed", "running"];
 
 // 4 columns on a laptop, 5 on wide screens: enough to
@@ -155,9 +159,18 @@ export default function HistoryView() {
   // Bumped to re-fetch while generations are running
   const [refreshTick, setRefreshTick] = useState(0);
 
+  // Filter dropdown values: asked for once per visit (they
+  // don't depend on the filters), then left out of every
+  // page request, which saves three queries each
+  const [filterOptions, setFilterOptions] = useState(() =>
+    readCache<HistoryPage["options"]>(OPTIONS_CACHE_KEY),
+  );
+  const optionsLoadedRef = useRef(false);
+
   useEffect(() => {
     let cancelled = false;
     const params = new URLSearchParams(listKey);
+    const withOptions = !optionsLoadedRef.current;
 
     fetchHistoryPage({
       page: Number(params.get("page")) || 1,
@@ -167,9 +180,20 @@ export default function HistoryView() {
       model: params.get("model") ?? undefined,
       user: params.get("user") ?? undefined,
       status: (params.get("status") as HistoryStatus) ?? undefined,
+      withOptions,
     })
       .then((data) => {
-        if (!cancelled) setResult({ key: listKey, data });
+        writeCache(pageCacheKey(listKey), data);
+
+        if (data.options) {
+          optionsLoadedRef.current = true;
+          writeCache(OPTIONS_CACHE_KEY, data.options);
+        }
+
+        if (!cancelled) {
+          setResult({ key: listKey, data });
+          if (data.options) setFilterOptions(data.options);
+        }
       })
       .catch((err) => {
         if (!cancelled) {
@@ -187,8 +211,15 @@ export default function HistoryView() {
     };
   }, [listKey, refreshTick]);
 
-  const data = result.data;
-  const loading = result.key !== listKey;
+  // This exact page from an earlier visit shows at once
+  // while it refreshes; otherwise the previous page stays,
+  // dimmed, until the new one arrives
+  const cached =
+    result.key === listKey
+      ? undefined
+      : readCache<HistoryPage>(pageCacheKey(listKey));
+  const data = cached ?? result.data;
+  const loading = result.key !== listKey && !cached;
   const generations = data?.generations ?? [];
 
   // Keep running generations fresh without a manual reload
@@ -222,7 +253,7 @@ export default function HistoryView() {
 
       <HistoryFilters
         values={filters}
-        options={data?.options}
+        options={filterOptions}
         showUser={isManager}
         onChange={changeFilters}
         onClear={clearFilters}

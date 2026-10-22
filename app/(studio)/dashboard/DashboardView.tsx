@@ -6,11 +6,12 @@ import { Alert } from "@/app/components/ui/primitives";
 import { fetchExpenseReport, fetchHistoryPage } from "@/lib/client/data";
 
 // Totals come from the paged history API: the latest 5
-// plus the overall and succeeded counts
+// plus the overall and succeeded counts (no filter
+// dropdown values needed)
 async function fetchDashboardHistory() {
   const [latest, succeeded] = await Promise.all([
-    fetchHistoryPage({ pageSize: 5 }),
-    fetchHistoryPage({ pageSize: 1, status: "succeeded" }),
+    fetchHistoryPage({ pageSize: 5, withOptions: false }),
+    fetchHistoryPage({ pageSize: 1, status: "succeeded", withOptions: false }),
   ]);
 
   return {
@@ -20,6 +21,9 @@ async function fetchDashboardHistory() {
   };
 }
 
+// Totals only: the entries aren't shown here
+const fetchSpendTotals = () => fetchExpenseReport({ withEntries: false });
+
 // --------------------------------------------------
 // DASHBOARD
 // --------------------------------------------------
@@ -28,11 +32,40 @@ function formatUsd4(amount: number | null) {
   return amount === null ? "—" : `$${amount.toFixed(4)}`;
 }
 
+// Grey row placeholders while a list loads
+function SkeletonList({ count }: { count: number }) {
+  return (
+    <>
+      {Array.from({ length: count }, (_, index) => (
+        <div
+          key={index}
+          aria-hidden="true"
+          className="flex items-center justify-between rounded-xl bg-sunken p-3"
+        >
+          <div className="w-1/2 space-y-2">
+            <div className="h-3.5 w-3/4 animate-pulse rounded bg-raised" />
+            <div className="h-3 w-1/2 animate-pulse rounded bg-raised" />
+          </div>
+          <div className="h-3 w-14 animate-pulse rounded bg-raised" />
+        </div>
+      ))}
+    </>
+  );
+}
+
 export default function DashboardView() {
   const { projects } = useStudio();
 
-  const history = useApiData(fetchDashboardHistory, "Unable to load history.");
-  const expenses = useApiData(fetchExpenseReport, "Unable to load expenses.");
+  const history = useApiData(
+    "dashboard:history",
+    fetchDashboardHistory,
+    "Unable to load history."
+  );
+  const expenses = useApiData(
+    "dashboard:spend",
+    fetchSpendTotals,
+    "Unable to load expenses."
+  );
 
   const generations = history.data?.recent ?? [];
   const report = expenses.data;
@@ -75,16 +108,20 @@ export default function DashboardView() {
       {error && <Alert>{error}</Alert>}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {[
-          // "—" until loaded (or if loading failed), not "0"
-          ["Total Generations", history.data ? String(total) : "—"],
-          ["Total Spend", formatUsd4(totalSpend)],
-          ["Today", formatUsd4(todaySpend)],
+        {(
           [
-            "Success Rate",
-            total ? `${Math.round((successful / total) * 100)}%` : "—",
-          ],
-        ].map(([title, value]) => (
+            // A placeholder bar while loading; "—" if it
+            // failed, never a misleading "0"
+            ["Total Generations", history, history.data ? String(total) : "—"],
+            ["Total Spend", expenses, formatUsd4(totalSpend)],
+            ["Today", expenses, formatUsd4(todaySpend)],
+            [
+              "Success Rate",
+              history,
+              total ? `${Math.round((successful / total) * 100)}%` : "—",
+            ],
+          ] as const
+        ).map(([title, source, value]) => (
           <div
             key={title}
             className="rounded-2xl border border-line bg-surface p-5"
@@ -93,7 +130,14 @@ export default function DashboardView() {
               {title}
             </p>
 
-            <p className="mt-4 text-2xl font-semibold">{value}</p>
+            {source.loading ? (
+              <div
+                aria-hidden="true"
+                className="mt-4 h-8 w-24 animate-pulse rounded bg-raised"
+              />
+            ) : (
+              <p className="mt-4 text-2xl font-semibold">{value}</p>
+            )}
           </div>
         ))}
       </div>
@@ -103,6 +147,8 @@ export default function DashboardView() {
           <h2 className="font-semibold">Recent generations</h2>
 
           <div className="mt-5 space-y-3">
+            {history.loading && <SkeletonList count={5} />}
+
             {generations.map((item) => (
               <div
                 key={item.id}
@@ -134,7 +180,9 @@ export default function DashboardView() {
           <h2 className="font-semibold">Project usage</h2>
 
           <div className="mt-5 space-y-3">
-            {projectSpend.map((item) => (
+            {expenses.loading && <SkeletonList count={Math.min(projects.length || 3, 6)} />}
+
+            {!expenses.loading && projectSpend.map((item) => (
               <div
                 key={item.name}
                 className="flex items-center justify-between rounded-xl bg-sunken px-4 py-3"

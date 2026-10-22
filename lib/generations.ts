@@ -215,6 +215,10 @@ export type HistoryQuery = {
   status?: HistoryStatus;
   // Case-insensitive match on the prompt
   q?: string;
+  // The filter dropdown values cost three extra queries
+  // over all the viewer's runs; skip them when the page
+  // already has them
+  withOptions?: boolean;
 };
 
 export type HistoryPage = {
@@ -223,8 +227,8 @@ export type HistoryPage = {
   page: number;
   pageSize: number;
   // Values that exist in what the viewer may see, for
-  // the filter dropdowns
-  options: {
+  // the filter dropdowns; left out when not asked for
+  options?: {
     projects: { id: string; name: string }[];
     users: { id: string; name: string }[];
     models: string[];
@@ -232,6 +236,30 @@ export type HistoryPage = {
 };
 
 export const HISTORY_MAX_PAGE_SIZE = 60;
+
+// What a list row shows (see toPublicGeneration): the
+// stored inputs stay in the database
+const LIST_PROJECTION = {
+  userId: 1,
+  userName: 1,
+  projectId: 1,
+  projectName: 1,
+  model: 1,
+  prompt: 1,
+  inputImage: 1,
+  aspectRatio: 1,
+  resolution: 1,
+  status: 1,
+  error: 1,
+  costUsd: 1,
+  outputUrl: 1,
+  localOutputUrl: 1,
+  outputContentType: 1,
+  outputExpiredAt: 1,
+  predictTime: 1,
+  createdAt: 1,
+  completedAt: 1,
+} as const;
 
 function escapeRegex(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -275,26 +303,30 @@ export async function listGenerations(
 
   const collection = await generationsCollection();
 
+  const withOptions = query.withOptions ?? true;
+
   const [docs, total, projects, users, models] = await Promise.all([
     collection
-      .find(filter)
+      .find(filter, { projection: LIST_PROJECTION })
       // _id breaks ties so pages never overlap or skip
       .sort({ createdAt: -1, _id: -1 })
       .skip((page - 1) * pageSize)
       .limit(pageSize)
       .toArray(),
     collection.countDocuments(filter),
-    collection
-      .aggregate<{ _id: string; name: string }>([
-        // Newest first, so a renamed project shows its
-        // current name
-        { $match: scope },
-        { $sort: { createdAt: -1 } },
-        { $group: { _id: "$projectId", name: { $first: "$projectName" } } },
-        { $sort: { name: 1 } },
-      ])
-      .toArray(),
-    canManageUsers(actor)
+    withOptions
+      ? collection
+          .aggregate<{ _id: string; name: string }>([
+            // Newest first, so a renamed project shows its
+            // current name
+            { $match: scope },
+            { $sort: { createdAt: -1 } },
+            { $group: { _id: "$projectId", name: { $first: "$projectName" } } },
+            { $sort: { name: 1 } },
+          ])
+          .toArray()
+      : Promise.resolve([]),
+    withOptions && canManageUsers(actor)
       ? collection
           .aggregate<{ _id: string; name: string }>([
             { $sort: { createdAt: -1 } },
@@ -303,7 +335,7 @@ export async function listGenerations(
           ])
           .toArray()
       : Promise.resolve([]),
-    collection.distinct("model", scope),
+    withOptions ? collection.distinct("model", scope) : Promise.resolve([]),
   ]);
 
   // Show today's names after a rename
@@ -326,11 +358,13 @@ export async function listGenerations(
     total,
     page,
     pageSize,
-    options: {
-      projects: named(projects, names.projects),
-      users: named(users, names.users),
-      models: (models as string[]).sort(),
-    },
+    ...(withOptions && {
+      options: {
+        projects: named(projects, names.projects),
+        users: named(users, names.users),
+        models: (models as string[]).sort(),
+      },
+    }),
   };
 }
 

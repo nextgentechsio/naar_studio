@@ -31,6 +31,7 @@ describe("authentication", () => {
       ["POST", "/api/generate"],
       ["GET", "/api/predictions/x"],
       ["GET", "/api/expenses"],
+      ["GET", "/api/expenses/entries"],
       ["GET", "/api/download?url=https://replicate.delivery/x.png"],
       ["POST", "/api/upload"],
       ["GET", "/api/models/schema?model=a/b"],

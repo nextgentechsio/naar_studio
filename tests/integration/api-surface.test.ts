@@ -68,6 +68,18 @@ describe("history", () => {
     expect((await api(`/api/generations/${bobRun}`, { session: root })).status).toBe(200);
   });
 
+  it("leaves out the filter values when asked, and never sends stored inputs", async () => {
+    const { data } = await history(alice.session, "options=0&pageSize=60");
+    expect(data).not.toHaveProperty("options");
+    expect(data.total).toBe(4);
+
+    for (const item of data.generations as Record<string, unknown>[]) {
+      expect(item).not.toHaveProperty("inputs");
+      expect(typeof item.prompt).toBe("string");
+      expect(typeof item.createdAt).toBe("string");
+    }
+  });
+
   it("filters by status and prompt (regex-safe)", async () => {
     expect((await history(alice.session, "status=failed")).data.total).toBe(1);
     expect((await history(alice.session, "status=succeeded")).data.total).toBe(3);
@@ -135,6 +147,82 @@ describe("expenses", () => {
     expect((runs.data.generations as { project: string }[])[0].project).toBe(renamed);
 
     project.name = renamed;
+  });
+
+  it("page through entries without overlaps, and skip them when asked", async () => {
+    const report = await api(`/api/expenses?${period()}`, { session: root });
+    const all = report.data.entries as { id: string }[];
+    expect(all.length).toBe(4);
+    expect(report.data.nextCursor).toBeNull();
+
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    do {
+      const query: string = cursor ? `limit=1&cursor=${encodeURIComponent(cursor)}` : "limit=1";
+      const page = await api(`/api/expenses/entries?${query}`, { session: root });
+      expect(page.status).toBe(200);
+      seen.push(...(page.data.entries as { id: string }[]).map((entry) => entry.id));
+      cursor = page.data.nextCursor as string | null;
+    } while (cursor && seen.length < 10);
+
+    // Same entries, same order (newest first)
+    expect(seen).toEqual(all.map((entry) => entry.id));
+
+    // Alice still only sees her own
+    const mine = await api("/api/expenses/entries", { session: alice.session });
+    expect((mine.data.entries as unknown[]).length).toBe(3);
+
+    // Bad cursors are ignored, not errors
+    expect((await api("/api/expenses/entries?cursor=nope_", { session: alice.session })).status).toBe(200);
+
+    const totalsOnly = await api(`/api/expenses?${period()}&entries=0`, { session: root });
+    expect(totalsOnly.data.entries).toEqual([]);
+    expect((totalsOnly.data.totals as { allTime: { count: number } }).allTime.count).toBe(4);
+  });
+
+  it("filter by project, model, user and date range", async () => {
+    const report = (query: string, session = root) =>
+      api(`/api/expenses?${period()}&${query}`, { session }).then((response) => response.data);
+    const selected = (data: Record<string, unknown>) =>
+      (data.totals as { selected: { count: number } }).selected.count;
+
+    // Dropdown values cover everything the viewer may see
+    const all = await report("");
+    const options = all.options as { projects: { id: string }[]; users: { id: string }[]; models: string[] };
+    expect(options.projects.map((item) => item.id)).toContain(project.id);
+    expect(options.users.map((item) => item.id)).toEqual(expect.arrayContaining([alice.id, bob.id]));
+    expect(options.models).toContain("google/nano-banana");
+    expect((await report("", alice.session)).options).toMatchObject({ users: [] });
+
+    expect(selected(await report(`project=${project.id}`))).toBe(4);
+    expect(selected(await report("project=missing"))).toBe(0);
+    expect(selected(await report("model=google/nano-banana"))).toBe(4);
+    expect(selected(await report("model=nobody/nothing"))).toBe(0);
+
+    // User filter: managers only; a user can't peek at Bob
+    const bobOnly = await report(`user=${bob.id}`);
+    expect(selected(bobOnly)).toBe(1);
+    expect((bobOnly.entries as { userId: string }[]).every((entry) => entry.userId === bob.id)).toBe(true);
+    expect(selected(await report(`user=${bob.id}`, alice.session))).toBe(3);
+
+    // Date range: the totals cards ignore it, the rest follow
+    const future = new Date(Date.now() + 3600_000).toISOString();
+    const empty = await report(`from=${future}`);
+    expect(selected(empty)).toBe(0);
+    expect(empty.entries).toEqual([]);
+    expect(empty.byProject).toEqual([]);
+    expect((empty.totals as { allTime: { count: number } }).allTime.count).toBe(4);
+
+    const past = new Date(Date.now() - 3600_000).toISOString();
+    expect(selected(await report(`from=${past}&to=${future}`))).toBe(4);
+    expect(selected(await report(`to=${past}`))).toBe(0);
+
+    // Load more keeps the filters
+    const more = await api(`/api/expenses/entries?user=${bob.id}`, { session: root });
+    expect((more.data.entries as unknown[]).length).toBe(1);
+
+    // Garbage filter values are ignored, not errors
+    expect((await api(`/api/expenses?from=nope&to=1e400&project=`, { session: root })).status).toBe(200);
   });
 
   it("tolerates garbage period values", async () => {

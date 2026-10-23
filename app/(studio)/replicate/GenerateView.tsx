@@ -38,8 +38,8 @@ import {
   MODEL_CATALOG,
 } from "@/lib/model-catalog";
 import {
-  higgsfieldCostUsd,
-  isPricedHiggsfieldModel,
+  higgsfieldPriceHint,
+  higgsfieldPriceKind,
   type HiggsfieldModel,
 } from "@/lib/higgsfield-models";
 import { calculateReplicateCost } from "@/lib/replicate-cost";
@@ -77,6 +77,9 @@ type HiggsfieldModels = { enabled: boolean; models: HiggsfieldModel[] };
 const fetchHiggsfieldModels = () =>
   fetchJson<HiggsfieldModels>("/api/higgsfield/models");
 const noModels = () => Promise.resolve<HiggsfieldModels>({ enabled: true, models: [] });
+
+// Wait for typing to pause before asking Higgsfield
+const QUOTE_DELAY_MS = 500;
 
 export default function GenerateView() {
   const { currentUser, projects: projectList } = useStudio();
@@ -154,9 +157,10 @@ export default function GenerateView() {
   const catalogModel =
     model && !isHiggsfield ? findCatalogModel(model) : undefined;
 
-  // Has a price on file, so runs get an estimate and cost
+  // Has a price, so runs get an estimate and cost
+  const priceKind = isHiggsfield && model ? higgsfieldPriceKind(model) : null;
   const priced = isHiggsfield
-    ? Boolean(model) && isPricedHiggsfieldModel(model)
+    ? Boolean(model) && priceKind !== "unreported"
     : Boolean(catalogModel);
 
   const has = (key: string) =>
@@ -186,19 +190,58 @@ export default function GenerateView() {
   );
 
   // ---------- Cost preview ----------
-  // Same price table the server uses after the run;
-  // priced from exactly the inputs Generate will send.
+  // Replicate: the same price table the server uses after
+  // the run. Higgsfield: its own quote for these inputs
+  // (exact), or for metered models a 16:9 estimate; asked
+  // for once the settings stop changing. Either way priced
+  // from exactly the inputs Generate will send.
+
+  const quoteKey =
+    isHiggsfield && model && priced && !schemaLoading
+      ? JSON.stringify({ model, inputs: buildGenerationInputs(inputs) })
+      : "";
+  const [quote, setQuote] = useState<{ key: string; costUsd: number | null } | null>(null);
+
+  useEffect(() => {
+    if (!quoteKey) return;
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      let costUsd: number | null = null;
+      try {
+        costUsd = (
+          await fetchJson<{ costUsd: number | null }>("/api/higgsfield/estimate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: quoteKey,
+          })
+        ).costUsd;
+      } catch {
+        // Shown as "no quote"; the run still records its cost
+      }
+      if (!cancelled) setQuote({ key: quoteKey, costUsd });
+    }, QUOTE_DELAY_MS);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [quoteKey]);
+
+  const quoting = Boolean(quoteKey) && quote?.key !== quoteKey;
+  // Higgsfield's quote is the price; a metered estimate isn't
+  const exactQuote = priceKind === "quoted";
 
   let estimate: number | null = null;
 
-  if (model && priced && !schemaLoading) {
+  if (isHiggsfield) {
+    estimate = quote?.key === quoteKey ? quote.costUsd : null;
+  } else if (model && priced && !schemaLoading) {
     try {
-      estimate = isHiggsfield
-        ? higgsfieldCostUsd(model, buildGenerationInputs(inputs))
-        : calculateReplicateCost(model, {
-            status: "succeeded",
-            input: buildGenerationInputs(inputs),
-          });
+      estimate = calculateReplicateCost(model, {
+        status: "succeeded",
+        input: buildGenerationInputs(inputs),
+      });
     } catch {
       estimate = null;
     }
@@ -660,24 +703,52 @@ export default function GenerateView() {
             <div className="flex items-center justify-between gap-4">
               <div className="min-w-0" aria-live="polite">
                 <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-fg-subtle">
-                  Estimated cost
+                  {exactQuote ? "Cost" : "Estimated cost"}
                 </p>
                 <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
                   {!model ? (
                     <span className="text-sm text-fg-muted">—</span>
                   ) : !priced ? (
-                    <span className="text-base font-semibold text-warning">
+                    <span
+                      className="text-base font-semibold text-warning"
+                      title={
+                        isHiggsfield
+                          ? "Higgsfield bills this model by internal AI usage it doesn't report, so its runs are recorded as unpriced in Expenses."
+                          : undefined
+                      }
+                    >
                       Unpriced
                     </span>
-                  ) : schemaLoading ? (
+                  ) : schemaLoading || quoting ? (
                     <span className="inline-block h-7 w-24 animate-pulse rounded-md bg-raised" />
                   ) : estimate !== null ? (
                     <>
                       <span className="font-mono text-2xl font-semibold tracking-tight text-fg">
-                        ≈ {formatCost(estimate)}
+                        {exactQuote ? "" : "≈ "}
+                        {formatCost(estimate)}
+                      </span>
+                      <span
+                        className="text-xs text-fg-subtle"
+                        title={
+                          priceKind === "metered"
+                            ? "Higgsfield bills this model by the video's actual size and length (and any input videos). The exact cost is measured when the run finishes."
+                            : undefined
+                        }
+                      >
+                        per run{estimateDetail ? ` · ${estimateDetail}` : ""}
+                        {exactQuote ? " · Higgsfield's price" : ""}
+                        {priceKind === "metered" ? " · exact after the run" : ""}
+                      </span>
+                    </>
+                  ) : isHiggsfield ? (
+                    <>
+                      <span className="font-mono text-base font-semibold text-fg">
+                        {higgsfieldPriceHint(model) ?? "—"}
                       </span>
                       <span className="text-xs text-fg-subtle">
-                        per run{estimateDetail ? ` · ${estimateDetail}` : ""}
+                        {priceKind === "metered"
+                          ? "exact after the run"
+                          : "no quote yet · recorded after the run"}
                       </span>
                     </>
                   ) : (

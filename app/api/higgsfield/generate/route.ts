@@ -11,10 +11,11 @@ import {
   cancelHiggsfieldRequest,
   findHiggsfieldModel,
   higgsfieldConfigured,
+  quoteHiggsfield,
   shapeHiggsfieldInputs,
   startHiggsfield,
 } from "@/lib/higgsfield";
-import { higgsfieldCostUsd } from "@/lib/higgsfield-models";
+import { approxMeteredCostUsd, higgsfieldPriceKind } from "@/lib/higgsfield-models";
 import { findActiveProjectByName } from "@/lib/projects";
 
 export const runtime = "nodejs";
@@ -148,6 +149,12 @@ export async function POST(request: Request) {
     }
 
     let started: Awaited<ReturnType<typeof startHiggsfield>>;
+    // Higgsfield's exact price for this run, asked for
+    // alongside the start (models it can quote)
+    const quoting =
+      higgsfieldPriceKind(model) === "quoted"
+        ? quoteHiggsfield(model, input)
+        : Promise.resolve(null);
 
     try {
       started = await startHiggsfield(model, input);
@@ -160,6 +167,7 @@ export async function POST(request: Request) {
     }
 
     const { requestId } = started;
+    const quotedCostUsd = await quoting;
 
     // ---------- Record it (or cancel it) ----------
     //
@@ -181,6 +189,7 @@ export async function POST(request: Request) {
           // with its reason (e.g. too few credits)
           status: "starting",
           provider: "higgsfield",
+          quotedCostUsd,
         });
         recorded = true;
       } catch (error) {
@@ -215,9 +224,10 @@ export async function POST(request: Request) {
       },
       // Same shape as /api/generate's, for the Generate page
       prediction: { id: requestId, status: "starting" },
-      // What it will cost if it succeeds (estimate; null
-      // for models without a published price)
-      costUsd: higgsfieldCostUsd(model, input),
+      // What it will cost if it succeeds: the quote, or for
+      // metered models a 16:9 estimate (the exact cost
+      // comes when it finishes); null when unknown
+      costUsd: quotedCostUsd ?? approxMeteredCostUsd(model, input),
     });
   } catch (error) {
     console.error("Higgsfield generate error:", error instanceof Error ? error.message : error);

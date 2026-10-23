@@ -1,11 +1,16 @@
 import { config as configureSdk, higgsfield } from "@higgsfield/client/v2";
 import type { Schema, SchemaProperty } from "@/app/(studio)/replicate/fields";
 import {
+  approxMeteredCostUsd,
   categoryFor,
+  higgsfieldPriceKind,
+  meteredCostUsd,
   taskFromSlug,
   type HiggsfieldModel,
+  type HiggsfieldUsage,
 } from "@/lib/higgsfield-models";
 import { shapeInputs, type InputSchema } from "@/lib/replicate-inputs";
+import { videoInfo } from "@/lib/video-info";
 
 // --------------------------------------------------
 // HIGGSFIELD (server side)
@@ -348,15 +353,16 @@ export async function cancelHiggsfieldRequest(requestId: string) {
   });
 }
 
-// Where Higgsfield serves results from (its CloudFront
-// distribution and media hosts), or the stand-in API in
-// tests. Results from elsewhere still show, from
-// Higgsfield's own link, but aren't saved.
-const OUTPUT_DOMAINS = ["higgsfield.ai", "higgs.ai"];
+// Where Higgsfield serves results from (CloudFront, with
+// several distributions, e.g. d3u0tzju9qaucj, and its
+// media hosts), or the stand-in API in tests. The link
+// comes from Higgsfield's API, never from the form.
+// Results from elsewhere still show, from Higgsfield's
+// own link, but aren't saved.
+const OUTPUT_DOMAINS = ["higgsfield.ai", "higgs.ai", "cloudfront.net"];
 
 export function isHiggsfieldOutputUrl(url: URL): boolean {
   if (url.protocol === "https:") {
-    if (url.hostname === "d28lhcrx5qdowv.cloudfront.net") return true;
     if (
       OUTPUT_DOMAINS.some(
         (domain) => url.hostname === domain || url.hostname.endsWith(`.${domain}`)
@@ -373,5 +379,127 @@ export function isHiggsfieldOutputUrl(url: URL): boolean {
     return url.origin === new URL(base).origin;
   } catch {
     return false;
+  }
+}
+
+// --------------------------------------------------
+// PRICES (see lib/higgsfield-models.ts)
+// --------------------------------------------------
+
+const QUOTE_TIMEOUT_MS = 15_000;
+
+// Higgsfield's exact price for a run with these inputs,
+// for our account (discounts included). Null when it
+// only describes a formula (metered models) or can't
+// quote these inputs. Free: nothing runs.
+export async function quoteHiggsfield(
+  model: string,
+  input: Record<string, unknown>
+): Promise<number | null> {
+  try {
+    const response = await fetch(`${apiUrl()}/estimate/${model}`, {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+      cache: "no-store",
+      signal: AbortSignal.timeout(QUOTE_TIMEOUT_MS),
+    });
+
+    const data = (await response.json().catch(() => null)) as
+      | { type?: string; usd?: unknown }
+      | null;
+
+    if (!response.ok || data?.type !== "estimate") return null;
+
+    const usd = Number(data.usd);
+    return Number.isFinite(usd) && usd >= 0 ? usd : null;
+  } catch (error) {
+    console.error("Higgsfield quote failed:", model, error instanceof Error ? error.message : error);
+    return null;
+  }
+}
+
+// Input files we may read to measure: our own uploads
+// (Vercel Blob) and Higgsfield's outputs. Never an
+// arbitrary host from the form.
+function isMeasurableInput(url: URL): boolean {
+  return (
+    (url.protocol === "https:" && url.hostname.endsWith(".blob.vercel-storage.com")) ||
+    isHiggsfieldOutputUrl(url)
+  );
+}
+
+const urls = (value: unknown): string[] =>
+  (Array.isArray(value) ? value : [value]).filter(
+    (item): item is string => typeof item === "string" && /^https?:\/\//i.test(item)
+  );
+
+// What a metered run produced: the output video, and
+// each input video's length. Null if any can't be read.
+async function measureRun(
+  inputs: Record<string, unknown>,
+  outputUrl: string
+): Promise<HiggsfieldUsage | null> {
+  const parse = (url: string) => {
+    try {
+      return new URL(url);
+    } catch {
+      return null;
+    }
+  };
+
+  const output = parse(outputUrl);
+  const inputVideos = [...urls(inputs.video_url), ...urls(inputs.video_urls)].map(parse);
+  if (!output || inputVideos.some((url) => !url)) return null;
+
+  const [video, ...inputInfo] = await Promise.all([
+    videoInfo(output, isHiggsfieldOutputUrl),
+    ...inputVideos.map((url) => videoInfo(url!, isMeasurableInput)),
+  ]);
+  if (!video || inputInfo.some((info) => !info)) return null;
+
+  // The requested length is what's billed (the file runs
+  // a few frames over); models without one: the file's
+  const requested = Number(inputs.duration);
+
+  return {
+    width: video.width,
+    height: video.height,
+    outputSeconds: Number.isFinite(requested) && requested > 0 ? requested : video.seconds,
+    inputVideoSeconds: inputInfo.map((info) => info!.seconds),
+    imageCount: urls(inputs.image_urls).length,
+    resolution: typeof inputs.resolution === "string" ? inputs.resolution : "",
+  };
+}
+
+// What a succeeded run cost: Higgsfield's quote (taken
+// when it started, else now), or the metered formula
+// on the measured files. Null when Higgsfield can't say.
+export async function higgsfieldRunCostUsd(
+  generation: {
+    model: string;
+    inputs?: Record<string, unknown>;
+    quotedCostUsd?: number | null;
+  },
+  outputUrl: string
+): Promise<number | null> {
+  const inputs = generation.inputs ?? {};
+
+  switch (higgsfieldPriceKind(generation.model)) {
+    case "unreported":
+      return null;
+
+    case "quoted":
+      return generation.quotedCostUsd ?? quoteHiggsfield(generation.model, inputs);
+
+    case "metered": {
+      const usage = await measureRun(inputs, outputUrl);
+      if (usage) return meteredCostUsd(generation.model, usage);
+
+      // Shouldn't happen (the output is what we save);
+      // the 16:9 figure beats no figure in Expenses
+      console.error("Higgsfield run not measurable, recording the 16:9 estimate:", generation.model);
+      return approxMeteredCostUsd(generation.model, inputs);
+    }
   }
 }

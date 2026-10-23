@@ -95,6 +95,9 @@ export type GenerationDoc = {
   status: string;
   error: string | null;
   costUsd: number | null;
+  // Higgsfield's price for the run, quoted when it
+  // started (billed if it succeeds)
+  quotedCostUsd?: number | null;
   // Replicate's URL (expires) and our saved copy
   outputUrl: string | null;
   // URL of our saved copy: /api/generations/<id>/output

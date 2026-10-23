@@ -6,6 +6,7 @@ import {
   CATEGORY_LABELS,
   CATEGORY_ORDER,
   higgsfieldPriceHint,
+  higgsfieldPriceKind,
   type HiggsfieldModel,
 } from "@/lib/higgsfield-models";
 
@@ -38,7 +39,8 @@ export default function HiggsfieldModelPicker({
   onBrowse: () => void;
 }) {
   const current = models.find((item) => item.id === model);
-  const price = model ? higgsfieldPriceHint(model) : null;
+  const unpriced = Boolean(model) && higgsfieldPriceKind(model) === "unreported";
+  const price = model ? (higgsfieldPriceHint(model) ?? "priced per run") : null;
 
   return (
     <div className="min-w-0">
@@ -97,10 +99,10 @@ export default function HiggsfieldModelPicker({
       {/* Under the select: what it is, and the way to search */}
       <div className="mt-1.5 flex min-w-0 items-center justify-between gap-3 pl-11 text-xs">
         <p
-          className={cx("min-w-0 truncate", model && !price ? "text-warning" : "text-fg-subtle")}
+          className={cx("min-w-0 truncate", unpriced ? "text-warning" : "text-fg-subtle")}
           title={
-            model && !price
-              ? "Higgsfield doesn't report this model's price, so its runs are recorded as unpriced in Expenses."
+            unpriced
+              ? "Higgsfield bills this model by internal AI usage it doesn't report, so its runs are recorded as unpriced in Expenses."
               : current?.description
           }
         >
@@ -108,9 +110,9 @@ export default function HiggsfieldModelPicker({
             ? models.length
               ? `${models.length} models`
               : ""
-            : price
-              ? `${CATEGORY_LABELS[current?.category ?? "other"]} · ${price}`
-              : "Unpriced: no cost on file"}
+            : unpriced
+              ? "Unpriced: usage not reported"
+              : `${CATEGORY_LABELS[current?.category ?? "other"]} · ${price}`}
         </p>
         <button
           type="button"

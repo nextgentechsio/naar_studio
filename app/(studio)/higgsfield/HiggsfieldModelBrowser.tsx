@@ -8,6 +8,7 @@ import {
   CATEGORY_LABELS,
   CATEGORY_ORDER,
   higgsfieldPriceHint,
+  higgsfieldPriceKind,
   type HiggsfieldCategory,
   type HiggsfieldModel,
 } from "@/lib/higgsfield-models";
@@ -134,7 +135,8 @@ export default function HiggsfieldModelBrowser({
           ) : (
             <ul className="grid gap-2 sm:grid-cols-2">
               {shown.map((item) => {
-                const price = higgsfieldPriceHint(item.id);
+                const unpriced = higgsfieldPriceKind(item.id) === "unreported";
+                const price = higgsfieldPriceHint(item.id) ?? "Priced per run";
 
                 return (
                   <li key={item.id}>
@@ -163,8 +165,8 @@ export default function HiggsfieldModelBrowser({
                           {CATEGORY_LABELS[item.category]}
                           {item.workflow ? " · Workflow" : ""}
                           {" · "}
-                          <span className={price ? "" : "text-warning"}>
-                            {price ?? "Unpriced"}
+                          <span className={unpriced ? "text-warning" : ""}>
+                            {unpriced ? "Unpriced" : price}
                           </span>
                         </span>
                       </span>

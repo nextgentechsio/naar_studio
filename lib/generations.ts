@@ -7,8 +7,11 @@ import {
 } from "@/lib/generation-outputs";
 import { currentNames } from "@/lib/names";
 import type { Filter } from "mongodb";
-import { checkHiggsfieldRequest, isHiggsfieldOutputUrl } from "@/lib/higgsfield";
-import { higgsfieldCostUsd } from "@/lib/higgsfield-models";
+import {
+  checkHiggsfieldRequest,
+  higgsfieldRunCostUsd,
+  isHiggsfieldOutputUrl,
+} from "@/lib/higgsfield";
 import {
   generationsCollection,
   type GenerationDoc,
@@ -155,6 +158,7 @@ export async function recordGeneration(input: {
   status: string;
   createdAt?: string;
   provider?: Provider;
+  quotedCostUsd?: number | null;
 }) {
   const now = new Date();
 
@@ -182,6 +186,7 @@ export async function recordGeneration(input: {
     status: input.status || "starting",
     error: null,
     costUsd: null,
+    ...(input.quotedCostUsd != null && { quotedCostUsd: input.quotedCostUsd }),
     outputUrl: null,
     localOutputUrl: null,
     predictTime: null,
@@ -488,28 +493,23 @@ export async function applyPrediction(
   let localOutputUrl: string | null = null;
   let saved: SavedOutput | null = null;
 
-  if (terminal) {
+  if (terminal && generation.provider !== "higgsfield") {
     try {
       // Price from Replicate's echoed input over the inputs
       // we stored: Replicate drops inputs after a while,
       // and the tiers (resolution, duration) must survive.
       const echoed = prediction.input as Record<string, unknown> | undefined;
 
-      // Higgsfield bills finished videos by length and
-      // resolution
-      costUsd =
-        generation.provider === "higgsfield"
-          ? status === "succeeded"
-            ? higgsfieldCostUsd(generation.model, generation.inputs ?? {})
-            : null
-          : calculateReplicateCost(generation.model, {
-              ...prediction,
-              input: { ...(generation.inputs ?? {}), ...(echoed ?? {}) },
-            });
+      costUsd = calculateReplicateCost(generation.model, {
+        ...prediction,
+        input: { ...(generation.inputs ?? {}), ...(echoed ?? {}) },
+      });
     } catch (costError) {
       console.error("Cost calculation error:", costError);
     }
+  }
 
+  if (terminal) {
     const replicateUrl = firstUrl(prediction.output);
 
     if (status === "succeeded" && replicateUrl) {
@@ -540,11 +540,22 @@ export async function applyPrediction(
         };
       }
 
-      saved = await saveOutput(
-        generation._id,
-        replicateUrl,
-        generation.provider === "higgsfield" ? isHiggsfieldOutputUrl : undefined
-      );
+      if (generation.provider === "higgsfield") {
+        // Higgsfield bills what the run produced (or its
+        // quote): measured once, by the claim holder, while
+        // the output is saved
+        let cost: number | null;
+        [saved, cost] = await Promise.all([
+          saveOutput(generation._id, replicateUrl, isHiggsfieldOutputUrl),
+          higgsfieldRunCostUsd(generation, replicateUrl).catch((costError) => {
+            console.error("Cost calculation error:", costError);
+            return null;
+          }),
+        ]);
+        costUsd = cost;
+      } else {
+        saved = await saveOutput(generation._id, replicateUrl);
+      }
       localOutputUrl = saved ? outputUrlFor(generation._id) : null;
     }
 

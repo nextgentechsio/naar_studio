@@ -70,6 +70,25 @@ const HF_MODELS = [
     },
   },
   {
+    slug: "bytedance/seedance-2.5/video-edit",
+    title: "Seedance 2.5",
+    description: "Video edit",
+    operation_type: ["video2video"],
+    output_type: "video",
+    base_credits: "0.0000",
+    is_workflow: false,
+    input_schema: {
+      type: "object",
+      required: ["prompt", "video_url"],
+      properties: {
+        prompt: { type: "string", minLength: 1 },
+        video_url: { type: "string", format: "uri" },
+        resolution: { type: "string", enum: ["480p", "720p", "1080p"], default: "720p" },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     slug: "higgsfield-ai/soul/v2/image-to-image",
     title: "Soul 2",
     description: "Image to image",
@@ -93,6 +112,63 @@ const HF_MODELS = [
 
 // Format: vercel_blob_rw_<storeId>_<secret>
 export const FAKE_BLOB_TOKEN = "vercel_blob_rw_teststore_secret123";
+
+// A minimal MP4: ftyp, mdat, then moov (mvhd and one
+// video track's tkhd), enough for the app to read the
+// video's size and length
+export function fakeMp4(width: number, height: number, seconds: number): Buffer {
+  const box = (type: string, ...parts: Buffer[]) => {
+    const body = Buffer.concat(parts);
+    const head = Buffer.alloc(8);
+    head.writeUInt32BE(8 + body.length);
+    head.write(type, 4, "latin1");
+    return Buffer.concat([head, body]);
+  };
+  const timescale = 1000;
+
+  const mvhd = Buffer.alloc(100);
+  mvhd.writeUInt32BE(timescale, 12);
+  mvhd.writeUInt32BE(seconds * timescale, 16);
+
+  const tkhd = Buffer.alloc(84);
+  tkhd.writeUInt32BE(seconds * timescale, 20);
+  tkhd.writeUInt32BE(width * 65536, 76);
+  tkhd.writeUInt32BE(height * 65536, 80);
+
+  return Buffer.concat([
+    box("ftyp", Buffer.from("isom0000", "latin1")),
+    box("mdat", Buffer.alloc(1024)),
+    box("moov", box("mvhd", mvhd), box("trak", box("tkhd", tkhd))),
+  ]);
+}
+
+// What /__control/output.mp4 serves (a 720×960, 5s video)
+export const FAKE_OUTPUT_MP4 = fakeMp4(720, 960, 5);
+// What /__control/input.mp4 serves (a 3s input video)
+export const FAKE_INPUT_MP4 = fakeMp4(1280, 720, 3);
+
+// Bytes, honouring a "Range: bytes=a-b" header
+function serveBytes(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  bytes: Buffer,
+  headers: Record<string, string> = {}
+) {
+  const range = /^bytes=(\d+)-(\d*)$/.exec(String(req.headers.range ?? ""));
+  if (range) {
+    const start = Number(range[1]);
+    const end = range[2] ? Math.min(Number(range[2]), bytes.length - 1) : bytes.length - 1;
+    res.writeHead(206, {
+      ...headers,
+      "content-range": `bytes ${start}-${end}/${bytes.length}`,
+      "content-length": String(end - start + 1),
+    });
+    return res.end(bytes.subarray(start, end + 1));
+  }
+
+  res.writeHead(200, { ...headers, "content-length": String(bytes.length) });
+  return res.end(bytes);
+}
 
 export async function startFakeReplicate() {
   const predictions = new Map<string, Prediction>();
@@ -221,19 +297,7 @@ export async function startFakeReplicate() {
       const bytes = blobBytes.get(decodeURIComponent(path.slice("/blobfiles/".length)));
       if (!bytes) return send(404, { error: "Not found" });
 
-      const range = /^bytes=(\d+)-(\d*)$/.exec(String(req.headers.range ?? ""));
-      if (range) {
-        const start = Number(range[1]);
-        const end = range[2] ? Math.min(Number(range[2]), bytes.length - 1) : bytes.length - 1;
-        res.writeHead(206, {
-          "content-range": `bytes ${start}-${end}/${bytes.length}`,
-          "content-length": String(end - start + 1),
-        });
-        return res.end(bytes.subarray(start, end + 1));
-      }
-
-      res.writeHead(200, { "content-length": String(bytes.length) });
-      return res.end(bytes);
+      return serveBytes(req, res, bytes);
     }
 
     // ---------- fake Higgsfield API (/hf) ----------
@@ -256,6 +320,20 @@ export async function startFakeReplicate() {
 
       if (path === "/hf/models" && req.method === "GET") {
         return send(200, { total: HF_MODELS.length, items: HF_MODELS });
+      }
+
+      // Price quotes: Seedance is metered (described, not
+      // quoted); a "noquote" prompt can't be quoted
+      if (path.startsWith("/hf/estimate/") && req.method === "POST") {
+        const model = path.slice("/hf/estimate/".length);
+        const prompt = String((body as { prompt?: unknown })?.prompt ?? "");
+
+        if (model.startsWith("bytedance/seedance")) {
+          return send(200, { type: "description", pricing_description: "Token-metered pricing." });
+        }
+        if (prompt.includes("noquote")) return send(400, { detail: "Cannot estimate" });
+
+        return send(200, { type: "estimate", credits: "0.064", usd: "0.004", discount: null });
       }
 
       if (req.method === "POST") {
@@ -288,8 +366,11 @@ export async function startFakeReplicate() {
     }
 
     if (path === "/__control/output.mp4") {
-      res.writeHead(200, { "content-type": "video/mp4" });
-      return res.end(Buffer.from("fake-mp4-bytes"));
+      return serveBytes(req, res, FAKE_OUTPUT_MP4, { "content-type": "video/mp4" });
+    }
+
+    if (path === "/__control/input.mp4") {
+      return serveBytes(req, res, FAKE_INPUT_MP4, { "content-type": "video/mp4" });
     }
 
     if (path === "/__control/blobs") {

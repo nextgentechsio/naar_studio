@@ -54,6 +54,9 @@ import ModelBrowserDialog from "./ModelBrowserDialog";
 import PromptInput from "./PromptInput";
 import SchemaField from "./SchemaField";
 
+// Resolution of a Draft run (see draftAvailable)
+const DRAFT_RESOLUTION = "480p";
+
 // --------------------------------------------------
 // GENERATE PAGE
 //
@@ -176,6 +179,39 @@ export default function GenerateView() {
   const aspectRatioOptions = schema.aspect_ratio?.enum ?? ASPECT_RATIOS;
 
   const resolutionOptions = schema.resolution?.enum ?? ["1K", "2K", "4K"];
+
+  // Draft: a quick, cheap test run at 480p on Higgsfield
+  // video models that offer it (like Higgsfield's own
+  // "Draft" button). It's just the 480p setting, so it
+  // always matches the Resolution menu; turning it off
+  // goes back to the resolution chosen before.
+  const draftAvailable =
+    isHiggsfield &&
+    higgsfieldModel?.output === "video" &&
+    has("resolution") &&
+    resolutionOptions.includes(DRAFT_RESOLUTION);
+  const draft = draftAvailable && inputs.resolution === DRAFT_RESOLUTION;
+  const fullResolution = useRef<string | null>(null);
+
+  function setDraft(on: boolean) {
+    if (on) {
+      fullResolution.current = String(inputs.resolution ?? "");
+      updateInput("resolution", DRAFT_RESOLUTION);
+      return;
+    }
+
+    const previous = fullResolution.current;
+    const fallback =
+      [String(schema.resolution?.default ?? ""), "720p"].find(
+        (value) => value !== DRAFT_RESOLUTION && resolutionOptions.includes(value),
+      ) ?? resolutionOptions.find((value) => value !== DRAFT_RESOLUTION);
+    updateInput(
+      "resolution",
+      previous && previous !== DRAFT_RESOLUTION && resolutionOptions.includes(previous)
+        ? previous
+        : fallback,
+    );
+  }
 
   const orderedFields = orderSchemaFields(schema);
 
@@ -606,6 +642,33 @@ export default function GenerateView() {
                       </Field>
                     )}
 
+                    {draftAvailable && (
+                      <Field
+                        label="Draft"
+                        info="A quick, low-cost test run at 480p on the same model. Turn it off for full quality once you like the result."
+                      >
+                        {(control) => (
+                          <label
+                            className={cx(
+                              "flex h-10 cursor-pointer items-center gap-2.5 rounded-lg border px-3 text-sm transition-colors",
+                              draft
+                                ? "border-accent bg-accent-soft text-fg"
+                                : "border-line bg-sunken text-fg-muted hover:border-line-strong",
+                            )}
+                          >
+                            <input
+                              {...control}
+                              type="checkbox"
+                              checked={draft}
+                              onChange={(event) => setDraft(event.target.checked)}
+                              className="h-4 w-4 accent-[var(--accent)]"
+                            />
+                            {draft ? "On · 480p" : "Off"}
+                          </label>
+                        )}
+                      </Field>
+                    )}
+
                     {hasResolution && (
                       <Field label="Resolution">
                         {(control) => (
@@ -782,6 +845,8 @@ export default function GenerateView() {
                   <>
                     <Spinner /> Starting…
                   </>
+                ) : draft ? (
+                  "Generate draft"
                 ) : (
                   "Generate"
                 )}

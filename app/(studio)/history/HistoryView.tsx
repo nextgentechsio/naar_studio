@@ -14,13 +14,19 @@ import {
   PageHeader,
 } from "@/app/components/ui/primitives";
 import {
+  deleteGeneration,
   fetchHistoryPage,
+  setGenerationHidden,
   type HistoryPage,
   type HistoryStatus,
 } from "@/lib/client/data";
 import { readCache, writeCache } from "@/lib/client/cache";
 import { errorMessage } from "@/lib/client/http";
-import { canManageUsers } from "@/lib/roles";
+import {
+  canDeleteGenerations,
+  canHideGenerations,
+  canManageUsers,
+} from "@/lib/roles";
 import GenerationCard, { GenerationCardSkeleton } from "./GenerationCard";
 import GenerationDrawer from "./GenerationDrawer";
 import HistoryFilters, { type FilterValues } from "./HistoryFilters";
@@ -39,7 +45,8 @@ const RUNNING_REFRESH_MS = 5000;
 
 const OPTIONS_CACHE_KEY = "history:options";
 const pageCacheKey = (listKey: string) => `history:page:${listKey}`;
-const STATUSES: HistoryStatus[] = ["succeeded", "failed", "running"];
+// "hidden" only does anything for the super admin
+const STATUSES: HistoryStatus[] = ["succeeded", "failed", "running", "hidden"];
 
 // 4 columns on a laptop, 5 on wide screens: enough to
 // scan, big enough to judge an image
@@ -235,6 +242,67 @@ export default function HistoryView() {
     return () => clearTimeout(timer);
   }, [hasRunning, result]);
 
+  // ---------- Hide / delete (super admin) ----------
+  // The grid updates at once; a reload then fills the page
+
+  const canHide = canHideGenerations(currentUser);
+  const canDelete = canDeleteGenerations(currentUser);
+  const [actionError, setActionError] = useState("");
+
+  function applyHidden(id: string, hidden: boolean) {
+    setResult((previous) =>
+      previous.data
+        ? {
+            ...previous,
+            data: {
+              ...previous.data,
+              generations: previous.data.generations.map((item) =>
+                item.id === id ? { ...item, hidden } : item,
+              ),
+            },
+          }
+        : previous,
+    );
+    setRefreshTick((tick) => tick + 1);
+  }
+
+  function applyDeleted(id: string) {
+    setResult((previous) =>
+      previous.data
+        ? {
+            ...previous,
+            data: {
+              ...previous.data,
+              generations: previous.data.generations.filter((item) => item.id !== id),
+              total: Math.max(0, previous.data.total - 1),
+            },
+          }
+        : previous,
+    );
+    setRefreshTick((tick) => tick + 1);
+  }
+
+  async function toggleHidden(id: string, hidden: boolean) {
+    setActionError("");
+    try {
+      await setGenerationHidden(id, hidden);
+      applyHidden(id, hidden);
+    } catch (err) {
+      setActionError(errorMessage(err, "Couldn't change this run."));
+    }
+  }
+
+  async function removeRun(id: string) {
+    setActionError("");
+    try {
+      await deleteGeneration(id);
+      applyDeleted(id);
+    } catch (err) {
+      setActionError(errorMessage(err, "Couldn't delete this run."));
+      throw err;
+    }
+  }
+
   // ---------- Derived ----------
 
   const total = data?.total ?? 0;
@@ -255,11 +323,13 @@ export default function HistoryView() {
         values={filters}
         options={filterOptions}
         showUser={isManager}
+        showHidden={canHideGenerations(currentUser)}
         onChange={changeFilters}
         onClear={clearFilters}
       />
 
       {result.error && result.key === listKey && <Alert>{result.error}</Alert>}
+      {actionError && <Alert>{actionError}</Alert>}
 
       {/* Count + pagination summary */}
       {data && generations.length > 0 && (
@@ -332,6 +402,10 @@ export default function HistoryView() {
               generation={generation}
               showUser={isManager}
               onOpen={() => openGeneration(generation.id)}
+              onToggleHidden={
+                canHide ? () => toggleHidden(generation.id, !generation.hidden) : undefined
+              }
+              onDelete={canDelete ? () => removeRun(generation.id) : undefined}
             />
           ))}
         </div>
@@ -373,6 +447,11 @@ export default function HistoryView() {
           preview={generations.find((item) => item.id === viewId)}
           showUser={isManager}
           onClose={closeGeneration}
+          onHiddenChange={(hidden) => applyHidden(viewId, hidden)}
+          onDeleted={() => {
+            closeGeneration();
+            applyDeleted(viewId);
+          }}
         />
       )}
     </div>

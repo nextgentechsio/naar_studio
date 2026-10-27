@@ -845,7 +845,6 @@ body::before {
   background: linear-gradient(180deg, var(--glass-sheen), transparent 38%), var(--glass);
   border-color: var(--line-strong);
   backdrop-filter: blur(28px) saturate(170%);
-  -webkit-backdrop-filter: blur(28px) saturate(170%);
   box-shadow: inset 0 1px 0 var(--glass-edge), var(--glass-shadow);
 }
 
@@ -858,8 +857,11 @@ body::before {
   box-shadow: inset 0 1px 0 var(--glass-edge), var(--glass-shadow);
 }
 
-/* Panels that sit on the page, lightly frosted */
+/* Panels that sit on the page, lightly frosted.
+   (Only the standard backdrop-filter is written: the CSS
+   build adds Safari's -webkit- copy itself, and writing
+   both makes it keep just the -webkit- one, which Chrome
+   ignores.) */
 .glass-soft {
   backdrop-filter: blur(16px) saturate(150%);
-  -webkit-backdrop-filter: blur(16px) saturate(150%);
 }

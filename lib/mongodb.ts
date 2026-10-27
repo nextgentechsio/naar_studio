@@ -116,6 +116,9 @@ export type GenerationDoc = {
   // Saved copy deleted by the retention cleanup
   // (lib/output-retention.ts)
   outputExpiredAt?: Date | null;
+  // Hidden by the super admin: then only they can see it
+  // (its cost still counts in Expenses)
+  hiddenAt?: Date | null;
   predictTime: number | null;
   // Reconcile attempts that found no prediction
   reconcileFailures?: number;

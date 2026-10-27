@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { GridFSBucket, ObjectId } from "mongodb";
 import {
+  replicateUrl,
   api,
   baseUrl,
   closeDb,
@@ -243,11 +244,23 @@ describe("expenses", () => {
 });
 
 describe("download proxy", () => {
-  it("only fetches Replicate output files", async () => {
+  it("downloads a Higgsfield result not saved yet", async () => {
+    // The stand-in Higgsfield API serves results in tests
+    const { status, headers } = await api(
+      `/api/download?url=${encodeURIComponent(`${replicateUrl}/__control/output.mp4`)}`,
+      { session: alice.session }
+    );
+    expect(status).toBe(200);
+    expect(headers.get("content-disposition")).toContain("generated-output.mp4");
+  });
+
+  it("only fetches Replicate and Higgsfield output files", async () => {
     for (const url of [
       "https://api.replicate.com/v1/predictions/someone-elses-id",
       "http://replicate.delivery/x.png",
       "https://replicate.delivery.evil.com/x.png",
+      "https://cloudfront.net.evil.com/x.mp4",
+      "http://d3u0tzju9qaucj.cloudfront.net/x.mp4",
       "https://evil.com/x.png",
       "http://127.0.0.1:27017/",
       "http://169.254.169.254/latest/meta-data",

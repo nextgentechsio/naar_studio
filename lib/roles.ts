@@ -105,6 +105,16 @@ export function canDeleteProjects(actor: Actor): boolean {
   return !actor.disabled && actor.role === "super_admin";
 }
 
+// Removing a run from History (its expense stays)
+export function canDeleteGenerations(actor: Actor): boolean {
+  return !actor.disabled && actor.role === "super_admin";
+}
+
+// Hiding a run from everyone else, and seeing hidden runs
+export function canHideGenerations(actor: Actor): boolean {
+  return !actor.disabled && actor.role === "super_admin";
+}
+
 export type PublicProject = {
   id: string;
   name: string;

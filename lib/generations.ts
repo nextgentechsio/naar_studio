@@ -24,7 +24,7 @@ import {
   replicateHeaders,
 } from "@/lib/replicate-api";
 import { calculateReplicateCost } from "@/lib/replicate-cost";
-import { canManageUsers } from "@/lib/roles";
+import { canHideGenerations, canManageUsers } from "@/lib/roles";
 import type { StoredUser } from "@/lib/users";
 
 // --------------------------------------------------
@@ -76,6 +76,9 @@ export type PublicGeneration = {
   replicateOutputUrl: string | null;
   // Saved copy deleted after the retention period
   outputExpired: boolean;
+  // Hidden from everyone but the super admin (only they
+  // ever receive hidden runs)
+  hidden: boolean;
   predictTime: number | null;
   createdAt: string;
   completedAt: string | null;
@@ -104,6 +107,7 @@ function toPublicGeneration(
     outputContentType: doc.outputContentType ?? null,
     replicateOutputUrl: doc.outputUrl,
     outputExpired: Boolean(doc.outputExpiredAt),
+    hidden: Boolean(doc.hiddenAt),
     predictTime: doc.predictTime,
     createdAt: doc.createdAt.toISOString(),
     completedAt: doc.completedAt?.toISOString() ?? null,
@@ -112,8 +116,12 @@ function toPublicGeneration(
 
 export function canViewGeneration(
   actor: StoredUser,
-  generation: Pick<GenerationDoc, "userId">
+  generation: Pick<GenerationDoc, "userId" | "hiddenAt">
 ): boolean {
+  // Hidden runs: the super admin only, even for their
+  // owner or an admin
+  if (generation.hiddenAt && !canHideGenerations(actor)) return false;
+
   return (
     generation.userId === actor.id ||
     canManageUsers(actor)
@@ -212,10 +220,12 @@ export async function getGeneration(
   });
 }
 
+// "hidden" is the super admin's view of hidden runs
 export const HISTORY_STATUSES = [
   "succeeded",
   "failed",
   "running",
+  "hidden",
 ] as const;
 
 export type HistoryStatus = (typeof HISTORY_STATUSES)[number];
@@ -271,6 +281,7 @@ const LIST_PROJECTION = {
   localOutputUrl: 1,
   outputContentType: 1,
   outputExpiredAt: 1,
+  hiddenAt: 1,
   predictTime: 1,
   createdAt: 1,
   completedAt: 1,
@@ -284,6 +295,7 @@ const STATUS_FILTERS: Record<HistoryStatus, Filter<GenerationDoc>> = {
   succeeded: { status: "succeeded" },
   failed: { status: { $in: ["failed", "canceled", "unknown"] } },
   running: { status: { $nin: [...TERMINAL_STATUSES] } },
+  hidden: { hiddenAt: { $ne: null } },
 };
 
 export async function listGenerations(
@@ -301,17 +313,21 @@ export async function listGenerations(
     : 1;
 
   // Plain users see only their own generations, so a
-  // user filter only applies to managers
-  const scope: Filter<GenerationDoc> = canManageUsers(actor)
-    ? {}
-    : { userId: actor.id };
+  // user filter only applies to managers. Hidden runs
+  // exist only for the super admin (filter values too).
+  const scope: Filter<GenerationDoc> = {
+    ...(canManageUsers(actor) ? {} : { userId: actor.id }),
+    ...(canHideGenerations(actor) ? {} : { hiddenAt: null }),
+  };
 
   const filter: Filter<GenerationDoc> = { ...scope };
 
   if (query.projectId) filter.projectId = query.projectId;
   if (query.userId && canManageUsers(actor)) filter.userId = query.userId;
   if (query.model) filter.model = query.model;
-  if (query.status) Object.assign(filter, STATUS_FILTERS[query.status]);
+  if (query.status && (query.status !== "hidden" || canHideGenerations(actor))) {
+    Object.assign(filter, STATUS_FILTERS[query.status]);
+  }
 
   const q = query.q?.trim().slice(0, 100);
   if (q) filter.prompt = { $regex: escapeRegex(q), $options: "i" };
@@ -344,6 +360,7 @@ export async function listGenerations(
     withOptions && canManageUsers(actor)
       ? collection
           .aggregate<{ _id: string; name: string }>([
+            { $match: scope },
             { $sort: { createdAt: -1 } },
             { $group: { _id: "$userId", name: { $first: "$userName" } } },
             { $sort: { name: 1 } },
@@ -672,4 +689,75 @@ export async function reconcilePending(
       }
     })
   );
+}
+
+// --------------------------------------------------
+// DELETE (super admin only, checked by the route)
+//
+// Removes a finished run from History, with its saved
+// output. Its expense stays: the money was spent, and
+// Dashboard and Expenses must still add up. A run still
+// going can't be deleted, since finishing it is what
+// records its cost.
+// --------------------------------------------------
+
+export type DeleteGenerationResult =
+  | { ok: true }
+  | { ok: false; status: number; error: string };
+
+export async function deleteGeneration(id: string): Promise<DeleteGenerationResult> {
+  const generations = await generationsCollection();
+
+  const doc = await generations.findOneAndDelete({
+    _id: id,
+    status: { $in: [...TERMINAL_STATUSES] },
+  });
+
+  if (!doc) {
+    const exists = await generations.countDocuments({ _id: id }, { limit: 1 });
+
+    return exists
+      ? { ok: false, status: 409, error: "This run is still going. Delete it once it has finished." }
+      : { ok: false, status: 404, error: "Generation not found" };
+  }
+
+  // After the record is gone, so nothing points at a
+  // deleted file (a copy still being saved is caught by
+  // the outputs/ sweep)
+  await deleteSavedOutput({
+    fileId: doc.outputFileId ?? null,
+    blobUrl: doc.outputBlobUrl ?? null,
+  });
+
+  return { ok: true };
+}
+
+// --------------------------------------------------
+// HIDE (super admin only, checked by the route)
+//
+// A hidden run disappears for everyone else: History,
+// its detail and its output file. Only finished runs, so
+// the person who started one can still watch it finish.
+// --------------------------------------------------
+
+export async function setGenerationHidden(
+  id: string,
+  hidden: boolean
+): Promise<{ ok: true; hidden: boolean } | { ok: false; status: number; error: string }> {
+  const generations = await generationsCollection();
+
+  const result = await generations.updateOne(
+    { _id: id, status: { $in: [...TERMINAL_STATUSES] } },
+    { $set: { hiddenAt: hidden ? new Date() : null } }
+  );
+
+  if (!result.matchedCount) {
+    const exists = await generations.countDocuments({ _id: id }, { limit: 1 });
+
+    return exists
+      ? { ok: false, status: 409, error: "This run is still going. Hide it once it has finished." }
+      : { ok: false, status: 404, error: "Generation not found" };
+  }
+
+  return { ok: true, hidden };
 }

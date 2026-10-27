@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
+import { isHiggsfieldOutputUrl } from "@/lib/higgsfield";
 import { fetchAllowed, isReplicateDeliveryUrl } from "@/lib/output-source";
 
 export const runtime = "nodejs";
@@ -7,11 +8,13 @@ export const runtime = "nodejs";
 // --------------------------------------------------
 // DOWNLOAD PROXY
 //
-// Streams a Replicate output file back with a download
-// filename. This route fetches server-side, so an open
-// URL would let callers reach internal hosts (SSRF):
-// only Replicate's output CDN is allowed, and every
-// redirect hop is re-checked (lib/output-source.ts).
+// Streams a Replicate or Higgsfield output file back
+// with a download filename (a Higgsfield result links to
+// Higgsfield's CDN until our copy is saved). This route
+// fetches server-side, so an open URL would let callers
+// reach internal hosts (SSRF): only the two providers'
+// output hosts are allowed, and every redirect hop is
+// re-checked (lib/output-source.ts).
 //
 // It deliberately does NOT accept api.replicate.com
 // prediction URLs: those are fetched with our account
@@ -33,6 +36,9 @@ const TYPES: [string, string, string][] = [
   ["audio/wav", ".wav", "wav"],
 ];
 
+const isAllowedDownload = (url: URL) =>
+  isReplicateDeliveryUrl(url) || isHiggsfieldOutputUrl(url);
+
 export async function GET(request: Request) {
   const auth = await requireUser();
   if (auth.response) return auth.response;
@@ -47,7 +53,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
   }
 
-  if (!isReplicateDeliveryUrl(parsedUrl)) {
+  if (!isAllowedDownload(parsedUrl)) {
     return NextResponse.json(
       { error: "Download source is not allowed" },
       { status: 400 }
@@ -57,7 +63,7 @@ export async function GET(request: Request) {
   let response: Response;
 
   try {
-    response = await fetchAllowed(parsedUrl, isReplicateDeliveryUrl);
+    response = await fetchAllowed(parsedUrl, isAllowedDownload);
   } catch (error) {
     console.error("Download proxy error:", error);
 

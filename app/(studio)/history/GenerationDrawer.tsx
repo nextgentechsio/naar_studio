@@ -4,14 +4,18 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useGenerateStore } from "@/app/(studio)/_components/GenerateProvider";
 import { useStudio } from "@/app/(studio)/_components/StudioProvider";
+import { Icon } from "@/app/components/ui/Icon";
 import {
   Alert,
   Badge,
   Button,
+  cx,
   formatCost,
 } from "@/app/components/ui/primitives";
 import {
+  deleteGeneration,
   fetchGeneration,
+  setGenerationHidden,
   type GenerationDetail,
   type PublicGeneration,
 } from "@/lib/client/data";
@@ -19,6 +23,7 @@ import { formatDateTime, formatDuration } from "@/lib/client/format";
 import { errorMessage } from "@/lib/client/http";
 import { downloadOutput } from "@/lib/client/outputs";
 import { modelLabel } from "@/lib/model-catalog";
+import { canDeleteGenerations, canHideGenerations } from "@/lib/roles";
 import { useDialog } from "@/app/(studio)/_components/useDialog";
 import OutputPreview, { isRunningStatus } from "./OutputPreview";
 
@@ -44,15 +49,26 @@ export default function GenerationDrawer({
   preview,
   showUser,
   onClose,
+  onHiddenChange,
+  onDeleted,
 }: {
   id: string;
   // The grid's copy, shown while the full record loads
   preview: PublicGeneration | undefined;
   showUser: boolean;
   onClose: () => void;
+  // After the super admin hides or unhides it
+  onHiddenChange: (hidden: boolean) => void;
+  // After the super admin deletes it
+  onDeleted: () => void;
 }) {
   const router = useRouter();
-  const { projects } = useStudio();
+  const { projects, currentUser } = useStudio();
+  const canDelete = canDeleteGenerations(currentUser);
+  const canHide = canHideGenerations(currentUser);
+  const [hiding, setHiding] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   // "Run again" goes back to the provider that ran it
   const replicate = useGenerateStore("replicate");
   const higgsfield = useGenerateStore("higgsfield");
@@ -132,6 +148,42 @@ export default function GenerationDrawer({
       generation.outputUrl,
       `generation-${generation.predictionId}`,
     ).catch((err) => setNotice(errorMessage(err, "Download failed")));
+  }
+
+  function toggleHidden() {
+    if (!generation) return;
+
+    const next = !generation.hidden;
+    setHiding(true);
+    setNotice("");
+    setGenerationHidden(id, next)
+      .then(() => {
+        setLoaded((previous) =>
+          previous.id === id && previous.detail
+            ? { ...previous, detail: { ...previous.detail, hidden: next } }
+            : previous,
+        );
+        onHiddenChange(next);
+        setNotice(
+          next
+            ? "Hidden. Only you (the super admin) can see this run now."
+            : "Visible again to everyone who could see it before.",
+        );
+      })
+      .catch((err) => setNotice(errorMessage(err, "Couldn't change this run.")))
+      .finally(() => setHiding(false));
+  }
+
+  function remove() {
+    setDeleting(true);
+    setNotice("");
+    deleteGeneration(id)
+      .then(onDeleted)
+      .catch((err) => {
+        setNotice(errorMessage(err, "Couldn't delete this run."));
+        setDeleting(false);
+        setConfirmDelete(false);
+      });
   }
 
   function copyPrompt() {
@@ -228,6 +280,13 @@ export default function GenerationDrawer({
                 />
               </div>
 
+              {generation.hidden && (
+                <p className="flex items-center gap-2 rounded-lg border border-line bg-sunken px-3 py-2 text-xs text-fg-muted">
+                  <Icon name="eyeOff" size={14} />
+                  Hidden: only you can see this run. Its cost still counts in Expenses.
+                </p>
+              )}
+
               <div className="flex flex-wrap gap-2">
                 <Button
                   variant="primary"
@@ -254,7 +313,75 @@ export default function GenerationDrawer({
                     Copy prompt
                   </Button>
                 )}
+
+                {canHide && !confirmDelete && (
+                  <Button
+                    variant="ghost"
+                    icon={generation.hidden ? "eye" : "eyeOff"}
+                    aria-label={generation.hidden ? "Unhide" : "Hide"}
+                    className="ml-auto w-10 px-0"
+                    disabled={hiding || isRunningStatus(generation.status)}
+                    title={
+                      isRunningStatus(generation.status)
+                        ? "It can be hidden once it has finished"
+                        : generation.hidden
+                          ? "Unhide: show it again to its owner and admins"
+                          : "Hide from everyone but you"
+                    }
+                    onClick={toggleHidden}
+                  />
+                )}
+
+                {canDelete && !confirmDelete && (
+                  <Button
+                    variant="ghost"
+                    icon="trash"
+                    aria-label="Delete"
+                    className={cx(!canHide && "ml-auto", "w-10 px-0 text-danger hover:text-danger")}
+                    disabled={isRunningStatus(generation.status)}
+                    title={
+                      isRunningStatus(generation.status)
+                        ? "It can be deleted once it has finished"
+                        : "Delete from History"
+                    }
+                    onClick={() => setConfirmDelete(true)}
+                  />
+                )}
               </div>
+
+              {confirmDelete && (
+                <div
+                  role="alertdialog"
+                  aria-label="Delete this run?"
+                  className="ui-rise rounded-lg border border-danger/40 bg-danger/10 p-3"
+                >
+                  <p className="text-sm font-medium text-fg">Delete this run from History?</p>
+                  <p className="mt-0.5 text-xs text-fg-muted">
+                    Its saved output is removed for everyone and can&apos;t be
+                    recovered. Its cost stays in Expenses.
+                  </p>
+                  <div className="mt-3 flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      icon="trash"
+                      autoFocus
+                      disabled={deleting}
+                      onClick={remove}
+                    >
+                      {deleting ? "Deleting…" : "Delete"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={deleting}
+                      onClick={() => setConfirmDelete(false)}
+                    >
+                      Keep
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               {notice && (
                 <p className="text-xs text-fg-muted" role="status">

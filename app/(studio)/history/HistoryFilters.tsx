@@ -26,6 +26,8 @@ const STATUS_OPTIONS: ["" | HistoryStatus, string][] = [
   ["succeeded", "Succeeded"],
   ["failed", "Failed"],
   ["running", "Running"],
+  // The super admin only (showHidden)
+  ["hidden", "Hidden"],
 ];
 
 const selectClass = cx(inputClass, "w-full sm:w-auto sm:min-w-40");
@@ -34,12 +36,15 @@ export default function HistoryFilters({
   values,
   options,
   showUser,
+  showHidden,
   onChange,
   onClear,
 }: {
   values: FilterValues;
   options: HistoryPage["options"] | undefined;
   showUser: boolean;
+  // The "Hidden" chip (the super admin)
+  showHidden: boolean;
   onChange: (patch: Partial<FilterValues>) => void;
   onClear: () => void;
 }) {
@@ -147,7 +152,7 @@ export default function HistoryFilters({
           aria-label="Filter by status"
           className="flex flex-wrap gap-1.5"
         >
-          {STATUS_OPTIONS.map(([value, label]) => (
+          {STATUS_OPTIONS.filter(([value]) => value !== "hidden" || showHidden).map(([value, label]) => (
             <button
               key={label}
               type="button"

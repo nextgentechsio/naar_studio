@@ -88,10 +88,16 @@ function readMoov(moov: Buffer): VideoInfo | null {
   return best;
 }
 
+// Drop a body we won't read. Not awaited: on Next's
+// server fetch, awaiting cancel() can hang forever.
+function release(response: Response) {
+  response.body?.cancel().catch(() => {});
+}
+
 async function readAll(response: Response): Promise<Buffer | null> {
   const declared = Number(response.headers.get("content-length"));
   if (declared > MAX_WHOLE_FILE_BYTES || !response.body) {
-    await response.body?.cancel();
+    release(response);
     return null;
   }
 
@@ -128,7 +134,7 @@ export async function videoInfo(
       return { whole: await readAll(response) };
     }
 
-    await response.body?.cancel();
+    release(response);
     return null;
   };
 

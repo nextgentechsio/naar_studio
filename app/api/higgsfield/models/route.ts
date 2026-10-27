@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
-import { higgsfieldConfigured, listHiggsfieldModels } from "@/lib/higgsfield";
+import {
+  HiggsfieldRequestError,
+  higgsfieldConfigured,
+  listHiggsfieldModels,
+} from "@/lib/higgsfield";
 
 export const runtime = "nodejs";
 
@@ -23,7 +27,12 @@ export async function GET() {
     );
 
     return NextResponse.json(
-      { error: "Couldn't load Higgsfield's models" },
+      {
+        error:
+          error instanceof HiggsfieldRequestError && error.keyRejected
+            ? "Higgsfield rejected the server's API key (it may be disabled or revoked). An admin needs to update HF_CREDENTIALS."
+            : "Couldn't load Higgsfield's models",
+      },
       { status: 502 }
     );
   }

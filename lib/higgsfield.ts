@@ -50,6 +50,21 @@ function ensureSdk() {
   configuredWith = key;
 }
 
+// A failed call to Higgsfield, with its HTTP status
+export class HiggsfieldRequestError extends Error {
+  constructor(
+    readonly status: number,
+    what: string
+  ) {
+    super(`Higgsfield ${what} failed (${status})`);
+  }
+
+  // 401/403: our key is wrong, disabled or revoked
+  get keyRejected() {
+    return this.status === 401 || this.status === 403;
+  }
+}
+
 // Same header the SDK sends
 function authHeaders(): Record<string, string> {
   return {
@@ -108,8 +123,11 @@ async function fetchModels(): Promise<RawModel[]> {
   });
 
   if (!response.ok) {
-    await response.body?.cancel();
-    throw new Error(`Higgsfield model list failed (${response.status})`);
+    // Read the (small) error body rather than cancel it:
+    // awaiting cancel() on Next's server fetch can hang
+    // forever, which left the page on "Loading models…"
+    await response.text().catch(() => "");
+    throw new HiggsfieldRequestError(response.status, "model list");
   }
 
   const data = (await response.json()) as { items?: RawModel[] };

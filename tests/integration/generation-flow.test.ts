@@ -13,6 +13,7 @@ import {
   setPrediction,
   startGeneration,
   type Session,
+  pollPrediction,
 } from "./helpers";
 
 // --------------------------------------------------
@@ -33,8 +34,7 @@ beforeAll(async () => {
 
 afterAll(closeDb);
 
-const poll = (session: Session, id: string) =>
-  api(`/api/predictions/${encodeURIComponent(id)}`, { session });
+const poll = (session: Session, id: string) => pollPrediction(session, id);
 
 const expensesFor = async (id: string) =>
   (await db()).collection("expenses").find({ _id: id as never }).toArray();

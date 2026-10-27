@@ -47,6 +47,21 @@ export async function api(path: string, options: Options = {}) {
   return { status: response.status, data, headers: response.headers };
 }
 
+// Polls a run like the Generate page does. A run that
+// just succeeded answers "finalizing" while its output is
+// saved in the background; keep checking until it's
+// settled, as the page does.
+export async function pollPrediction(session: Session, id: string) {
+  const path = `/api/predictions/${encodeURIComponent(id)}`;
+
+  for (let attempt = 0; ; attempt++) {
+    const result = await api(path, { session });
+    if (!result.data.finalizing) return result;
+    if (attempt >= 100) throw new Error(`${id} still finalizing`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
 export async function login(username: string, password: string): Promise<Session> {
   const response = await fetch(`${baseUrl}/api/auth/login`, {
     method: "POST",

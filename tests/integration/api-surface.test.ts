@@ -13,6 +13,7 @@ import {
   setPrediction,
   startGeneration,
   type Session,
+  pollPrediction,
 } from "./helpers";
 
 let root: Session;
@@ -24,7 +25,7 @@ const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0
 
 async function finish(session: Session, id: string, status = "succeeded") {
   await setPrediction(id, { status, output: status === "succeeded" ? [fakeOutputUrl()] : null });
-  await api(`/api/predictions/${id}`, { session });
+  await pollPrediction(session, id);
 }
 
 beforeAll(async () => {

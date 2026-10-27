@@ -1,10 +1,11 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import {
   applyPrediction,
   canViewGeneration,
   fetchGenerationStatus,
   getGeneration,
+  isTerminalStatus,
 } from "@/lib/generations";
 
 export const runtime = "nodejs";
@@ -65,6 +66,38 @@ export async function GET(
     }
 
     const prediction = result.prediction;
+
+    // Just finished: answer now, so the output shows the
+    // moment the provider is done, and save our copy (and
+    // measure the cost) after the response. The page keeps
+    // checking while `finalizing`; every check retries the
+    // save if this one died, and History's reconcile is the
+    // last safety net.
+    if (prediction.status === "succeeded" && !isTerminalStatus(generation.status)) {
+      after(async () => {
+        try {
+          await applyPrediction(generation, prediction);
+        } catch (historyError) {
+          console.error("Failed to update generation history:", id, historyError);
+        }
+      });
+
+      return NextResponse.json({
+        success: true,
+        prediction,
+        status: prediction.status,
+        output: prediction.output ?? null,
+        replicateOutput: prediction.output ?? null,
+        error: null,
+        predictTime:
+          (prediction.metrics as { predict_time?: number })?.predict_time ?? null,
+        // Known for Higgsfield's quoted models; the rest come
+        // once the save is done
+        costUsd: generation.quotedCostUsd ?? null,
+        finalizing: true,
+        model: generation.model,
+      });
+    }
 
     // IMPORTANT:
     // Never let history bookkeeping break polling.

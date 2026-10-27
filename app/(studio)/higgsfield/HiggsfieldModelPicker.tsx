@@ -112,7 +112,7 @@ export default function HiggsfieldModelPicker({
               : ""
             : unpriced
               ? "Unpriced: usage not reported"
-              : `${CATEGORY_LABELS[current?.category ?? "other"]} · ${price}`}
+              : `${current?.task || CATEGORY_LABELS[current?.category ?? "other"]} · ${price}`}
         </p>
         <button
           type="button"

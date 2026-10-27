@@ -10,6 +10,7 @@ import {
   replicateRequests,
   replicateUrl,
   type Session,
+  pollPrediction,
 } from "./helpers";
 import { FAKE_OUTPUT_MP4 } from "./fake-replicate";
 
@@ -58,8 +59,7 @@ const setRequest = (id: string, patch: Record<string, unknown>) =>
     body: JSON.stringify(patch),
   });
 
-const poll = (session: Session, id: string) =>
-  api(`/api/predictions/${encodeURIComponent(id)}`, { session });
+const poll = (session: Session, id: string) => pollPrediction(session, id);
 
 async function startRun(inputs = VALID) {
   const { status, data } = await start(alice.session, inputs);
@@ -131,8 +131,19 @@ describe("higgsfield", () => {
     expect((await poll(alice.session, id)).data.status).toBe("processing");
 
     await setRequest(id, { status: "completed", video: { url: `${replicateUrl}/__control/output.mp4` } });
+
+    // Shown the moment Higgsfield is done, from its link;
+    // our copy and the exact cost follow in the background
+    const first = await api(`/api/predictions/${encodeURIComponent(id)}`, { session: alice.session });
+    expect(first.data).toMatchObject({
+      status: "succeeded",
+      finalizing: true,
+      output: `${replicateUrl}/__control/output.mp4`,
+    });
+
     const done = await poll(alice.session, id);
     expect(done.data.status).toBe("succeeded");
+    expect(done.data.finalizing).toBeUndefined();
     // What Higgsfield bills: the video came out 720 × 960
     // (720 × 960 × 5 × 24 / 1024 = 81,000 tokens)
     expect(done.data.costUsd).toBe(1.7334);

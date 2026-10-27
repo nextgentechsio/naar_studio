@@ -2,7 +2,6 @@ import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import type { MongoClient } from "mongodb";
 import { FAKE_BLOB_TOKEN } from "./fake-replicate";
 import {
-  api,
   closeDb,
   createProject,
   createUser,
@@ -11,6 +10,7 @@ import {
   loginRoot,
   replicateUrl,
   setPrediction,
+  pollPrediction,
   startGeneration,
   type Session,
 } from "./helpers";
@@ -45,8 +45,7 @@ afterAll(async () => {
   await closeDb();
 });
 
-const poll = (id: string) =>
-  api(`/api/predictions/${encodeURIComponent(id)}`, { session: user.session });
+const poll = (id: string) => pollPrediction(user.session, id);
 
 const record = async (id: string) =>
   (await db()).collection("generations").findOne({ _id: id as never });

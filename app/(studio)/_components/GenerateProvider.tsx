@@ -504,6 +504,9 @@ export function GenerateProvider({
     // doesn't hit the API every 2s forever.
     const startedAt = Date.now();
     let consecutiveErrors = 0;
+    // The output is showing; only the saved copy and the
+    // exact cost are still to come
+    let shown = false;
 
     // A newer run (or model change) took over
     const stale = () => run !== runRef.current;
@@ -511,7 +514,8 @@ export function GenerateProvider({
     // Give up, leaving a clear end state instead of a
     // spinner that never stops
     function stopPolling(message: string) {
-      if (stale()) return;
+      // The result is already on screen: just stop
+      if (stale() || shown) return;
 
       setError(message);
       setResult((previous) =>
@@ -555,6 +559,9 @@ export function GenerateProvider({
         const data = await fetchJson<{
           prediction?: Prediction;
           costUsd?: number | null;
+          // Succeeded; the server is still saving the output
+          // and working out the exact cost
+          finalizing?: boolean;
         }>(`/api/predictions/${encodeURIComponent(predictionId)}`);
 
         const prediction = data.prediction;
@@ -565,25 +572,32 @@ export function GenerateProvider({
         }
 
         consecutiveErrors = 0;
+        const settled = prediction.status === "succeeded" && !data.finalizing;
+        // Read now: the updater below runs later
+        const alreadyShown = shown;
 
         setResult((previous) =>
           // Ignore if the user started over meanwhile
           previous?.prediction.id === predictionId
             ? {
-                prediction,
-                costUsd:
-                  predictionCost(prediction, data.costUsd) ??
-                  previous.costUsd,
+                // Once showing, keep the same object: the output
+                // mustn't reload while it plays
+                prediction: alreadyShown ? previous.prediction : prediction,
+                // Settled: the recorded cost, even when unknown
+                costUsd: settled
+                  ? predictionCost(prediction, data.costUsd)
+                  : (predictionCost(prediction, data.costUsd) ?? previous.costUsd),
               }
             : previous
         );
 
-        if (prediction.status === "succeeded") {
+        if (prediction.status === "succeeded" && !shown) {
+          shown = true;
           setFinishedAt(Date.now());
         }
 
         if (
-          prediction.status === "succeeded" ||
+          settled ||
           prediction.status === "failed" ||
           prediction.status === "canceled"
         ) {

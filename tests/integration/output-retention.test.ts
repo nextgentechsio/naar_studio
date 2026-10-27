@@ -12,6 +12,7 @@ import {
   setPrediction,
   startGeneration,
   type Session,
+  pollPrediction,
 } from "./helpers";
 import { FAKE_BLOB_TOKEN } from "./fake-replicate";
 
@@ -49,7 +50,7 @@ afterAll(async () => {
 async function finishedRun() {
   const id = await startGeneration(user.session, project.name);
   await setPrediction(id, { status: "succeeded", output: [fakeOutputUrl()] });
-  await api(`/api/predictions/${encodeURIComponent(id)}`, { session: user.session });
+  await pollPrediction(user.session, id);
 
   const record = await (await db()).collection("generations").findOne({ _id: id as never });
   // New outputs go to Blob (the test env has a Blob token)

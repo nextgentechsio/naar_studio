@@ -10,7 +10,7 @@ import {
   inputClass,
   Spinner,
 } from "@/app/components/ui/primitives";
-import { errorMessage, fetchJson } from "@/lib/client/http";
+import { errorMessage, fetchJson, logRequestError } from "@/lib/client/http";
 import type { BrowsableModel } from "@/lib/replicate-models";
 
 // --------------------------------------------------
@@ -73,7 +73,7 @@ export default function ModelBrowser({
       .then((data) => {
         if (!cancelled) setCollections(data.collections ?? []);
       })
-      .catch((err) => console.error(err));
+      .catch((err) => logRequestError(err));
 
     return () => {
       cancelled = true;

@@ -10,6 +10,30 @@ import { goToSignIn } from "@/lib/client/session-ended";
 // return here afterwards.
 // --------------------------------------------------
 
+// An error response from our API, with what was asked.
+// Its message is the server's readable reason.
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly url: string,
+    readonly status: number
+  ) {
+    super(message);
+  }
+}
+
+// Logs a failed request. Our API's own error responses are
+// expected (the page shows them) so they're warnings, which
+// the dev overlay doesn't pop up for; anything else (a
+// crash, a network failure) stays an error.
+export function logRequestError(error: unknown, context?: string) {
+  if (error instanceof ApiError) {
+    console.warn(`${context ? `${context}: ` : ""}${error.url} → ${error.status}: ${error.message}`);
+  } else {
+    console.error(context ?? "Request failed:", error);
+  }
+}
+
 export async function fetchJson<T = Record<string, unknown>>(
   url: string,
   init?: RequestInit
@@ -38,9 +62,11 @@ export async function fetchJson<T = Record<string, unknown>>(
   }
 
   if (!response.ok) {
-    throw new Error(
+    throw new ApiError(
       (data as { error?: string }).error ||
-        `Request failed (${response.status})`
+        `Request failed (${response.status})`,
+      url,
+      response.status
     );
   }
 

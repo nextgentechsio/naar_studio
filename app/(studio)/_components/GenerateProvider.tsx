@@ -13,7 +13,7 @@ import {
   schemaDefaults,
   type Schema,
 } from "@/app/(studio)/replicate/fields";
-import { errorMessage, fetchJson } from "@/lib/client/http";
+import { errorMessage, fetchJson, logRequestError } from "@/lib/client/http";
 import { uploadInputFile } from "@/lib/client/upload";
 import type { ModelKind } from "@/lib/model-catalog";
 import type { BrowsableModel } from "@/lib/replicate-models";
@@ -262,7 +262,7 @@ export function GenerateProvider({
           setSearchResultsFor(query);
         }
       } catch (err) {
-        console.error(err);
+        logRequestError(err);
         if (isLatest()) {
           setSearchResults([]);
           setSearchResultsFor(query);
@@ -343,7 +343,7 @@ export function GenerateProvider({
         .catch((err) => {
           if (latestModelRef.current !== id) return;
 
-          console.error(err);
+          logRequestError(err);
           setSchema({});
           setInputs({});
           setError("Unable to load model settings.");
@@ -475,7 +475,7 @@ export function GenerateProvider({
           return { ...previous, [key]: [...images, url] };
         });
       } catch (err) {
-        console.error(err);
+        logRequestError(err);
         if (sameForm()) {
           setError(errorMessage(err, "Unable to upload the file."));
         }
@@ -606,7 +606,7 @@ export function GenerateProvider({
 
         scheduleNext();
       } catch (err) {
-        console.error("Prediction polling error:", err);
+        logRequestError(err, "Prediction polling error");
         handlePollError();
       }
     }
@@ -669,7 +669,7 @@ export function GenerateProvider({
 
       pollPrediction(predictionId, run);
     } catch (err) {
-      console.error(err);
+      logRequestError(err);
       if (run === runRef.current) {
         setError(errorMessage(err, "Generation failed."));
       }

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { readCache, writeCache } from "@/lib/client/cache";
-import { errorMessage } from "@/lib/client/http";
+import { errorMessage, logRequestError } from "@/lib/client/http";
 
 // Loads data for `key`, again whenever the key changes
 // (e.g. new filters). Data loaded for this key before (an
@@ -39,7 +39,7 @@ export function useApiData<T>(
         if (!cancelled) setState({ key, data: value, error: "", done: true });
       })
       .catch((err) => {
-        console.error(err);
+        logRequestError(err);
         if (!cancelled) {
           setState((previous) => ({
             key,

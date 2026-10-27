@@ -68,13 +68,13 @@ export default function HiggsfieldModelBrowser({
         type="button"
         aria-label="Close"
         tabIndex={-1}
-        className="absolute inset-0 bg-black/40"
+        className="ui-backdrop absolute inset-0 bg-black/40 backdrop-blur-[3px]"
         onClick={onClose}
       />
 
       <div
         ref={panel}
-        className="relative flex max-h-[min(42rem,calc(100dvh-2rem))] w-full max-w-3xl flex-col rounded-xl border border-line bg-surface shadow-xl"
+        className="relative flex max-h-[min(42rem,calc(100dvh-2rem))] w-full max-w-3xl flex-col rounded-xl border glass"
       >
         <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-3.5">
           <h2 id="browse-higgsfield-title" className="text-sm font-semibold text-fg">

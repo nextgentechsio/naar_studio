@@ -14,7 +14,10 @@ import {
   type Schema,
 } from "@/app/(studio)/replicate/fields";
 import { errorMessage, fetchJson, logRequestError } from "@/lib/client/http";
-import { uploadInputFile } from "@/lib/client/upload";
+import { currentElements } from "@/lib/client/elements";
+import { uploadToLibrary } from "@/lib/client/library";
+import { expandMentions } from "@/lib/element-mentions";
+import { uploadHiggsfieldInput, uploadInputFile } from "@/lib/client/upload";
 import type { ModelKind } from "@/lib/model-catalog";
 import type { BrowsableModel } from "@/lib/replicate-models";
 import { useStudio } from "./StudioProvider";
@@ -50,6 +53,15 @@ const ENDPOINTS: Record<GenerateProviderId, { schema: string; generate: string }
 const POLL_INTERVAL_MS = 2000;
 const POLL_TIMEOUT_MS = 15 * 60 * 1000;
 const MAX_CONSECUTIVE_POLL_ERRORS = 10;
+// The form values with @name mentions spelled out
+// (lib/element-mentions.ts)
+async function withElements(values: Record<string, unknown>) {
+  const prompt = values.prompt;
+  if (typeof prompt !== "string" || !prompt.includes("@")) return values;
+
+  return { ...values, prompt: expandMentions(prompt, await currentElements()) };
+}
+
 // Same as /api/upload (Replicate's per-file limit)
 const MAX_FILE_BYTES = 100 * 1024 * 1024;
 
@@ -439,13 +451,22 @@ export function GenerateProvider({
       updatePending((list) => [...list, { preview, progress: null }]);
 
       try {
-        const url = await uploadInputFile(file, (percent) =>
+        const onProgress = (percent: number | null) =>
           updatePending((list) =>
             list.map((item) =>
               item.preview === preview ? { ...item, progress: percent } : item
             )
-          )
-        );
+          );
+
+        // Saved to the user's library for reuse. Without
+        // one (no Blob on the server), Higgsfield runs read
+        // their files from Higgsfield's own storage.
+        const url =
+          (await uploadToLibrary(file, onProgress)) ??
+          (await (provider === "higgsfield" ? uploadHiggsfieldInput : uploadInputFile)(
+            file,
+            onProgress
+          ));
 
         // The user switched models meanwhile: this file
         // belongs to the old form
@@ -492,7 +513,7 @@ export function GenerateProvider({
         }
       }
     },
-    [updateInput]
+    [updateInput, provider]
   );
 
   // --------------------------------------------------
@@ -648,7 +669,7 @@ export function GenerateProvider({
         body: JSON.stringify({
           project,
           model,
-          inputs: buildGenerationInputs(inputs),
+          inputs: buildGenerationInputs(await withElements(inputs)),
         }),
       });
 

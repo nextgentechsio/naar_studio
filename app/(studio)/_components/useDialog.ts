@@ -38,6 +38,17 @@ export function useDialog(
       focusables()[0])?.focus();
 
     const onKey = (event: KeyboardEvent) => {
+      // Another dialog opened on top of this one has the
+      // keys until it closes
+      const active = document.activeElement;
+      if (
+        !container.current?.contains(active) &&
+        active?.closest('[aria-modal="true"]') &&
+        !active.closest('[aria-modal="true"]')?.contains(container.current)
+      ) {
+        return;
+      }
+
       if (event.key === "Escape") {
         event.preventDefault();
         onCloseRef.current();
@@ -51,7 +62,6 @@ export function useDialog(
 
       const first = items[0];
       const last = items[items.length - 1];
-      const active = document.activeElement;
       const inside = container.current?.contains(active);
 
       if (event.shiftKey && (active === first || !inside)) {

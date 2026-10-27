@@ -66,6 +66,20 @@ export function taskFromSlug(slug: string): string {
   return last.replace(/-/g, " ").replace(/^\w/, (letter) => letter.toUpperCase());
 }
 
+// What Higgsfield's storage accepts for input files
+// (presigned uploads, see lib/higgsfield.ts); other types
+// go to Vercel Blob
+export const HIGGSFIELD_UPLOAD_TYPES = [
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "audio/wav",
+  "audio/x-wav",
+  "video/mp4",
+];
+
 // --------------------------------------------------
 // PRICES
 //

@@ -12,6 +12,7 @@ import {
   textareaClass,
 } from "@/app/components/ui/primitives";
 import { useFileDrop } from "@/app/components/ui/useFileDrop";
+import MediaLibraryDialog from "./MediaLibraryDialog";
 import MediaPreviewDialog, { type MediaPreview } from "./MediaPreviewDialog";
 import {
   fieldLabel,
@@ -28,13 +29,8 @@ import {
 // and help text.
 // --------------------------------------------------
 
-// Second line of the upload row; the full detail is in
-// its tooltip
-const ACCEPT_HINTS = {
-  image: "or drag & drop · up to 100 MB each",
-  video: "or drag & drop · MP4, MOV, WEBM · 100 MB",
-  audio: "or drag & drop · MP3, WAV, M4A · 100 MB",
-};
+// Second line of the upload row
+const ROW_HINT = "Upload or pick from library";
 
 export default function SchemaField({
   fieldKey: key,
@@ -228,6 +224,19 @@ function FileField({
   const { dragging, dropProps } = useFileDrop(addFiles);
 
   const [viewing, setViewing] = useState<MediaPreview | null>(null);
+  // The upload / library window
+  const [picking, setPicking] = useState(false);
+
+  // Files picked from the library: no upload needed
+  function pickFiles(urls: string[]) {
+    if (single) {
+      updateInput(key, urls[0] ?? "");
+      return;
+    }
+
+    const current = Array.isArray(value) ? value : typeof value === "string" && value ? [value] : [];
+    updateInput(key, [...current, ...urls.filter((url) => !current.includes(url))]);
+  }
 
   // Open from a tile: its box and the media's real size
   // let the popup grow out of it
@@ -294,12 +303,14 @@ function FileField({
     <Field label={label} info={field.description}>
       {(control) => (
         <div className="space-y-3">
-          <label
-            htmlFor={control.id}
+          <button
+            type="button"
+            {...control}
             {...dropProps}
+            onClick={() => setPicking(true)}
             className={cx(
               // One slim row, so uploads don't crowd the prompt
-              "flex min-h-14 cursor-pointer items-center gap-3 rounded-lg border border-dashed px-3 py-2 text-left transition-colors",
+              "flex min-h-14 w-full cursor-pointer items-center gap-3 rounded-lg border border-dashed px-3 py-2 text-left transition-colors",
               dragging
                 ? "border-accent bg-accent-soft ring-2 ring-accent/30"
                 : "border-line-strong bg-sunken hover:border-accent hover:bg-accent-soft/40"
@@ -324,23 +335,11 @@ function FileField({
                       : `Add ${single ? aNoun : nouns}`}
               </span>
 
-              <span className="block truncate text-xs text-fg-subtle" title={ACCEPT_HINTS[kind]}>
-                {ACCEPT_HINTS[kind]}
+              <span className="block truncate text-xs text-fg-subtle" title={ROW_HINT}>
+                {ROW_HINT}
               </span>
             </span>
-
-            <input
-              {...control}
-              type="file"
-              accept={`${kind}/*`}
-              multiple={!single}
-              className="sr-only"
-              onChange={(event) => {
-                addFiles(Array.from(event.target.files ?? []));
-                event.target.value = "";
-              }}
-            />
-          </label>
+          </button>
 
           {/* AUDIO: the newest file, played inline */}
           {kind === "audio" && singleSrc && (
@@ -474,6 +473,23 @@ function FileField({
 
           {viewing && (
             <MediaPreviewDialog preview={viewing} onClose={() => setViewing(null)} />
+          )}
+
+          {picking && (
+            <MediaLibraryDialog
+              kind={kind}
+              multiple={!single}
+              title={
+                // "Add images", plus the field's name when it says more
+                label.toLowerCase().startsWith(noun)
+                  ? `Add ${single ? aNoun : nouns}`
+                  : `Add ${single ? aNoun : nouns} · ${label}`
+              }
+              inField={single ? (singleUrl ? [singleUrl] : []) : files.map(String)}
+              onUpload={addFiles}
+              onPick={pickFiles}
+              onClose={() => setPicking(false)}
+            />
           )}
         </div>
       )}

@@ -66,7 +66,7 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="grid min-h-screen bg-canvas text-fg lg:grid-cols-[1.1fr_1fr]">
+    <main className="grid min-h-screen text-fg lg:grid-cols-[1.1fr_1fr]">
       {/* BRAND PANEL (desktop): NAAR black, like the about.naar.io hero */}
       <section className="relative hidden flex-col justify-between overflow-hidden bg-[#0d0d0d] p-12 text-[#f4f4f3] lg:flex">
         <NaarLogo height={30} className="text-white" />

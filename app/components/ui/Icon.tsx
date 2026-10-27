@@ -36,6 +36,8 @@ const PATHS = {
   video:
     "M23 7l-7 5 7 5V7zM3 5h11a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z",
   upscale: "M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7",
+  trash: "M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6",
+  at: "M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.9 7.9",
   chevronDown: "M6 9l6 6 6-6",
   chevronLeft: "M15 18l-6-6 6-6",
   chevronRight: "M9 18l6-6-6-6",

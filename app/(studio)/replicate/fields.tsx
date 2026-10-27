@@ -42,7 +42,7 @@ export function StableTextArea({
   rows = 6,
   ...props
 }: Omit<
-  React.TextareaHTMLAttributes<HTMLTextAreaElement>,
+  React.ComponentPropsWithRef<"textarea">,
   "value" | "onChange" | "defaultValue"
 > & {
   value: string;

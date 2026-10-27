@@ -56,7 +56,10 @@ export default function StudioShell({
     },
     {
       label: "Library",
-      items: [{ href: "/history", label: "History", icon: "history" }],
+      items: [
+        { href: "/history", label: "History", icon: "history" },
+        { href: "/elements", label: "Elements", icon: "at" },
+      ],
     },
     {
       label: "Spend",
@@ -229,7 +232,7 @@ export default function StudioShell({
   }
 
   return (
-    <div className="min-h-screen bg-canvas text-fg">
+    <div className="min-h-screen text-fg">
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[60] focus:rounded-lg focus:bg-surface focus:px-3 focus:py-2 focus:text-sm"
@@ -239,7 +242,7 @@ export default function StudioShell({
 
       {/* DESKTOP SIDEBAR */}
       {/* studio-rail: target of the rail-collapsed variant */}
-      <aside className="studio-rail fixed inset-y-0 left-0 z-30 hidden w-60 border-r border-line bg-surface transition-[width] duration-200 lg:block rail-collapsed:w-16">
+      <aside className="studio-rail fixed inset-y-0 left-0 z-30 hidden w-60 border-r border-line bg-surface glass-soft transition-[width] duration-200 lg:block rail-collapsed:w-16">
         {renderNav()}
       </aside>
 
@@ -248,7 +251,7 @@ export default function StudioShell({
 
       <div className="transition-[padding] duration-200 lg:pl-60 lg:sidebar-collapsed:pl-16">
         {/* TOP BAR */}
-        <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-3 border-b border-line bg-canvas/90 px-4 backdrop-blur lg:px-8">
+        <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-3 border-b border-line bg-canvas/40 px-4 glass-soft lg:px-8">
           <div className="flex min-w-0 items-center gap-2">
             <Button
               size="sm"
@@ -308,13 +311,13 @@ function MobileDrawer({
         type="button"
         aria-label="Close navigation"
         tabIndex={-1}
-        className="absolute inset-0 bg-black/40"
+        className="ui-backdrop absolute inset-0 bg-black/40 backdrop-blur-[2px]"
         onClick={onClose}
       />
 
       <aside
         ref={panel}
-        className="relative h-full w-72 max-w-[85vw] border-r border-line bg-surface shadow-xl"
+        className="glass relative h-full w-72 max-w-[85vw] border-r"
       >
         <Button
           size="sm"

@@ -145,6 +145,36 @@ export type ExpenseDoc = {
   createdAt: Date;
 };
 
+// The media library: input files a user uploaded, kept
+// in Vercel Blob (library/<userId>/) until they delete
+// them, so they can be reused in later runs
+export type LibraryFileDoc = {
+  _id: ObjectId;
+  userId: string;
+  url: string;
+  pathname: string;
+  name: string;
+  kind: "image" | "video" | "audio";
+  contentType: string;
+  size: number;
+  createdAt: Date;
+};
+
+// A saved element: a named character, product or object
+// with reference images (library files), mentioned in a
+// prompt as @name (see lib/elements.ts)
+export type ElementDoc = {
+  _id: ObjectId;
+  userId: string;
+  name: string;
+  // Lowercased name: unique per user
+  nameKey: string;
+  description: string;
+  images: string[];
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 const globalForMongo = globalThis as unknown as {
   mongoClientPromise?: Promise<MongoClient>;
   mongoSetupPromise?: Promise<void>;
@@ -192,6 +222,13 @@ async function setupIndexes(db: Db) {
       { key: { userId: 1, incurredAt: -1, _id: -1 } },
       { key: { projectId: 1, incurredAt: -1 } },
     ]),
+    db.collection<LibraryFileDoc>("libraryFiles").createIndexes([
+      { key: { userId: 1, kind: 1, createdAt: -1, _id: -1 } },
+      { key: { url: 1 }, unique: true },
+    ]),
+    db.collection<ElementDoc>("elements").createIndexes([
+      { key: { userId: 1, nameKey: 1 }, unique: true },
+    ]),
   ]);
 }
 
@@ -237,6 +274,18 @@ export async function expensesCollection(): Promise<
   Collection<ExpenseDoc>
 > {
   return (await getDb()).collection<ExpenseDoc>("expenses");
+}
+
+export async function libraryFilesCollection(): Promise<
+  Collection<LibraryFileDoc>
+> {
+  return (await getDb()).collection<LibraryFileDoc>("libraryFiles");
+}
+
+export async function elementsCollection(): Promise<
+  Collection<ElementDoc>
+> {
+  return (await getDb()).collection<ElementDoc>("elements");
 }
 
 export async function projectImagesBucket(): Promise<GridFSBucket> {

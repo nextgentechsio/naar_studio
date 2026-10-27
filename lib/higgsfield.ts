@@ -401,6 +401,74 @@ export function isHiggsfieldOutputUrl(url: URL): boolean {
 }
 
 // --------------------------------------------------
+// INPUT FILE UPLOADS
+//
+// Higgsfield's storage, via a presigned upload link: the
+// browser sends the file there directly, and the run
+// reads it from Higgsfield's own CDN.
+// --------------------------------------------------
+
+export type HiggsfieldUpload = {
+  uploadUrl: string;
+  // Sent with the upload exactly as given
+  uploadHeaders: Record<string, string>;
+  publicUrl: string;
+};
+
+// A one-hour upload link for one file, or null if
+// Higgsfield didn't give a usable one
+export async function createHiggsfieldUpload(
+  contentType: string
+): Promise<HiggsfieldUpload | null> {
+  try {
+    const response = await fetch(`${apiUrl()}/files/generate-upload-url`, {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ content_type: contentType }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(QUOTE_TIMEOUT_MS),
+    });
+
+    const data = (await response.json().catch(() => null)) as {
+      upload_url?: unknown;
+      public_url?: unknown;
+      upload_headers?: unknown;
+    } | null;
+
+    const https = (value: unknown) => {
+      try {
+        return typeof value === "string" && new URL(value).protocol === "https:";
+      } catch {
+        return false;
+      }
+    };
+    // Only https links; the stand-in API in tests is http
+    const usable = (value: unknown) =>
+      https(value) || (typeof value === "string" && Boolean(process.env.HIGGSFIELD_API_URL));
+
+    if (!response.ok || !data || !usable(data.upload_url) || !usable(data.public_url)) {
+      console.error("Higgsfield upload link failed:", response.status);
+      return null;
+    }
+
+    const headers = Object.fromEntries(
+      Object.entries(
+        data.upload_headers && typeof data.upload_headers === "object" ? data.upload_headers : {}
+      ).filter((entry): entry is [string, string] => typeof entry[1] === "string")
+    );
+
+    return {
+      uploadUrl: data.upload_url as string,
+      uploadHeaders: { "Content-Type": contentType, ...headers },
+      publicUrl: data.public_url as string,
+    };
+  } catch (error) {
+    console.error("Higgsfield upload link failed:", error instanceof Error ? error.message : error);
+    return null;
+  }
+}
+
+// --------------------------------------------------
 // PRICES (see lib/higgsfield-models.ts)
 // --------------------------------------------------
 

@@ -28,12 +28,28 @@
   color-scheme: light;
 
   /* NAAR palette: black / warm grey / mint, cyan accent */
-  --canvas: #f4f4f3;
-  --surface: #ffffff;
-  --sunken: #f7f7f6;
-  --raised: #ebebea;
-  --line: #e4e4e2;
-  --line-strong: #cfcfcc;
+  --canvas: #f1f2f1;
+  /* Glass: panels are frosted over the ambient glow
+     (body::before). Text tokens were checked against the
+     brightest spot of the glow under a panel: AA in both
+     themes (dark --fg-subtle is lighter for this). */
+  --surface: rgb(255 255 255 / 0.56);
+  --sunken: rgb(255 255 255 / 0.5);
+  --raised: rgb(13 13 13 / 0.06);
+  --line: rgb(13 13 13 / 0.08);
+  --line-strong: rgb(13 13 13 / 0.17);
+
+  /* Windows, menus and drawers (.glass) */
+  --glass: rgb(255 255 255 / 0.72);
+  --glass-sheen: rgb(255 255 255 / 0.55);
+  /* Small menus over text (.glass-menu): solid */
+  --menu: #ffffff;
+  --glass-edge: rgb(255 255 255 / 0.9);
+  --glass-shadow: 0 28px 70px -24px rgb(13 13 13 / 0.28);
+
+  --glow-1: rgb(0 204 221 / 0.42);
+  --glow-2: rgb(52 211 153 / 0.32);
+  --glow-3: rgb(125 170 255 / 0.36);
 
   --fg: #0d0d0d;
   --fg-muted: #4a4a4a;
@@ -55,23 +71,34 @@
   --warning: #a14a07;
 
   --focus-ring: #0d0d0d;
-  --shadow-card: 0 1px 2px rgb(13 13 13 / 0.04);
+  --shadow-card: inset 0 1px 0 rgb(255 255 255 / 0.9), 0 1px 2px rgb(13 13 13 / 0.04),
+    0 14px 34px -20px rgb(13 13 13 / 0.2);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
 
-    --canvas: #0d0d0d;
-    --surface: #161616;
-    --sunken: #111111;
-    --raised: #222222;
-    --line: #2a2a2a;
-    --line-strong: #3d3d3d;
+    --canvas: #0a0a0b;
+    --surface: rgb(28 28 32 / 0.42);
+    --sunken: rgb(0 0 0 / 0.3);
+    --raised: rgb(255 255 255 / 0.07);
+    --line: rgb(255 255 255 / 0.08);
+    --line-strong: rgb(255 255 255 / 0.15);
+
+    --glass: rgb(22 22 26 / 0.62);
+    --glass-sheen: rgb(255 255 255 / 0.06);
+    --menu: #1a1a1d;
+    --glass-edge: rgb(255 255 255 / 0.09);
+    --glass-shadow: 0 32px 90px -24px rgb(0 0 0 / 0.8);
+
+    --glow-1: rgb(47 214 200 / 0.3);
+    --glow-2: rgb(56 189 248 / 0.2);
+    --glow-3: rgb(16 185 129 / 0.2);
 
     --fg: #f4f4f3;
     --fg-muted: #b8b8b6;
-    --fg-subtle: #959593;
+    --fg-subtle: #a6a6a4;
 
     --accent: #f4f4f3;
     --accent-hover: #ffffff;
@@ -87,23 +114,33 @@
     --warning: #fbbf24;
 
     --focus-ring: #2fd6c8;
-    --shadow-card: none;
+    --shadow-card: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 18px 44px -26px rgb(0 0 0 / 0.85);
   }
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --canvas: #0d0d0d;
-  --surface: #161616;
-  --sunken: #111111;
-  --raised: #222222;
-  --line: #2a2a2a;
-  --line-strong: #3d3d3d;
+  --canvas: #0a0a0b;
+  --surface: rgb(28 28 32 / 0.42);
+  --sunken: rgb(0 0 0 / 0.3);
+  --raised: rgb(255 255 255 / 0.07);
+  --line: rgb(255 255 255 / 0.08);
+  --line-strong: rgb(255 255 255 / 0.15);
+
+  --glass: rgb(22 22 26 / 0.62);
+  --glass-sheen: rgb(255 255 255 / 0.06);
+  --menu: #1a1a1d;
+  --glass-edge: rgb(255 255 255 / 0.09);
+  --glass-shadow: 0 32px 90px -24px rgb(0 0 0 / 0.8);
+
+  --glow-1: rgb(47 214 200 / 0.3);
+  --glow-2: rgb(56 189 248 / 0.2);
+  --glow-3: rgb(16 185 129 / 0.2);
 
   --fg: #f4f4f3;
   --fg-muted: #b8b8b6;
-  --fg-subtle: #959593;
+  --fg-subtle: #a6a6a4;
 
   --accent: #f4f4f3;
   --accent-hover: #ffffff;
@@ -119,7 +156,7 @@
   --warning: #fbbf24;
 
   --focus-ring: #2fd6c8;
-  --shadow-card: none;
+  --shadow-card: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 18px 44px -26px rgb(0 0 0 / 0.85);
 }
 
 @theme inline {
@@ -163,7 +200,8 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
-  background: var(--canvas);
+  /* The canvas is on <html>, so the glow below shows */
+  background: transparent;
   color: var(--fg);
   font-family: var(--font-lufga), "Segoe UI", system-ui,
     sans-serif;
@@ -249,7 +287,8 @@ body {
     padding: 4px;
     border: 1px solid var(--line);
     border-radius: 10px;
-    background: var(--surface);
+    background: var(--glass);
+    backdrop-filter: blur(24px) saturate(160%);
     color: var(--fg);
     box-shadow: 0 16px 40px -12px rgb(0 0 0 / 0.35);
     max-block-size: min(22rem, 60dvh);
@@ -658,3 +697,169 @@ body {
   }
 }
 
+
+/* --------------------------------------------------
+   MOTION FOR WINDOWS, MENUS AND FLOWS
+   (app/components/ui/Modal.tsx and friends)
+   Windows pop in on wide screens and slide up as a
+   sheet on phones; data-state="closing" plays them out
+   before they unmount. The reduced-motion rule above
+   shortens all of these to nothing.
+   -------------------------------------------------- */
+.ui-backdrop {
+  animation: ui-fade-in 0.2s ease-out both;
+}
+
+.ui-backdrop[data-state="closing"] {
+  animation: ui-fade-out 0.16s ease-in both;
+}
+
+.ui-panel {
+  animation: ui-sheet-in 0.34s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+
+.ui-panel[data-state="closing"] {
+  animation: ui-sheet-out 0.2s ease-in both;
+}
+
+@media (min-width: 640px) {
+  .ui-panel {
+    animation-name: ui-pop-in;
+    animation-duration: 0.26s;
+  }
+
+  .ui-panel[data-state="closing"] {
+    animation-name: ui-pop-out;
+    animation-duration: 0.16s;
+  }
+}
+
+/* A menu opening under what it belongs to */
+.ui-menu {
+  animation: ui-menu-in 0.14s ease-out both;
+  transform-origin: top left;
+}
+
+/* Items arriving in a list or grid, a little apart
+   (set --i to the item's index) */
+.ui-rise {
+  animation: ui-rise 0.3s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+  animation-delay: calc(min(var(--i, 0), 12) * 28ms);
+}
+
+/* The next or previous step of a flow */
+.ui-step-forward {
+  animation: ui-step-forward 0.3s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+
+.ui-step-back {
+  animation: ui-step-back 0.3s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+
+/* Placeholder while something loads */
+.ui-skeleton {
+  background: linear-gradient(
+    100deg,
+    var(--raised) 30%,
+    color-mix(in oklab, var(--raised), var(--fg) 6%) 50%,
+    var(--raised) 70%
+  );
+  background-size: 300% 100%;
+  animation: ui-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes ui-fade-in {
+  from { opacity: 0; }
+}
+
+@keyframes ui-fade-out {
+  to { opacity: 0; }
+}
+
+@keyframes ui-sheet-in {
+  from { transform: translateY(100%); }
+}
+
+@keyframes ui-sheet-out {
+  to { transform: translateY(100%); }
+}
+
+@keyframes ui-pop-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.97); }
+}
+
+@keyframes ui-pop-out {
+  to { opacity: 0; transform: translateY(6px) scale(0.98); }
+}
+
+@keyframes ui-menu-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+}
+
+@keyframes ui-rise {
+  from { opacity: 0; transform: translateY(8px); }
+}
+
+@keyframes ui-step-forward {
+  from { opacity: 0; transform: translateX(24px); }
+}
+
+@keyframes ui-step-back {
+  from { opacity: 0; transform: translateX(-24px); }
+}
+
+@keyframes ui-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: 0 0; }
+}
+
+/* --------------------------------------------------
+   GLASS
+   A soft, slowly drifting glow behind every page gives
+   the translucent surfaces (--surface, --sunken) their
+   frosted look. .glass is for what floats over content
+   (windows, menus, drawers, the header): stronger tint,
+   a blur of what's behind, a light top edge and a deep
+   shadow.
+   -------------------------------------------------- */
+body::before {
+  content: "";
+  position: fixed;
+  inset: -15%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(36% 34% at 22% 18%, var(--glow-1), transparent 70%),
+    radial-gradient(32% 32% at 82% 28%, var(--glow-2), transparent 70%),
+    radial-gradient(40% 38% at 60% 88%, var(--glow-3), transparent 72%),
+    radial-gradient(26% 26% at 40% 55%, var(--glow-2), transparent 70%);
+  filter: blur(24px);
+  animation: glass-drift 40s ease-in-out infinite alternate;
+}
+
+@keyframes glass-drift {
+  to { transform: translate3d(3%, -2%, 0) scale(1.06); }
+}
+
+.glass {
+  background: linear-gradient(180deg, var(--glass-sheen), transparent 38%), var(--glass);
+  border-color: var(--line-strong);
+  backdrop-filter: blur(28px) saturate(170%);
+  -webkit-backdrop-filter: blur(28px) saturate(170%);
+  box-shadow: inset 0 1px 0 var(--glass-edge), var(--glass-shadow);
+}
+
+/* Small menus that open over text (the @ list): the
+   glass edge, sheen and shadow, but a solid fill, so
+   text behind never shows through the options */
+.glass-menu {
+  background: linear-gradient(180deg, var(--glass-sheen), transparent 38%), var(--menu);
+  border-color: var(--line-strong);
+  box-shadow: inset 0 1px 0 var(--glass-edge), var(--glass-shadow);
+}
+
+/* Panels that sit on the page, lightly frosted */
+.glass-soft {
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+}

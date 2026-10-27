@@ -49,9 +49,9 @@ import {
   buildGenerationInputs,
   fieldGroup,
   orderSchemaFields,
-  StableTextArea,
 } from "./fields";
 import ModelBrowserDialog from "./ModelBrowserDialog";
+import PromptInput from "./PromptInput";
 import SchemaField from "./SchemaField";
 
 // --------------------------------------------------
@@ -545,15 +545,16 @@ export default function GenerateView() {
                   <Field
                     label="Prompt"
                     required
-                    className="flex min-h-28 flex-1 flex-col"
+                    info="Type @ to add one of your elements"
+                    className="relative flex min-h-28 flex-1 flex-col"
                   >
                     {(control) => (
-                      <StableTextArea
+                      <PromptInput
                         {...control}
                         rows={7}
                         value={String(inputs.prompt ?? "")}
                         onChange={(next) => updateInput("prompt", next)}
-                        placeholder="Describe what you want to create. Be specific about subject, style and lighting…"
+                        placeholder="Describe what you want to create. Type @ to use a saved element…"
                         className={cx(
                           textareaClass,
                           "min-h-0 flex-1 resize-none",

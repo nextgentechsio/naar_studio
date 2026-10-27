@@ -174,13 +174,13 @@ export default function GenerationDrawer({
         type="button"
         aria-label="Close details"
         tabIndex={-1}
-        className="absolute inset-0 bg-black/40"
+        className="ui-backdrop absolute inset-0 bg-black/40 backdrop-blur-[2px]"
         onClick={onClose}
       />
 
       <aside
         ref={dialogRef}
-        className="relative flex h-full w-full max-w-xl flex-col border-l border-line bg-surface shadow-xl"
+        className="relative flex h-full w-full max-w-xl flex-col border-l glass"
       >
         <header className="flex items-center justify-between gap-3 border-b border-line px-5 py-3.5">
           <div className="min-w-0">

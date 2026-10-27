@@ -287,3 +287,36 @@ describe("higgsfield", () => {
     expect(rejected.status).toBe(422);
   });
 });
+
+describe("higgsfield uploads", () => {
+  it("hands out a link to upload straight to Higgsfield's storage", async () => {
+    const info = await api("/api/higgsfield/upload", { session: alice.session });
+    expect(info.data).toMatchObject({ enabled: true, contentTypes: expect.arrayContaining(["video/mp4", "image/png"]) });
+
+    const link = await api("/api/higgsfield/upload", { session: alice.session, json: { contentType: "image/png" } });
+    expect(link.status).toBe(200);
+    const { uploadUrl, uploadHeaders, publicUrl } = link.data as {
+      uploadUrl: string;
+      uploadHeaders: Record<string, string>;
+      publicUrl: string;
+    };
+    // Higgsfield's signed headers are passed on as given
+    expect(uploadHeaders).toEqual({ "Content-Type": "image/png", "x-amz-tagging": "retention=temporary" });
+
+    // The browser sends the file there, then the run uses
+    // the public link
+    const bytes = Buffer.from("fake-png-bytes");
+    expect((await fetch(uploadUrl, { method: "PUT", headers: uploadHeaders, body: bytes })).status).toBe(200);
+    const stored = await fetch(publicUrl);
+    expect(stored.headers.get("content-type")).toBe("image/png");
+    expect(Buffer.from(await stored.arrayBuffer()).equals(bytes)).toBe(true);
+  });
+
+  it("only for types Higgsfield stores, and signed-in users", async () => {
+    for (const contentType of ["video/quicktime", "audio/mpeg", "text/html", ""]) {
+      const refused = await api("/api/higgsfield/upload", { session: alice.session, json: { contentType } });
+      expect(refused.status, contentType).toBe(400);
+    }
+    expect((await api("/api/higgsfield/upload", { json: { contentType: "image/png" } })).status).toBe(401);
+  });
+});

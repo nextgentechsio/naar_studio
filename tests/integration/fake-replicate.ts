@@ -173,9 +173,11 @@ function serveBytes(
 export async function startFakeReplicate() {
   const predictions = new Map<string, Prediction>();
   const hfRequests = new Map<string, Record<string, unknown>>();
+  // Files uploaded through presigned links
+  const hfStore = new Map<string, { bytes: Buffer; type: string }>();
   const requests: { method: string; path: string; body: unknown; bytes: number }[] = [];
   let counter = 0;
-  let blobs: { url: string; pathname: string; size: number; uploadedAt: string }[] = [];
+  let blobs: { url: string; pathname: string; size: number; uploadedAt: string; contentType?: string }[] = [];
   const blobRequests: { method: string; path: string; body: unknown }[] = [];
   // Stored bytes, served at /blobfiles/<pathname>
   const blobBytes = new Map<string, Buffer>();
@@ -236,10 +238,11 @@ export async function startFakeReplicate() {
           pathname: name,
           size: bytes.length,
           uploadedAt: new Date().toISOString(),
+          contentType: String(req.headers["x-content-type"] ?? ""),
         };
         blobs.push(blob);
         blobBytes.set(name, bytes);
-        return send(200, { ...blob, downloadUrl: blob.url, contentType: req.headers["x-content-type"] ?? "", contentDisposition: "inline" });
+        return send(200, { ...blob, downloadUrl: blob.url, contentDisposition: "inline" });
       };
 
       // Single upload
@@ -272,6 +275,13 @@ export async function startFakeReplicate() {
         return send(403, { error: { code: "forbidden", message: "Client tokens can only upload" } });
       }
 
+      // head(): one blob's details, by URL
+      if ((path === "/blob" || path === "/blob/") && req.method === "GET" && url.searchParams.has("url")) {
+        const blob = blobs.find((item) => item.url === url.searchParams.get("url"));
+        if (!blob) return send(404, { error: { code: "not_found", message: "The requested blob does not exist" } });
+        return send(200, { ...blob, downloadUrl: blob.url, contentDisposition: "inline", cacheControl: "public" });
+      }
+
       if (path === "/blob" && req.method === "GET") {
         const prefix = url.searchParams.get("prefix") ?? "";
         return send(200, {
@@ -300,6 +310,32 @@ export async function startFakeReplicate() {
       return serveBytes(req, res, bytes);
     }
 
+    // ---------- fake Higgsfield storage (/hfstore) ----------
+    // No credentials: the presigned link is the permission
+
+    if (path.startsWith("/hfstore/")) {
+      res.setHeader("access-control-allow-origin", "*");
+      res.setHeader("access-control-allow-headers", "content-type, x-amz-tagging");
+      res.setHeader("access-control-allow-methods", "GET, PUT");
+      const name = path.slice("/hfstore/".length);
+
+      if (req.method === "OPTIONS") {
+        res.writeHead(200);
+        return res.end();
+      }
+      if (req.method === "PUT") {
+        if (req.headers["x-amz-tagging"] !== "retention=temporary") {
+          return send(403, { error: "Signed headers missing" });
+        }
+        hfStore.set(name, { bytes: raw, type: String(req.headers["content-type"] ?? "") });
+        res.writeHead(200);
+        return res.end();
+      }
+      const stored = hfStore.get(name);
+      if (!stored) return send(404, { error: "Not found" });
+      return serveBytes(req, res, stored.bytes, { "content-type": stored.type });
+    }
+
     // ---------- fake Higgsfield API (/hf) ----------
 
     if (path.startsWith("/hf/")) {
@@ -320,6 +356,21 @@ export async function startFakeReplicate() {
 
       if (path === "/hf/models" && req.method === "GET") {
         return send(200, { total: HF_MODELS.length, items: HF_MODELS });
+      }
+
+      // Presigned uploads: stored under /hfstore, which
+      // stands in for both S3 (PUT) and the CDN (GET)
+      if (path === "/hf/files/generate-upload-url" && req.method === "POST") {
+        const contentType = String((body as { content_type?: unknown })?.content_type ?? "");
+        const name = `${++counter}`;
+        const { port } = server.address() as AddressInfo;
+        const store = `http://127.0.0.1:${port}/hfstore/${name}`;
+        return send(200, {
+          upload_url: `${store}?sig=fake`,
+          public_url: store,
+          content_type: contentType,
+          upload_headers: { "Content-Type": contentType, "x-amz-tagging": "retention=temporary" },
+        });
       }
 
       // Price quotes: Seedance is metered (described, not

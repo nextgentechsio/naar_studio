@@ -79,8 +79,13 @@ describe("direct uploads", () => {
     const state = await (await fetch(`${replicateUrl}/__control/blobs`)).json();
     expect(state.blobs.map((b: { pathname: string }) => b.pathname)).toEqual(["inputs/new.png"]);
     // Only ever lists the folders it cleans, never the
-    // whole store (project photos must never be swept)
-    const lists = state.requests.filter((r: { method: string; path: string }) => r.method === "GET" && r.path.startsWith("/blob?"));
+    // whole store (project photos and the media library
+    // must never be swept)
+    // (head() lookups by URL aren't lists)
+    const lists = state.requests.filter(
+      (r: { method: string; path: string }) =>
+        r.method === "GET" && r.path.startsWith("/blob?") && !r.path.includes("url=")
+    );
     expect(lists.length).toBeGreaterThan(0);
     expect(
       lists.every((r: { path: string }) => /prefix=(inputs|outputs)%2F/.test(r.path))

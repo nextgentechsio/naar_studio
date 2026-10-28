@@ -16,6 +16,8 @@ import {
 import { errorMessage, fetchJson, logRequestError } from "@/lib/client/http";
 import { currentElements } from "@/lib/client/elements";
 import { uploadToLibrary } from "@/lib/client/library";
+import { checkVideo, fitVideoAt, resizeVideo } from "@/lib/client/resize-video";
+import { videoLimitsFor } from "@/lib/higgsfield-models";
 import { expandMentions } from "@/lib/element-mentions";
 import { uploadHiggsfieldInput, uploadInputFile } from "@/lib/client/upload";
 import type { ModelKind } from "@/lib/model-catalog";
@@ -159,6 +161,9 @@ type GenerateContextValue = {
   updateInput: (key: string, value: unknown) => void;
   // Local previews of uploaded images, by uploaded URL
   filePreviews: Record<string, string>;
+  // What happened to an uploaded file on the way (e.g. a
+  // video resized for the model), by uploaded URL
+  fileNotes: Record<string, string>;
   removeImage: (key: string, index: number) => void;
   uploading: Record<string, number>;
   // Files still uploading, shown from a local preview
@@ -169,6 +174,9 @@ type GenerateContextValue = {
 
   // Run
   generating: boolean;
+  // While Generate prepares inputs first (e.g. "Resizing
+  // video…"); empty otherwise
+  preparing: string;
   result: GenerationResult | null;
   // When the current run succeeded (ms timestamp), for the
   // loader's landing animation; null otherwise
@@ -225,12 +233,14 @@ export function GenerateProvider({
   const [filePreviews, setFilePreviews] = useState<Record<string, string>>(
     {}
   );
+  const [fileNotes, setFileNotes] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState<Record<string, number>>({});
   const [pendingUploads, setPendingUploads] = useState<
     Record<string, PendingUpload[]>
   >({});
 
   const [generating, setGenerating] = useState(false);
+  const [preparing, setPreparing] = useState("");
   const [result, setResult] = useState<GenerationResult | null>(null);
   const [finishedAt, setFinishedAt] = useState<number | null>(null);
   const [error, setError] = useState("");
@@ -298,6 +308,7 @@ export function GenerateProvider({
 
       return {};
     });
+    setFileNotes({});
   }, []);
 
   const chooseModel = useCallback(
@@ -458,14 +469,39 @@ export function GenerateProvider({
             )
           );
 
+        // Videos a model would refuse for their size are
+        // resized first (Seedance: lib/higgsfield-models.ts).
+        // The ring shows resizing, then uploading.
+        let sending = file;
+        let note = "";
+        const limits =
+          provider === "higgsfield" && file.type.startsWith("video/")
+            ? videoLimitsFor(model)
+            : null;
+
+        if (limits) {
+          const check = await checkVideo(file, limits);
+          if (check.action === "refuse") throw new Error(check.error);
+
+          if (check.action === "resize") {
+            sending = await resizeVideo(file, check.width, check.height, (percent) =>
+              onProgress(Math.round(percent / 2))
+            );
+            note = `Resized from ${check.from.width}×${check.from.height} to ${check.width}×${check.height} so this model accepts it`;
+          }
+        }
+
+        const uploadProgress = (percent: number | null) =>
+          onProgress(limits && note && percent !== null ? 50 + Math.round(percent / 2) : percent);
+
         // Saved to the user's library for reuse. Without
         // one (no Blob on the server), Higgsfield runs read
         // their files from Higgsfield's own storage.
         const url =
-          (await uploadToLibrary(file, onProgress)) ??
+          (await uploadToLibrary(sending, uploadProgress)) ??
           (await (provider === "higgsfield" ? uploadHiggsfieldInput : uploadInputFile)(
-            file,
-            onProgress
+            sending,
+            uploadProgress
           ));
 
         // The user switched models meanwhile: this file
@@ -476,6 +512,7 @@ export function GenerateProvider({
         // so it doesn't reload or flash
         kept = true;
         setFilePreviews((previous) => ({ ...previous, [url]: preview }));
+        if (note) setFileNotes((previous) => ({ ...previous, [url]: note }));
 
         // One file per field (a video, an audio track)
         if (!appends) {
@@ -513,7 +550,7 @@ export function GenerateProvider({
         }
       }
     },
-    [updateInput, provider]
+    [updateInput, provider, model]
   );
 
   // --------------------------------------------------
@@ -659,6 +696,46 @@ export function GenerateProvider({
     setGenerating(true);
 
     try {
+      // Videos already in the form that this model would
+      // refuse for their size are resized and swapped in
+      // first (new uploads were resized on the way in)
+      let values = inputs;
+      const limits = provider === "higgsfield" ? videoLimitsFor(model) : null;
+
+      if (limits) {
+        const upload = async (file: File) =>
+          (await uploadToLibrary(file)) ?? (await uploadHiggsfieldInput(file));
+        const notes: Record<string, string> = {};
+
+        for (const [key, value] of Object.entries(inputs)) {
+          if (!/video_urls?$/.test(key)) continue;
+
+          const list = Array.isArray(value) ? value.map(String) : value ? [String(value)] : [];
+          const fitted = [...list];
+
+          for (const [index, url] of list.entries()) {
+            if (!/^https?:\/\//.test(url)) continue;
+            const result = await fitVideoAt(url, limits, upload, setPreparing);
+            if (!result) continue;
+            fitted[index] = result.url;
+            notes[result.url] = result.note;
+          }
+
+          if (fitted.some((url, index) => url !== list[index])) {
+            values = { ...values, [key]: Array.isArray(value) ? fitted : fitted[0] };
+          }
+        }
+
+        if (values !== inputs && run === runRef.current) {
+          setInputs(values);
+          setFileNotes((previous) => ({ ...previous, ...notes }));
+        }
+        setPreparing("");
+      }
+
+      // The user changed model meanwhile
+      if (run !== runRef.current) return;
+
       const data = await fetchJson<{
         prediction?: Prediction;
         costUsd?: number | null;
@@ -669,7 +746,7 @@ export function GenerateProvider({
         body: JSON.stringify({
           project,
           model,
-          inputs: buildGenerationInputs(await withElements(inputs)),
+          inputs: buildGenerationInputs(await withElements(values)),
         }),
       });
 
@@ -696,8 +773,9 @@ export function GenerateProvider({
       }
     } finally {
       setGenerating(false);
+      setPreparing("");
     }
-  }, [project, model, inputs, pollPrediction, endpoints]);
+  }, [project, model, inputs, pollPrediction, endpoints, provider]);
 
   const value: GenerateContextValue = {
     provider,
@@ -720,11 +798,13 @@ export function GenerateProvider({
     inputs,
     updateInput,
     filePreviews,
+    fileNotes,
     removeImage,
     uploading,
     pendingUploads,
     uploadFile,
     generating,
+    preparing,
     result,
     finishedAt,
     error,

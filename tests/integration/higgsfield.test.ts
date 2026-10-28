@@ -79,6 +79,7 @@ describe("higgsfield", () => {
     expect(list.data.enabled).toBe(true);
     expect(list.data.models).toEqual([
       expect.objectContaining({ id: SEEDANCE, output: "video", category: "text-to-video", task: "Text to video" }),
+      expect.objectContaining({ id: "bytedance/seedance-2.5/reference-to-video", output: "video", category: "image-to-video", task: "Reference to video" }),
       expect.objectContaining({ id: SEEDANCE_EDIT, output: "video", category: "video-to-video", task: "Video edit" }),
       expect.objectContaining({ id: SOUL, output: "image", category: "image-edit", task: "Image to image" }),
     ]);
@@ -181,10 +182,44 @@ describe("higgsfield", () => {
     const id = (data.tracking as { predictionId: string }).predictionId;
     await setRequest(id, { status: "completed", video: { url: `${replicateUrl}/__control/output.mp4` } });
 
-    // 720 × 960 × (3s input + 5s output) × 24 / 1024
-    // = 129,600 tokens × $0.0214 × 0.6 / 1000
+    // 720 × 960 × (4s input + 5s output) × 24 / 1024
+    // = 145,800 tokens × $0.0214 × 0.6 / 1000
     const done = await poll(alice.session, id);
-    expect(done.data.costUsd).toBe(1.6641);
+    expect(done.data.costUsd).toBe(1.8721);
+  });
+
+  it("refuses an input video Seedance wouldn't accept, before starting", async () => {
+    const before = (await replicateRequests()).filter((r) => r.path === `/hf/${SEEDANCE_EDIT}`).length;
+
+    const { status, data } = await start(
+      alice.session,
+      { prompt: "make it night", video_url: `${replicateUrl}/__control/small.mp4`, resolution: "480p" },
+      project.name,
+      SEEDANCE_EDIT
+    );
+    expect(status).toBe(400);
+    expect(String(data.error)).toMatch(/480×848/);
+    expect(String(data.error)).toMatch(/resizes it to 482×850/);
+
+    // Nothing was sent to Higgsfield
+    const after = (await replicateRequests()).filter((r) => r.path === `/hf/${SEEDANCE_EDIT}`).length;
+    expect(after).toBe(before);
+  });
+
+  it("refuses an input video under 4 seconds, before starting", async () => {
+    const before = (await replicateRequests()).filter((r) => r.path === `/hf/${SEEDANCE_EDIT}`).length;
+
+    const { status, data } = await start(
+      alice.session,
+      { prompt: "make it night", video_url: `${replicateUrl}/__control/short.mp4`, resolution: "480p" },
+      project.name,
+      SEEDANCE_EDIT
+    );
+    expect(status).toBe(400);
+    expect(String(data.error)).toMatch(/3\.9 seconds long; this model needs 4 to 30 seconds/);
+
+    const after = (await replicateRequests()).filter((r) => r.path === `/hf/${SEEDANCE_EDIT}`).length;
+    expect(after).toBe(before);
   });
 
   it("records Higgsfield's quote for models it prices per run", async () => {

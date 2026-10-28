@@ -81,6 +81,96 @@ export const HIGGSFIELD_UPLOAD_TYPES = [
 ];
 
 // --------------------------------------------------
+// INPUT VIDEO SIZE (Seedance)
+//
+// Seedance refuses an input video whose frame is outside
+// 409,600–927,408 pixels (640×640 to 834×1112), or whose
+// shape is narrower than 0.4 or wider than 2.5, with "The
+// video dimensions or aspect ratio are not supported".
+// A phone clip at 480×848 (407,040 px) just misses. The
+// browser resizes such videos on upload (keeping their
+// shape); the server checks before a run starts.
+//
+// Input videos must also be 4–30 seconds long (Higgsfield
+// says so for Seedance; a shorter one fails with just
+// "Generation failed").
+// --------------------------------------------------
+
+export type VideoLimits = {
+  minPixels: number;
+  maxPixels: number;
+  minRatio: number;
+  maxRatio: number;
+  minSeconds: number;
+  maxSeconds: number;
+};
+
+const SEEDANCE_VIDEO: VideoLimits = {
+  minPixels: 409_600,
+  maxPixels: 927_408,
+  minRatio: 0.4,
+  maxRatio: 2.5,
+  minSeconds: 4,
+  maxSeconds: 30,
+};
+
+// A length problem resizing can't fix, or null
+export function videoLengthProblem(seconds: number, limits: VideoLimits): string | null {
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  // Rounded down, so 3.95 s never reads as "4.0"
+  const shown = String(Math.floor(seconds * 100 + 1e-6) / 100);
+  // Only container rounding is let through: a 3.95 s
+  // video is refused by Seedance
+  if (seconds < limits.minSeconds - 0.01) {
+    return `This video is ${shown} seconds long; this model needs ${limits.minSeconds} to ${limits.maxSeconds} seconds. Use a longer clip.`;
+  }
+  if (seconds > limits.maxSeconds + 0.01) {
+    return `This video is ${shown} seconds long; this model needs ${limits.minSeconds} to ${limits.maxSeconds} seconds. Trim it and upload it again.`;
+  }
+  return null;
+}
+
+// Seedance itself, and Cinema Studio (built on it)
+export function videoLimitsFor(model: string): VideoLimits | null {
+  return /^bytedance\/seedance-|^higgsfield\/cinema-studio\//.test(model) ? SEEDANCE_VIDEO : null;
+}
+
+export type VideoFit =
+  | { ok: true }
+  | { ok: false; resize: { width: number; height: number } }
+  | { ok: false; error: string };
+
+// Whether a width × height video fits, else the nearest
+// size that does (same shape, even sides for H.264)
+export function fitVideo(width: number, height: number, limits: VideoLimits): VideoFit {
+  const ratio = width / height;
+
+  if (ratio < limits.minRatio || ratio > limits.maxRatio) {
+    return {
+      ok: false,
+      error: `This video's shape (${width}×${height}) is too narrow or wide for this model. Crop it to between 2:5 and 5:2 and try again.`,
+    };
+  }
+
+  const pixels = width * height;
+  if (pixels >= limits.minPixels && pixels <= limits.maxPixels) return { ok: true };
+
+  const target = pixels < limits.minPixels ? limits.minPixels : limits.maxPixels;
+  let scale = Math.sqrt(target / pixels);
+  const even = (value: number) => Math.max(2, Math.round(value / 2) * 2);
+
+  // Rounding can land just outside: nudge until it fits
+  for (let step = 0; step < 50; step++) {
+    const size = { width: even(width * scale), height: even(height * scale) };
+    const area = size.width * size.height;
+    if (area >= limits.minPixels && area <= limits.maxPixels) return { ok: false, resize: size };
+    scale *= area < limits.minPixels ? 1.005 : 0.995;
+  }
+
+  return { ok: false, error: "This video's size isn't supported by this model. Resize it and try again." };
+}
+
+// --------------------------------------------------
 // PRICES
 //
 // Higgsfield's API never says what a finished run cost.

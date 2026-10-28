@@ -13,6 +13,7 @@ import { Modal } from "@/app/components/ui/Modal";
 import { Button, cx, EmptyState, inputClass } from "@/app/components/ui/primitives";
 import { useFileDrop } from "@/app/components/ui/useFileDrop";
 import type { FileKind } from "./fields";
+import MediaCaption from "./MediaCaption";
 
 // --------------------------------------------------
 // ADD FILES TO AN UPLOAD FIELD (window)
@@ -482,11 +483,7 @@ function LibraryTile({
                   className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                 />
               )}
-              {kind === "video" && (
-                <span className="absolute bottom-1.5 left-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white">
-                  <Icon name="play" size={11} />
-                </span>
-              )}
+              <MediaCaption src={file.url} kind={kind} className="pl-2" />
             </span>
             <span className="block truncate bg-surface px-2.5 py-2 text-xs text-fg-muted" title={file.name}>
               {file.name}

@@ -70,6 +70,29 @@ const HF_MODELS = [
     },
   },
   {
+    slug: "bytedance/seedance-2.5/reference-to-video",
+    title: "Seedance 2.5",
+    description: "Reference to video",
+    operation_type: ["image2video", "video2video"],
+    output_type: "video",
+    base_credits: "0.0000",
+    is_workflow: false,
+    input_schema: {
+      type: "object",
+      required: ["prompt"],
+      properties: {
+        prompt: { type: "string", minLength: 1 },
+        duration: { type: "integer", default: 5, minimum: 4, maximum: 30 },
+        audio_urls: { type: "array", items: { type: "string", format: "uri" } },
+        image_urls: { type: "array", items: { type: "string", format: "uri" } },
+        resolution: { type: "string", enum: ["480p", "720p", "1080p"], default: "720p" },
+        video_urls: { type: "array", items: { type: "string", format: "uri" } },
+        aspect_ratio: { type: "string", enum: ["16:9", "9:16"], default: "16:9" },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     slug: "bytedance/seedance-2.5/video-edit",
     title: "Seedance 2.5",
     description: "Video edit",
@@ -83,6 +106,9 @@ const HF_MODELS = [
       properties: {
         prompt: { type: "string", minLength: 1 },
         video_url: { type: "string", format: "uri" },
+        audio_urls: { type: "array", items: { type: "string", format: "uri" } },
+        image_urls: { type: "array", items: { type: "string", format: "uri" } },
+        video_urls: { type: "array", items: { type: "string", format: "uri" } },
         resolution: { type: "string", enum: ["480p", "720p", "1080p"], default: "720p" },
       },
       additionalProperties: false,
@@ -144,8 +170,14 @@ export function fakeMp4(width: number, height: number, seconds: number): Buffer 
 
 // What /__control/output.mp4 serves (a 720×960, 5s video)
 export const FAKE_OUTPUT_MP4 = fakeMp4(720, 960, 5);
-// What /__control/input.mp4 serves (a 3s input video)
-export const FAKE_INPUT_MP4 = fakeMp4(1280, 720, 3);
+// What /__control/input.mp4 serves (a 4s input video,
+// the shortest Seedance accepts)
+export const FAKE_INPUT_MP4 = fakeMp4(1280, 720, 4);
+// /__control/small.mp4: a phone clip just under Seedance's
+// minimum frame size (407,040 of 409,600 pixels)
+export const FAKE_SMALL_MP4 = fakeMp4(480, 848, 9);
+// /__control/short.mp4: right size, but under 4 seconds
+export const FAKE_SHORT_MP4 = fakeMp4(482, 850, 3.9);
 
 // Bytes, honouring a "Range: bytes=a-b" header
 function serveBytes(
@@ -303,7 +335,9 @@ export async function startFakeReplicate() {
     }
 
     // Public blob links (what a browser or the app fetches)
-    if (path.startsWith("/blobfiles/") && req.method === "GET") {
+    if (path.startsWith("/blobfiles/") && (req.method === "GET" || req.method === "HEAD")) {
+      // Like the real store (checked): browsers may fetch
+      res.setHeader("access-control-allow-origin", "*");
       const bytes = blobBytes.get(decodeURIComponent(path.slice("/blobfiles/".length)));
       if (!bytes) return send(404, { error: "Not found" });
 
@@ -422,6 +456,14 @@ export async function startFakeReplicate() {
 
     if (path === "/__control/input.mp4") {
       return serveBytes(req, res, FAKE_INPUT_MP4, { "content-type": "video/mp4" });
+    }
+
+    if (path === "/__control/small.mp4") {
+      return serveBytes(req, res, FAKE_SMALL_MP4, { "content-type": "video/mp4" });
+    }
+
+    if (path === "/__control/short.mp4") {
+      return serveBytes(req, res, FAKE_SHORT_MP4, { "content-type": "video/mp4" });
     }
 
     if (path === "/__control/blobs") {

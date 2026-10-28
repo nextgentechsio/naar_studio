@@ -51,11 +51,15 @@ import {
   orderSchemaFields,
 } from "./fields";
 import ModelBrowserDialog from "./ModelBrowserDialog";
+import { MediaDetails } from "./MediaCaption";
 import PromptInput from "./PromptInput";
 import SchemaField from "./SchemaField";
 
 // Resolution of a Draft run (see draftAvailable)
 const DRAFT_RESOLUTION = "480p";
+
+// Seedance's mode for changing an existing video
+const SEEDANCE_VIDEO_EDIT = "bytedance/seedance-2.5/video-edit";
 
 // --------------------------------------------------
 // GENERATE PAGE
@@ -99,6 +103,7 @@ export default function GenerateView() {
     updateInput,
     uploading,
     generating,
+    preparing,
     result,
     finishedAt,
     error,
@@ -191,6 +196,35 @@ export default function GenerateView() {
     has("resolution") &&
     resolutionOptions.includes(DRAFT_RESOLUTION);
   const draft = draftAvailable && inputs.resolution === DRAFT_RESOLUTION;
+
+  // Seedance Reference to video makes a new video; with a
+  // video given, a prompt that changes it ("replace the
+  // person…") is refused ("interpreted as video
+  // editing"). Video edit does that: offer to move the
+  // form over, files and prompt included.
+  const referenceVideos =
+    isHiggsfield && /^bytedance\/seedance-[\d.]+\/reference-to-video$/.test(model)
+      ? (Array.isArray(inputs.video_urls) ? inputs.video_urls : [inputs.video_urls]).filter(
+          (url): url is string => typeof url === "string" && url !== "",
+        )
+      : [];
+  const editRefused = /interpreted as video editing/i.test(result?.prediction.error ?? "");
+
+  function switchToVideoEdit() {
+    const [main, ...rest] = referenceVideos;
+    chooseModel(SEEDANCE_VIDEO_EDIT, {
+      presetInputs: {
+        prompt: inputs.prompt,
+        video_url: main,
+        video_urls: rest,
+        image_urls: inputs.image_urls,
+        audio_urls: inputs.audio_urls,
+        resolution: inputs.resolution,
+        bitrate_mode: inputs.bitrate_mode,
+        generate_audio: inputs.generate_audio,
+      },
+    });
+  }
   const fullResolution = useRef<string | null>(null);
 
   function setDraft(on: boolean) {
@@ -335,14 +369,18 @@ export default function GenerateView() {
         : "image"
       : null;
 
-  const makingTitle = !makingMedia
-    ? "Generating…"
-    : catalogModel?.kind === "upscale"
-      ? `Upscaling your ${makingMedia}…`
-      : `Creating your ${makingMedia}…`;
+  // Before the run starts (e.g. a video being resized)
+  const makingTitle = preparing
+    ? preparing
+    : !makingMedia
+      ? "Generating…"
+      : catalogModel?.kind === "upscale"
+        ? `Upscaling your ${makingMedia}…`
+        : `Creating your ${makingMedia}…`;
 
-  const makingNote =
-    makingMedia === "video"
+  const makingNote = preparing
+    ? "This model needs a different video size, so it's being fixed first. It takes about as long as the video; please keep this tab open."
+    : makingMedia === "video"
       ? "Videos can take a few minutes. You can leave this page; it's saved to History."
       : makingMedia === "image"
         ? "Images usually take a few seconds. It's also saved to History."
@@ -613,6 +651,23 @@ export default function GenerateView() {
                   </div>
                 )}
 
+                {referenceVideos.length > 0 && (
+                  <div className="ui-rise flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-sunken px-3 py-2.5">
+                    <p className="flex min-w-0 flex-1 items-start gap-2 text-xs leading-5 text-fg-muted">
+                      <Icon name="info" size={14} className="mt-0.5 shrink-0" />
+                      <span>
+                        <span className="font-medium text-fg">Changing this video</span>{" "}
+                        (e.g. swapping a person)? Reference to video makes a new
+                        one, so Seedance refuses edits here. Video edit keeps
+                        your video&apos;s shape and length.
+                      </span>
+                    </p>
+                    <Button size="sm" icon="video" onClick={switchToVideoEdit}>
+                      Switch to Video edit
+                    </Button>
+                  </div>
+                )}
+
                 {/* Every short setting in one grid: 3 across when
                     the panel is wide enough, else 2 */}
                 {(hasAspectRatio || hasResolution || mainFields.length > 0) && (
@@ -843,7 +898,7 @@ export default function GenerateView() {
               >
                 {generating ? (
                   <>
-                    <Spinner /> Starting…
+                    <Spinner /> {preparing || "Starting…"}
                   </>
                 ) : draft ? (
                   "Generate draft"
@@ -979,6 +1034,13 @@ export default function GenerateView() {
                   {result?.prediction.error ||
                     "The model couldn't complete this run. Failed runs aren't added to Expenses."}
                 </p>
+                {editRefused && referenceVideos.length > 0 && (
+                  <div className="mt-3">
+                    <Button size="sm" icon="video" onClick={switchToVideoEdit}>
+                      Switch to Video edit, keeping your files
+                    </Button>
+                  </div>
+                )}
               </Alert>
             ) : (
               <EmptyState
@@ -1004,6 +1066,12 @@ export default function GenerateView() {
                   {typeof predictTime === "number"
                     ? `${predictTime.toFixed(1)}s`
                     : "—"}
+                </dd>
+              </div>
+              <div className="flex gap-1.5">
+                <dt className="text-fg-subtle">Output</dt>
+                <dd className="font-medium tabular-nums text-fg">
+                  <MediaDetails src={outputUrls[0]} kind={getOutputType(outputUrls[0])} />
                 </dd>
               </div>
               <div className="text-fg-subtle">Saved to History</div>

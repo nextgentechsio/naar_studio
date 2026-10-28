@@ -12,6 +12,7 @@ import {
   textareaClass,
 } from "@/app/components/ui/primitives";
 import { useFileDrop } from "@/app/components/ui/useFileDrop";
+import MediaCaption from "./MediaCaption";
 import MediaLibraryDialog from "./MediaLibraryDialog";
 import MediaPreviewDialog, { type MediaPreview } from "./MediaPreviewDialog";
 import {
@@ -192,6 +193,7 @@ function FileField({
     pendingUploads,
     uploadFile,
     filePreviews,
+    fileNotes,
     removeImage,
     setError,
   } = useGenerate();
@@ -240,7 +242,7 @@ function FileField({
 
   // Open from a tile: its box and the media's real size
   // let the popup grow out of it
-  function openPreview(trigger: HTMLElement, src: string) {
+  function openPreview(trigger: HTMLElement, src: string, sizeOf: string | null) {
     const tile = trigger.parentElement!;
     const media = tile.querySelector<HTMLImageElement | HTMLVideoElement>("img, video");
     const video = media instanceof HTMLVideoElement ? media : null;
@@ -253,6 +255,7 @@ function FileField({
       origin: tile.getBoundingClientRect(),
       width: video?.videoWidth ?? image?.naturalWidth ?? 0,
       height: video?.videoHeight ?? image?.naturalHeight ?? 0,
+      sizeOf,
     });
   }
 
@@ -279,18 +282,21 @@ function FileField({
 
   // Uploaded files, then those still uploading, in one
   // list so a tile stays the same element when done
-  const tiles: { src: string; index: number | null; progress?: number | null }[] = [
+  // `url`: the uploaded file (for its size), once there is one
+  const tiles: { src: string; url: string | null; index: number | null; progress?: number | null }[] = [
     ...files.map((file, index) => ({
       src: filePreviews[String(file)] ?? String(file),
+      url: String(file),
       index,
     })),
-    ...(single ? [] : pending.map((item) => ({ ...item, src: item.preview, index: null }))),
+    ...(single ? [] : pending.map((item) => ({ ...item, src: item.preview, url: null, index: null }))),
     // A video is one tile too: uploaded, or the newest
     // one still uploading
     ...(kind === "video" && single && singleSrc
       ? [
           {
             src: singleSrc,
+            url: singlePending ? null : singleUrl,
             index: singlePending ? null : 0,
             progress: singlePending ? singlePending.progress : undefined,
           },
@@ -440,7 +446,7 @@ function FileField({
                               ? label
                               : `${label} ${tile.index + 1}`
                         }`}
-                        onClick={(event) => openPreview(event.currentTarget, tile.src)}
+                        onClick={(event) => openPreview(event.currentTarget, tile.src, tile.url)}
                         className="absolute inset-0 flex cursor-zoom-in items-center justify-center rounded-lg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
                       >
                         {kind === "video" && tile.progress === undefined && (
@@ -449,6 +455,10 @@ function FileField({
                           </span>
                         )}
                       </button>
+
+                      {tile.progress === undefined && tile.index !== null && (
+                        <MediaCaption src={tile.src} kind={kind} />
+                      )}
 
                       {tile.index !== null && (
                         <button
@@ -470,6 +480,16 @@ function FileField({
               ))}
             </ul>
           )}
+
+          {/* e.g. a video resized so the model accepts it */}
+          {(single ? (singleUrl ? [singleUrl] : []) : files.map(String))
+            .filter((url) => fileNotes[url])
+            .map((url) => (
+              <p key={url} className="ui-rise flex items-center gap-1.5 text-xs text-fg-subtle" role="status">
+                <Icon name="info" size={12} />
+                {fileNotes[url]}
+              </p>
+            ))}
 
           {viewing && (
             <MediaPreviewDialog preview={viewing} onClose={() => setViewing(null)} />

@@ -21,7 +21,8 @@ import {
 } from "@/lib/client/data";
 import { formatDateTime, formatDuration } from "@/lib/client/format";
 import { errorMessage } from "@/lib/client/http";
-import { downloadOutput } from "@/lib/client/outputs";
+import { downloadOutput, getOutputType } from "@/lib/client/outputs";
+import { MediaDetails } from "@/app/(studio)/replicate/MediaCaption";
 import { modelLabel } from "@/lib/model-catalog";
 import { canDeleteGenerations, canHideGenerations } from "@/lib/roles";
 import { useDialog } from "@/app/(studio)/_components/useDialog";
@@ -209,6 +210,19 @@ export default function GenerationDrawer({
           </span>,
         ],
         ["Run time", formatDuration(generation.predictTime)],
+        ...(generation.outputUrl && !generation.outputExpired
+          ? ([
+              [
+                "Output",
+                <span key="output" className="tabular-nums">
+                  <MediaDetails
+                    src={generation.outputUrl}
+                    kind={getOutputType(generation.outputUrl, generation.outputContentType)}
+                  />
+                </span>,
+              ],
+            ] as [string, React.ReactNode][])
+          : []),
         ["Resolution", generation.resolution || "—"],
         ["Aspect ratio", generation.aspectRatio || "—"],
         ["Created", formatDateTime(generation.createdAt)],

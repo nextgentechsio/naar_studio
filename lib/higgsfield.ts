@@ -3,9 +3,12 @@ import type { Schema, SchemaProperty } from "@/app/(studio)/replicate/fields";
 import {
   approxMeteredCostUsd,
   categoryFor,
+  fitVideo,
   higgsfieldPriceKind,
+  videoLengthProblem,
   meteredCostUsd,
   taskFromSlug,
+  videoLimitsFor,
   type HiggsfieldModel,
   type HiggsfieldUsage,
 } from "@/lib/higgsfield-models";
@@ -508,7 +511,7 @@ export async function quoteHiggsfield(
 // Input files we may read to measure: our own uploads
 // (Vercel Blob) and Higgsfield's outputs. Never an
 // arbitrary host from the form.
-function isMeasurableInput(url: URL): boolean {
+export function isMeasurableInput(url: URL): boolean {
   return (
     (url.protocol === "https:" && url.hostname.endsWith(".blob.vercel-storage.com")) ||
     isHiggsfieldOutputUrl(url)
@@ -588,4 +591,51 @@ export async function higgsfieldRunCostUsd(
       return approxMeteredCostUsd(generation.model, inputs);
     }
   }
+}
+
+// --------------------------------------------------
+// INPUT VIDEO CHECK (before a run starts)
+//
+// Seedance refuses videos outside its pixel range or
+// 4–30 s (lib/higgsfield-models.ts). Uploads are resized in the
+// browser, but a file picked from the library may be
+// too small or large: say so now, not after a failed
+// run. Videos that can't be measured are let through.
+// --------------------------------------------------
+
+export async function checkInputVideos(
+  model: string,
+  input: Record<string, unknown>
+): Promise<string | null> {
+  const limits = videoLimitsFor(model);
+  if (!limits) return null;
+
+  const videos = Object.entries(input)
+    .filter(([key]) => /video_urls?$/.test(key))
+    .flatMap(([, value]) => urls(value));
+
+  for (const url of videos) {
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      continue;
+    }
+    if (!isMeasurableInput(parsed)) continue;
+
+    const info = await videoInfo(parsed, isMeasurableInput).catch(() => null);
+    if (!info?.width || !info.height) continue;
+
+    const length = videoLengthProblem(info.seconds, limits);
+    if (length) return length.replace("This video", "A video here");
+
+    const fit = fitVideo(info.width, info.height, limits);
+    if (fit.ok) continue;
+
+    return "error" in fit
+      ? fit.error
+      : `A video here is ${info.width}×${info.height}, which this model doesn't accept (it needs 640×640 to 834×1112 worth of pixels). Generate resizes it to ${fit.resize.width}×${fit.resize.height} automatically in Chrome, Edge or Safari; in other browsers, resize it and upload it again.`;
+  }
+
+  return null;
 }

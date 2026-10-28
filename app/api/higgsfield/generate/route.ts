@@ -9,6 +9,7 @@ import { requireUser } from "@/lib/auth";
 import { recordGeneration } from "@/lib/generations";
 import {
   cancelHiggsfieldRequest,
+  checkInputVideos,
   findHiggsfieldModel,
   higgsfieldConfigured,
   quoteHiggsfield,
@@ -147,6 +148,10 @@ export async function POST(request: Request) {
     if (missing.length) {
       return badRequest(`Missing: ${missing.join(", ").replace(/_/g, " ")}`);
     }
+
+    // Videos the model would refuse (e.g. too few pixels)
+    const videoProblem = await checkInputVideos(model, input);
+    if (videoProblem) return badRequest(videoProblem);
 
     let started: Awaited<ReturnType<typeof startHiggsfield>>;
     // Higgsfield's exact price for this run, asked for

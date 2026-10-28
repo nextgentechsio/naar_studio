@@ -4,6 +4,7 @@ import { useCallback, useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useDialog } from "@/app/(studio)/_components/useDialog";
 import { Icon } from "@/app/components/ui/Icon";
+import { describeMedia, useMediaMeta } from "@/lib/client/media-meta";
 
 // --------------------------------------------------
 // FULL-SIZE PREVIEW OF AN UPLOADED IMAGE OR VIDEO
@@ -22,6 +23,9 @@ export type MediaPreview = {
   origin: DOMRect;
   width: number;
   height: number;
+  // The uploaded file, for its size (src may be a local
+  // preview of it)
+  sizeOf?: string | null;
 };
 
 const OPEN_MS = 340;
@@ -63,6 +67,8 @@ export default function MediaPreviewDialog({
   const closing = useRef(false);
 
   const size = fit(preview.width, preview.height);
+  const { meta, bytes } = useMediaMeta(preview.src, preview.kind, preview.sizeOf ?? null);
+  const details = describeMedia(meta, bytes);
 
   // OPEN
   useLayoutEffect(() => {
@@ -147,6 +153,10 @@ export default function MediaPreviewDialog({
           />
         )}
       </div>
+
+      {/* Fades in with the media; reserved height so the
+          box doesn't move when it appears */}
+      <p className="relative min-h-5 text-sm tabular-nums text-white/80">{details}</p>
 
       <button
         type="button"

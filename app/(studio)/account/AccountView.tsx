@@ -4,6 +4,7 @@ import {
   signOut,
   useStudio,
 } from "@/app/(studio)/_components/StudioProvider";
+import { APP_NAME, APP_COMMIT, APP_VERSION } from "@/lib/app-info";
 import { ROLE_LABELS } from "@/lib/roles";
 
 // --------------------------------------------------
@@ -42,6 +43,24 @@ export default function AccountView() {
           </div>
         ))}
       </div>
+
+      <section className="max-w-xl rounded-2xl border border-line bg-surface p-6" aria-labelledby="about-title">
+        <h2 id="about-title" className="text-sm font-semibold text-fg">
+          About
+        </h2>
+        <dl className="mt-4 grid gap-4 sm:grid-cols-3">
+          {[
+            ["App", APP_NAME],
+            ["Version", APP_VERSION],
+            ["Build", APP_COMMIT || "—"],
+          ].map(([title, value]) => (
+            <div key={title}>
+              <dt className="text-[10px] uppercase tracking-wider text-fg-subtle">{title}</dt>
+              <dd className="mt-1 font-mono text-sm text-fg">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
 
       <button
         type="button"

@@ -1,6 +1,6 @@
 {
-  "name": "finops-ai-portal",
-  "version": "0.1.0",
+  "name": "naar-studio",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -32,5 +32,8 @@
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.11"
-  }
+  },
+  "description": "NAAR Studio: AI image and video generation with per-project spend tracking",
+  "license": "UNLICENSED",
+  "author": "NAAR"
 }

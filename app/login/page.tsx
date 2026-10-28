@@ -3,6 +3,8 @@
 import { useState, useSyncExternalStore } from "react";
 import ThemeToggle from "@/app/components/ThemeToggle";
 import { NaarLogo } from "@/app/components/ui/NaarLogo";
+import AppFooter from "@/app/components/AppFooter";
+import { APP_NAME, COMPANY } from "@/lib/app-info";
 import { safeNextPath } from "@/lib/safe-next";
 import {
   Alert,
@@ -73,11 +75,11 @@ export default function LoginPage() {
 
         <div className="max-w-md">
           <p className="mb-5 text-[11px] font-medium uppercase tracking-[0.3em] text-[#b8b8b6]">
-            Naar Studio
+            {APP_NAME}
           </p>
 
           <h1 className="text-5xl font-bold leading-[1.05] tracking-[-0.03em]">
-            Create with Naar.
+            Create with {COMPANY}.
             <br />
             <span className="text-[#2fd6c8]">Spend</span> with
             purpose.
@@ -90,103 +92,108 @@ export default function LoginPage() {
         </div>
 
         <p className="text-xs text-[#959593]">
-          Internal workspace · Naar
+          Internal workspace
         </p>
       </section>
 
       {/* SIGN-IN FORM */}
-      <section className="flex items-center justify-center px-5 py-12">
-        <div className="w-full max-w-sm">
-          <div className="mb-10 flex items-center gap-2 lg:hidden">
-            <NaarLogo height={26} />
-            <span className="pt-0.5 text-[15px] font-medium text-fg-muted">
-              Studio
-            </span>
-          </div>
+      {/* The form centred; the footer at the bottom */}
+      <section className="flex min-h-screen flex-col">
+        <div className="flex flex-1 items-center justify-center px-5 py-12">
+          <div className="w-full max-w-sm">
+            <div className="mb-10 flex items-center gap-2 lg:hidden">
+              <NaarLogo height={26} />
+              <span className="pt-0.5 text-[15px] font-medium text-fg-muted">
+                Studio
+              </span>
+            </div>
 
-          <p className={eyebrowClass}>Welcome back</p>
+            <p className={eyebrowClass}>Welcome back</p>
 
-          <h2 className="mt-2 text-[28px] font-bold leading-tight tracking-[-0.02em]">
-            Sign in to Naar Studio
-          </h2>
+            <h2 className="mt-2 text-[28px] font-bold leading-tight tracking-[-0.02em]">
+              Sign in to {APP_NAME}
+            </h2>
 
-          <p className="mt-2 text-sm text-fg-muted">
-            Use the username and password from your admin.
-          </p>
+            <p className="mt-2 text-sm text-fg-muted">
+              Use the username and password from your admin.
+            </p>
 
-          <form
-            onSubmit={handleSubmit}
-            className="mt-8 space-y-5"
-            noValidate={false}
-          >
-            <Field label="Username">
-              {(control) => (
-                <input
-                  {...control}
-                  value={username}
-                  onChange={(event) =>
-                    setUsername(event.target.value)
-                  }
-                  autoComplete="username"
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  autoFocus
-                  required
-                  className={inputClass}
-                />
-              )}
-            </Field>
-
-            <Field label="Password">
-              {(control) => (
-                <PasswordInput
-                  {...control}
-                  value={password}
-                  onChange={(event) =>
-                    setPassword(event.target.value)
-                  }
-                  autoComplete="current-password"
-                  required
-                />
-              )}
-            </Field>
-
-            {reason === "replaced" && !error && (
-              <Alert tone="warning">
-                You were signed out because your account signed in on
-                another device. Only one session per account is allowed.
-              </Alert>
-            )}
-
-            {reason === "ended" && !error && (
-              <Alert tone="warning">
-                Your session has ended. Please sign in again.
-              </Alert>
-            )}
-
-            {error && <Alert>{error}</Alert>}
-
-            <Button
-              type="submit"
-              variant="primary"
-              size="lg"
-              disabled={submitting}
-              className="w-full"
+            <form
+              onSubmit={handleSubmit}
+              className="mt-8 space-y-5"
+              noValidate={false}
             >
-              {submitting ? (
-                <>
-                  <Spinner /> Signing in…
-                </>
-              ) : (
-                "Sign in"
-              )}
-            </Button>
-          </form>
+              <Field label="Username">
+                {(control) => (
+                  <input
+                    {...control}
+                    value={username}
+                    onChange={(event) =>
+                      setUsername(event.target.value)
+                    }
+                    autoComplete="username"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    autoFocus
+                    required
+                    className={inputClass}
+                  />
+                )}
+              </Field>
 
-          <div className="mt-8 flex justify-center">
-            <ThemeToggle />
+              <Field label="Password">
+                {(control) => (
+                  <PasswordInput
+                    {...control}
+                    value={password}
+                    onChange={(event) =>
+                      setPassword(event.target.value)
+                    }
+                    autoComplete="current-password"
+                    required
+                  />
+                )}
+              </Field>
+
+              {reason === "replaced" && !error && (
+                <Alert tone="warning">
+                  You were signed out because your account signed in on
+                  another device. Only one session per account is allowed.
+                </Alert>
+              )}
+
+              {reason === "ended" && !error && (
+                <Alert tone="warning">
+                  Your session has ended. Please sign in again.
+                </Alert>
+              )}
+
+              {error && <Alert>{error}</Alert>}
+
+              <Button
+                type="submit"
+                variant="primary"
+                size="lg"
+                disabled={submitting}
+                className="w-full"
+              >
+                {submitting ? (
+                  <>
+                    <Spinner /> Signing in…
+                  </>
+                ) : (
+                  "Sign in"
+                )}
+              </Button>
+            </form>
+
+            <div className="mt-8 flex justify-center">
+              <ThemeToggle />
+            </div>
           </div>
         </div>
+
+        <AppFooter />
       </section>
     </main>
   );

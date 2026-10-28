@@ -16,6 +16,8 @@ import {
   canManageUsers,
   ROLE_LABELS,
 } from "@/lib/roles";
+import AppFooter from "@/app/components/AppFooter";
+import { APP_NAME } from "@/lib/app-info";
 import { signOut, useStudio } from "./StudioProvider";
 import Greeting from "./Greeting";
 import SessionTimer from "./SessionTimer";
@@ -108,7 +110,7 @@ export default function StudioShell({
         <Link
           href="/replicate"
           onClick={closeNav}
-          aria-label="Naar Studio home"
+          aria-label={`${APP_NAME} home`}
           className="flex h-16 items-center gap-2 px-5 text-fg rail-collapsed:justify-center rail-collapsed:px-0"
         >
           <span className="contents rail-collapsed:hidden">
@@ -249,7 +251,9 @@ export default function StudioShell({
       {/* MOBILE DRAWER */}
       {navOpen && <MobileDrawer onClose={closeNav}>{renderNav()}</MobileDrawer>}
 
-      <div className="transition-[padding] duration-200 lg:pl-60 lg:sidebar-collapsed:pl-16">
+      {/* Column: top bar, page, then the footer at the very
+          bottom (pushed down on short pages) */}
+      <div className="flex min-h-screen flex-col transition-[padding] duration-200 lg:pl-60 lg:sidebar-collapsed:pl-16">
         {/* TOP BAR */}
         <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-3 border-b border-line bg-canvas/40 px-4 glass-soft lg:px-8">
           <div className="flex min-w-0 items-center gap-2">
@@ -280,10 +284,12 @@ export default function StudioShell({
 
         <main
           id="main-content"
-          className="px-4 py-6 lg:px-6 lg:py-6"
+          className="flex-1 px-4 py-6 lg:px-6 lg:py-6"
         >
           {children}
         </main>
+
+        <AppFooter />
       </div>
     </div>
   );

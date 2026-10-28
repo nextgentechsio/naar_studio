@@ -412,9 +412,10 @@ export default function GenerateView() {
     <>
       <h1 className="sr-only">{isHiggsfield ? "Higgsfield" : "Generate"}</h1>
 
-      {/* Fills the screen below the top bar on laptops and
-          up: 3.5rem top bar + 3rem page padding */}
-      <div className="flex flex-col gap-4 lg:grid lg:h-[calc(100dvh-6.5rem)] lg:grid-cols-2 lg:gap-5">
+      {/* Fills the screen between the top bar and the
+          footer on laptops and up: 3.5rem top bar + 3rem
+          page padding + 2.5rem footer (AppFooter) */}
+      <div className="flex flex-col gap-4 lg:grid lg:h-[calc(100dvh-9rem)] lg:grid-cols-2 lg:gap-5">
         {/* ================= INPUTS ================= */}
         <section aria-label="Inputs" className={panelClass}>
           {/* Project + model */}

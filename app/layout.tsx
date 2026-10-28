@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist_Mono } from "next/font/google";
 import localFont from "next/font/local";
+import { APP_NAME, COMPANY } from "@/lib/app-info";
 import "./globals.css";
 
 // NAAR brand typeface (same files as about.naar.io)
@@ -23,11 +24,12 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Naar Studio",
-    template: "%s · Naar Studio",
+    default: APP_NAME,
+    template: `%s · ${APP_NAME}`,
   },
-  description:
-    "Naar's AI generation workspace with per-project spend tracking.",
+  applicationName: APP_NAME,
+  description: `${COMPANY}'s AI generation workspace with per-project spend tracking.`,
+  authors: [{ name: COMPANY }],
 };
 
 // Apply the saved theme and sidebar state before first

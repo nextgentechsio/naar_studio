@@ -28,6 +28,8 @@ The app shows its version and build in the sidebar and on the Account page
   new one.
 - "Save to library" on generated images, videos and audio (Generate page and History),
   to pick them again as inputs in later runs.
+- History cards: "Save to library" and "Add to element" buttons over each finished
+  result (on hover, always on touch screens), without opening the run.
 - An "Outputs" tab in the upload window: pick any of your past results of the field's
   type straight into an input (copied into your library as it's added).
 - Reorder the files in an input that takes several (images, videos, audio): drag one

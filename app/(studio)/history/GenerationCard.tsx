@@ -1,16 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { Icon } from "@/app/components/ui/Icon";
-import { Badge, cx, formatCost } from "@/app/components/ui/primitives";
+import AddToElementDialog from "@/app/(studio)/elements/AddToElementDialog";
+import { Icon, type IconName } from "@/app/components/ui/Icon";
+import { Badge, cx, formatCost, Spinner } from "@/app/components/ui/primitives";
 import type { PublicGeneration } from "@/lib/client/data";
 import { formatDateTime } from "@/lib/client/format";
+import { errorMessage, logRequestError } from "@/lib/client/http";
+import { saveRunToLibrary } from "@/lib/client/library";
+import { getOutputType } from "@/lib/client/outputs";
 import { modelLabel } from "@/lib/replicate/catalog";
 import OutputPreview, { isRunningStatus } from "./OutputPreview";
 
 // One tile in the History grid; opens the detail drawer.
-// For the super admin, hide and delete icons show over
-// the image (on hover, or always on touch screens).
+// Over the image (on hover, or always on touch screens):
+// "Save to library" and "Add to element" for a finished
+// image, video or audio result, and for the super admin,
+// hide and delete.
 export default function GenerationCard({
   generation,
   showUser,
@@ -30,7 +36,31 @@ export default function GenerationCard({
   const [confirming, setConfirming] = useState(false);
   // Finished runs only (the server refuses others too)
   const finished = !isRunningStatus(status);
-  const hasActions = finished && (onToggleHidden || onDelete);
+
+  // Its result, when it can go in the library or an element
+  const outputType =
+    status === "succeeded" && generation.outputUrl && !generation.outputExpired
+      ? getOutputType(generation.outputUrl, generation.outputContentType)
+      : null;
+  const mediaKind = outputType === "file" ? null : outputType;
+  const [saving, setSaving] = useState<"idle" | "saving" | "saved">("idle");
+  const [saveError, setSaveError] = useState("");
+  const [addingToElement, setAddingToElement] = useState(false);
+
+  async function save() {
+    setSaving("saving");
+    setSaveError("");
+    try {
+      await saveRunToLibrary(generation.id);
+      setSaving("saved");
+    } catch (err) {
+      logRequestError(err);
+      setSaveError(errorMessage(err, "Couldn't save it to the library."));
+      setSaving("idle");
+    }
+  }
+
+  const hasActions = finished && (onToggleHidden || onDelete || mediaKind);
 
   function run(action: () => Promise<void>) {
     setBusy(true);
@@ -142,12 +172,33 @@ export default function GenerationCard({
           ) : (
             <div
               className={cx(
-                "pointer-events-auto absolute bottom-2 right-2 flex gap-1 transition-opacity",
-                busy
+                "absolute inset-x-2 bottom-2 flex gap-1 transition-opacity",
+                busy || saving === "saving"
                   ? "opacity-100"
                   : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100",
               )}
             >
+              {mediaKind && (
+                <>
+                  <CardIcon
+                    icon={saving === "saved" ? "check" : "folder"}
+                    label={
+                      saveError
+                        ? `${saveError} Click to try again.`
+                        : saving === "saved"
+                          ? "Saved to your library"
+                          : saving === "saving"
+                            ? "Saving…"
+                            : "Save to library"
+                    }
+                    busy={saving === "saving"}
+                    disabled={saving !== "idle"}
+                    onClick={() => void save()}
+                  />
+                  <CardIcon icon="at" label="Add to element" onClick={() => setAddingToElement(true)} />
+                </>
+              )}
+              <span className="flex-1" />
               {onToggleHidden && (
                 <CardIcon
                   icon={generation.hidden ? "eye" : "eyeOff"}
@@ -169,6 +220,15 @@ export default function GenerationCard({
           )}
         </div>
       )}
+
+      {addingToElement && mediaKind && generation.outputUrl && (
+        <AddToElementDialog
+          generationId={generation.id}
+          kind={mediaKind}
+          preview={generation.outputUrl}
+          onClose={() => setAddingToElement(false)}
+        />
+      )}
     </div>
   );
 }
@@ -178,12 +238,14 @@ function CardIcon({
   icon,
   label,
   danger,
+  busy,
   disabled,
   onClick,
 }: {
-  icon: "eye" | "eyeOff" | "trash";
+  icon: IconName;
   label: string;
   danger?: boolean;
+  busy?: boolean;
   disabled?: boolean;
   onClick: () => void;
 }) {
@@ -195,11 +257,12 @@ function CardIcon({
       disabled={disabled}
       onClick={onClick}
       className={cx(
-        "flex h-8 w-8 items-center justify-center rounded-full bg-black/65 text-white shadow-lg backdrop-blur transition-colors disabled:opacity-60",
+        "pointer-events-auto flex h-8 w-8 items-center justify-center rounded-full bg-black/65 text-white shadow-lg backdrop-blur transition-colors disabled:cursor-default",
         danger ? "hover:bg-danger" : "hover:bg-black/85",
+        disabled && !busy && icon !== "check" && "opacity-60",
       )}
     >
-      <Icon name={icon} size={15} />
+      {busy ? <Spinner className="h-3.5 w-3.5 text-white" /> : <Icon name={icon} size={15} />}
     </button>
   );
 }

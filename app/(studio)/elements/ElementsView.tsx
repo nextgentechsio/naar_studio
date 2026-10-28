@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { useElements, type Element } from "@/lib/client/elements";
+import { elementSummary } from "@/lib/element-mentions";
 import { Icon } from "@/app/components/ui/Icon";
 import { Alert, Button, cx, EmptyState, inputClass, PageHeader } from "@/app/components/ui/primitives";
+import ElementCover from "./ElementCover";
 import ElementDialog from "./ElementDialog";
 
 // --------------------------------------------------
@@ -71,7 +73,7 @@ export default function ElementsView() {
           <EmptyState
             icon="at"
             title="No elements yet"
-            description="Save a character, product or object with a few reference images. Then type @ in a prompt and pick it: its images go in with the run."
+            description="Save a character, product or object with reference images, and optionally videos of it moving and its voice. Then type @ in a prompt and pick it: its files go in with the run."
             action={
               <Button variant="primary" icon="at" onClick={() => setEditing(null)}>
                 Create your first element
@@ -97,7 +99,7 @@ export default function ElementsView() {
 }
 
 function ElementCard({ element, onOpen }: { element: Element; onOpen: () => void }) {
-  const [cover, ...rest] = element.images;
+  const rest = element.images.slice(1);
 
   return (
     <button
@@ -106,12 +108,10 @@ function ElementCard({ element, onOpen }: { element: Element; onOpen: () => void
       className="group block w-full overflow-hidden rounded-2xl border border-line bg-surface text-left transition-all duration-300 hover:-translate-y-1 hover:border-line-strong hover:shadow-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
     >
       <span className="relative block aspect-square overflow-hidden bg-black">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={cover}
-          alt=""
-          loading="lazy"
-          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+        <ElementCover
+          element={element}
+          iconSize={36}
+          className="h-full w-full transition-transform duration-500 group-hover:scale-105"
         />
         <span className="absolute inset-0 bg-linear-to-t from-black/50 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
 
@@ -137,6 +137,25 @@ function ElementCard({ element, onOpen }: { element: Element; onOpen: () => void
           </span>
         )}
 
+        {/* Videos and voice clips it carries */}
+        {(element.videos.length > 0 || element.audios.length > 0) && (
+          <span className="absolute right-2.5 top-2.5 flex gap-1">
+            {(["video", "audio"] as const).map((kind) => {
+              const count = (kind === "video" ? element.videos : element.audios).length;
+              return count ? (
+                <span
+                  key={kind}
+                  title={kind === "video" ? `${count} reference video${count === 1 ? "" : "s"}` : `${count} voice clip${count === 1 ? "" : "s"}`}
+                  className="flex items-center gap-1 rounded-full bg-black/60 px-1.5 py-0.5 text-[11px] font-medium text-white backdrop-blur"
+                >
+                  <Icon name={kind} size={11} />
+                  {count}
+                </span>
+              ) : null;
+            })}
+          </span>
+        )}
+
         <span className="absolute left-2.5 top-2.5 flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[11px] font-medium text-white opacity-0 backdrop-blur transition-all duration-300 group-hover:opacity-100">
           <Icon name="settings" size={11} />
           Edit
@@ -149,7 +168,7 @@ function ElementCard({ element, onOpen }: { element: Element; onOpen: () => void
           {element.name}
         </span>
         <span className="mt-0.5 block truncate text-xs text-fg-subtle">
-          {element.description || `${element.images.length} reference image${element.images.length === 1 ? "" : "s"}`}
+          {element.description || elementSummary(element)}
         </span>
       </span>
     </button>

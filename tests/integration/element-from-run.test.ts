@@ -72,7 +72,7 @@ describe("adding a run's image to an element", () => {
     expect(element.status, JSON.stringify(element.data)).toBe(201);
   });
 
-  it("saves videos to the library too, but never into an element", async () => {
+  it("saves videos to the library too, and into an element's videos", async () => {
     const id = await finishedRun(`${replicateUrl}/__control/output.mp4`);
     const saved = await save(alice.session, id);
     expect(saved.status, JSON.stringify(saved.data)).toBe(200);
@@ -83,11 +83,13 @@ describe("adding a run's image to an element", () => {
     const videos = await api("/api/library?kind=video", { session: alice.session });
     expect((videos.data.files as { url: string }[]).map((item) => item.url)).toContain(file.url);
 
-    const element = await api("/api/elements", {
-      session: alice.session,
-      json: { name: `video_${Date.now() % 100000}`, images: [file.url] },
-    });
-    expect(element.status).toBe(400);
+    // Not as an image, but as a reference video
+    const name = `video_${Date.now() % 100000}`;
+    const asImage = await api("/api/elements", { session: alice.session, json: { name, images: [file.url] } });
+    expect(asImage.status).toBe(400);
+    const asVideo = await api("/api/elements", { session: alice.session, json: { name, videos: [file.url] } });
+    expect(asVideo.status, JSON.stringify(asVideo.data)).toBe(201);
+    expect(asVideo.data.element).toMatchObject({ images: [], videos: [file.url], audios: [] });
   });
 
   it("lists past outputs of one kind to pick from", async () => {

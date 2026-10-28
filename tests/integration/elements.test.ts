@@ -3,8 +3,9 @@ import { FAKE_BLOB_TOKEN } from "./fake-replicate";
 import { api, closeDb, createUser, loginRoot, replicateUrl } from "./helpers";
 
 // --------------------------------------------------
-// Elements: named reference images (from the user's own
-// media library), private to each user.
+// Elements: named reference images, videos and voice
+// clips (from the user's own media library), private to
+// each user.
 // --------------------------------------------------
 
 let alice: Awaited<ReturnType<typeof createUser>>;
@@ -93,5 +94,44 @@ describe("elements", () => {
     ).toBe(201);
 
     expect((await api("/api/elements")).status).toBe(401);
+  });
+
+  it("holds reference videos and voice clips too", async () => {
+    const image = await libraryImage(alice, "face.png");
+    const video = await libraryImage(alice, "walk.mp4", "video/mp4");
+    const voice = await libraryImage(alice, "voice.mp3", "audio/mpeg");
+    const bobsVoice = await libraryImage(bob, "bob.mp3", "audio/mpeg");
+
+    // A voice alone is enough
+    const voiceOnly = await api("/api/elements", { session: alice.session, json: { name: "narrator", audios: [voice] } });
+    expect(voiceOnly.status, JSON.stringify(voiceOnly.data)).toBe(201);
+    expect(voiceOnly.data.element).toMatchObject({ images: [], videos: [], audios: [voice] });
+
+    const all = await api("/api/elements", {
+      session: alice.session,
+      json: { name: "Rex", images: [image], videos: [video, video], audios: [voice] },
+    });
+    expect(all.status).toBe(201);
+    const rex = all.data.element as { id: string };
+    expect(all.data.element).toMatchObject({ images: [image], videos: [video], audios: [voice] });
+
+    const patch = (json: Record<string, unknown>) =>
+      api(`/api/elements/${rex.id}`, { session: alice.session, method: "PATCH", json });
+
+    // Each list is checked on its own kind and limit
+    expect((await patch({ videos: [voice] })).status).toBe(400);
+    expect((await patch({ audios: [video] })).status).toBe(400);
+    expect((await patch({ audios: [bobsVoice] })).status).toBe(400);
+    expect((await patch({ videos: Array.from({ length: 4 }, (_, i) => `${video}?${i}`) })).status).toBe(400);
+
+    // Emptying one list is fine while others have files...
+    expect((await patch({ images: [], videos: [] })).data.element).toMatchObject({ images: [], videos: [], audios: [voice] });
+    // ...but not the last file
+    const last = await patch({ audios: [] });
+    expect(last.status).toBe(400);
+    expect(last.data.error).toMatch(/at least one/);
+
+    // Nothing at all on create
+    expect((await api("/api/elements", { session: alice.session, json: { name: "empty" } })).status).toBe(400);
   });
 });

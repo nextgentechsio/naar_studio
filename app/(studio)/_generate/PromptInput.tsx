@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { Fragment, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useGenerate } from "@/app/(studio)/_generate/GenerateProvider";
+import ElementCover from "@/app/(studio)/elements/ElementCover";
 import ElementDialog from "@/app/(studio)/elements/ElementDialog";
 import { useElements, type Element } from "@/lib/client/elements";
-import { mentionedElements } from "@/lib/element-mentions";
+import { ELEMENT_MEDIA, elementSummary, mentionedElements } from "@/lib/element-mentions";
 import { Icon } from "@/app/components/ui/Icon";
 import { cx } from "@/app/components/ui/primitives";
 import { fileKind, StableTextArea, type SchemaProperty } from "./fields";
@@ -16,10 +17,11 @@ import { fileKind, StableTextArea, type SchemaProperty } from "./fields";
 // Typing @ lists the user's elements (lib/elements.ts)
 // at the caret, or offers to create one with the name
 // typed so far. Picking one writes @name into the prompt
-// and puts its reference images in the model's image
-// input. Mentions are highlighted in the text, and the
-// elements in use show as chips under it (removing one
-// takes its images out too). When the run is sent, @name
+// and puts its reference files in the model's matching
+// inputs (images, videos, voice clips). Mentions are
+// highlighted in the text, and the elements in use show
+// as chips under it (removing one takes its files out
+// too). When the run is sent, @name
 // becomes the name and description
 // (lib/element-mentions.ts).
 // --------------------------------------------------
@@ -69,18 +71,16 @@ function caretPoint(area: HTMLTextAreaElement, index: number) {
   return point;
 }
 
-// The model's image input, a list field first
-function imageField(schema: Record<string, SchemaProperty>) {
-  const fields = Object.entries(schema).filter(([key, field]) => fileKind(key, field) === "image");
-  return (
-    fields.find(([, field]) => field.type === "array") ??
-    fields.find(([key]) => /image_urls|image_input|reference_images/.test(key)) ??
-    fields[0]
-  );
-}
+// Inputs that take several files though typed as text
+const LIST_KEY = /_urls$|image_input|reference_(images|videos|audios)/;
 
-const takesList = ([key, field]: [string, SchemaProperty]) =>
-  field.type === "array" || /image_urls|image_input|reference_images/.test(key);
+const takesList = ([key, field]: [string, SchemaProperty]) => field.type === "array" || LIST_KEY.test(key);
+
+// The model's input for one kind of file, a list first
+function mediaField(schema: Record<string, SchemaProperty>, kind: "image" | "video" | "audio") {
+  const fields = Object.entries(schema).filter(([key, field]) => fileKind(key, field) === kind);
+  return fields.find(takesList) ?? fields[0];
+}
 
 // "Maya" with the typed part ("ay") emphasised
 function highlight(text: string, query: string): ReactNode {
@@ -175,31 +175,47 @@ export default function PromptInput({
     onChange(next);
   }
 
+  // Puts each kind of the element's files in the model's
+  // input for it, and says what didn't fit
   function attach(element: Element) {
-    const field = imageField(schema);
+    const notes: string[] = [];
+    let added = false;
 
-    if (!field) {
-      setNote(`This model takes no images, so only @${element.name}'s name and description are sent.`);
-      return;
+    for (const media of ELEMENT_MEDIA) {
+      const files = element[media.list];
+      if (!files.length) continue;
+
+      const field = mediaField(schema, media.kind);
+      if (!field) {
+        notes.push(`no ${media.many}`);
+        continue;
+      }
+
+      const [key] = field;
+      const current = inputs[key];
+
+      added = true;
+
+      if (!takesList(field)) {
+        updateInput(key, files[0]);
+        if (files.length > 1) notes.push(`one ${media.one} (the first was added)`);
+        continue;
+      }
+
+      const list = Array.isArray(current) ? current.map(String) : typeof current === "string" && current ? [current] : [];
+      updateInput(key, [...list, ...files.filter((url) => !list.includes(url))]);
     }
 
-    const [key] = field;
-    const current = inputs[key];
-
-    if (!takesList(field)) {
-      updateInput(key, element.images[0]);
-      setNote(
-        element.images.length > 1 ? `This model takes one image, so @${element.name}'s cover was added.` : ""
-      );
-      return;
-    }
-
-    const list = Array.isArray(current) ? current.map(String) : typeof current === "string" && current ? [current] : [];
-    updateInput(key, [...list, ...element.images.filter((url) => !list.includes(url))]);
-    setNote("");
+    setNote(
+      !added
+        ? `This model takes none of @${element.name}'s files, so only its name and description are sent.`
+        : notes.length
+          ? `This model takes ${notes.join(", ")}, so not all of @${element.name}'s files were added.`
+          : ""
+    );
   }
 
-  // Writes @name over what was typed and adds its images
+  // Writes @name over what was typed and adds its files
   function pick(element: Element, at: Mention | null = mention) {
     const node = area.current;
     if (!node || !at) return;
@@ -212,7 +228,7 @@ export default function PromptInput({
     attach(element);
   }
 
-  // Takes a mention out of the prompt, with the images
+  // Takes a mention out of the prompt, with the files
   // only it brought
   function detach(element: Element) {
     const node = area.current;
@@ -222,19 +238,23 @@ export default function PromptInput({
     const next = node.value.replace(pattern, "$1");
     setText(next, next.length);
 
-    const field = imageField(schema);
-    if (!field) return;
+    const others = mentionedElements(next, elements ?? []);
 
-    const [key] = field;
-    const others = new Set(
-      mentionedElements(next, elements ?? []).flatMap((item) => item.images)
-    );
-    const current = inputs[key];
+    for (const media of ELEMENT_MEDIA) {
+      const field = mediaField(schema, media.kind);
+      if (!field) continue;
 
-    if (Array.isArray(current)) {
-      updateInput(key, current.filter((url) => !element.images.includes(String(url)) || others.has(String(url))));
-    } else if (typeof current === "string" && element.images.includes(current) && !others.has(current)) {
-      updateInput(key, "");
+      const [key] = field;
+      const mine = element[media.list];
+      const kept = new Set(others.flatMap((item) => item[media.list]));
+      const current = inputs[key];
+
+      if (Array.isArray(current)) {
+        const left = current.filter((url) => !mine.includes(String(url)) || kept.has(String(url)));
+        if (left.length !== current.length) updateInput(key, left);
+      } else if (typeof current === "string" && mine.includes(current) && !kept.has(current)) {
+        updateInput(key, "");
+      }
     }
     setNote("");
   }
@@ -337,13 +357,12 @@ export default function PromptInput({
               key={element.id}
               className="ui-menu glass flex items-center gap-1.5 rounded-full border py-0.5 pl-0.5 pr-1 text-xs"
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={element.images[0]} alt="" className="h-5 w-5 rounded-full object-cover" />
+              <ElementCover element={element} iconSize={10} className="h-5 w-5 rounded-full" />
               <span className="font-medium text-fg">@{element.name}</span>
-              <span className="text-fg-subtle">· {element.images.length} img</span>
+              <span className="text-fg-subtle">· {elementSummary(element)}</span>
               <button
                 type="button"
-                aria-label={`Remove @${element.name} and its images`}
+                aria-label={`Remove @${element.name} and its files`}
                 title="Remove from prompt"
                 onClick={() => detach(element)}
                 className="flex h-4 w-4 items-center justify-center rounded-full text-fg-subtle transition-colors hover:bg-raised hover:text-fg"
@@ -400,12 +419,11 @@ export default function PromptInput({
                     index === active && "bg-raised"
                   )}
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={element.images[0]} alt="" className="h-9 w-9 shrink-0 rounded-lg bg-black object-cover" />
+                  <ElementCover element={element} className="h-9 w-9 shrink-0 rounded-lg" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium text-fg">@{highlight(element.name, query)}</span>
                     <span className="block truncate text-xs text-fg-subtle">
-                      {element.description || `${element.images.length} image${element.images.length === 1 ? "" : "s"}`}
+                      {element.description || elementSummary(element)}
                     </span>
                   </span>
                   {index === active && (

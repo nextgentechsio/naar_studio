@@ -2,7 +2,7 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 import { fetchJson, logRequestError } from "@/lib/client/http";
-import type { Element } from "@/lib/element-mentions";
+import { elementMedia, type Element, type ElementMediaKind } from "@/lib/element-mentions";
 
 // --------------------------------------------------
 // ELEMENTS (browser only, see lib/elements.ts)
@@ -67,7 +67,7 @@ export function useElements(): State {
   return current;
 }
 
-export type ElementFields = { name: string; description: string; images: string[] };
+export type ElementFields = { name: string; description: string; images: string[]; videos: string[]; audios: string[] };
 
 export async function saveElement(id: string | null, fields: ElementFields): Promise<Element> {
   const { element } = await fetchJson<{ element: Element }>(
@@ -83,16 +83,18 @@ export async function saveElement(id: string | null, fields: ElementFields): Pro
   return element;
 }
 
-// One more reference image on an existing element
-export async function addImageToElement(element: Element, url: string): Promise<Element> {
-  if (element.images.includes(url)) return element;
+// One more reference file (image, video or voice clip)
+// on an existing element
+export async function addFileToElement(element: Element, kind: ElementMediaKind, url: string): Promise<Element> {
+  const { list } = elementMedia(kind);
+  if (element[list].includes(url)) return element;
 
   const { element: updated } = await fetchJson<{ element: Element }>(
     `/api/elements/${encodeURIComponent(element.id)}`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ images: [...element.images, url] }),
+      body: JSON.stringify({ [list]: [...element[list], url] }),
     }
   );
 

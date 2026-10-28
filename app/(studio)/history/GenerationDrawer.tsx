@@ -89,6 +89,9 @@ export default function GenerationDrawer({
 
   const current = loaded.id === id ? loaded : undefined;
   const generation: PublicGeneration | undefined = current?.detail ?? preview;
+  // What its result would be in an element (not other files)
+  const outputType = generation?.outputUrl ? getOutputType(generation.outputUrl, generation.outputContentType) : null;
+  const elementKind = outputType === "file" ? null : outputType;
   const loadError = current?.error ?? "";
 
   // Load the full record (state only set in callbacks).
@@ -330,13 +333,11 @@ export default function GenerationDrawer({
                   <SaveToLibraryButton key={id} generationId={id} />
                 )}
 
-                {generation.status === "succeeded" &&
-                  generation.outputUrl &&
-                  getOutputType(generation.outputUrl, generation.outputContentType) === "image" && (
-                    <Button icon="at" onClick={() => setAddingToElement(true)}>
-                      Add to element
-                    </Button>
-                  )}
+                {generation.status === "succeeded" && generation.outputUrl && elementKind && (
+                  <Button icon="at" onClick={() => setAddingToElement(true)}>
+                    Add to element
+                  </Button>
+                )}
 
                 {generation.prompt && (
                   <Button variant="ghost" icon="copy" onClick={copyPrompt}>
@@ -458,9 +459,10 @@ export default function GenerationDrawer({
         </div>
       </aside>
 
-      {addingToElement && generation?.outputUrl && (
+      {addingToElement && generation?.outputUrl && elementKind && (
         <AddToElementDialog
           generationId={id}
+          kind={elementKind}
           preview={generation.outputUrl}
           onClose={() => setAddingToElement(false)}
         />

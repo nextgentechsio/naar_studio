@@ -195,6 +195,10 @@ export type ElementDoc = {
   nameKey: string;
   description: string;
   images: string[];
+  // Reference videos and voice clips (missing on
+  // elements made before they could hold them)
+  videos?: string[];
+  audios?: string[];
   createdAt: Date;
   updatedAt: Date;
 };

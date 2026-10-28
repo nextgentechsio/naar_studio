@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { expandMentions, mentionedElements, type Element } from "@/lib/element-mentions";
+import { elementSummary, expandMentions, mentionedElements, type Element } from "@/lib/element-mentions";
 
 const element = (name: string, description = ""): Element => ({
   id: name,
   name,
   description,
   images: [`https://x/${name}.png`],
+  videos: [],
+  audios: [],
   createdAt: "",
   updatedAt: "",
 });
@@ -35,5 +37,13 @@ describe("element mentions", () => {
       "blue-bottle",
       "Maya",
     ]);
+  });
+
+  it("sums up an element's files by kind", () => {
+    expect(elementSummary(maya)).toBe("1 image");
+    expect(elementSummary({ images: ["a", "b"], videos: ["v"], audios: ["x", "y"] })).toBe(
+      "2 images · 1 video · 2 voice clips"
+    );
+    expect(elementSummary({ images: [], videos: [], audios: ["x"] })).toBe("1 voice clip");
   });
 });

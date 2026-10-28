@@ -1003,7 +1003,7 @@ export default function GenerateView() {
                 ))}
                 {/* The saved copy is the first output */}
                 <SaveToLibraryButton key={result!.prediction.id} generationId={result!.prediction.id} size="sm" />
-                {readyType === "image" && (
+                {(readyType === "image" || readyType === "video" || readyType === "audio") && (
                   <Button variant="secondary" size="sm" icon="at" onClick={() => setAddingToElement(true)}>
                     Add to element
                   </Button>
@@ -1141,9 +1141,10 @@ export default function GenerateView() {
           <ModelBrowserDialog onClose={() => setBrowsing(false)} />
         ))}
 
-      {addingToElement && result && outputUrls[0] && (
+      {addingToElement && result && outputUrls[0] && (readyType === "image" || readyType === "video" || readyType === "audio") && (
         <AddToElementDialog
           generationId={result.prediction.id}
+          kind={readyType}
           preview={outputUrls[0]}
           onClose={() => setAddingToElement(false)}
         />

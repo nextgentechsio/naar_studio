@@ -1,9 +1,9 @@
 import { ObjectId } from "mongodb";
 import {
+  ELEMENT_MEDIA,
   ELEMENT_NAME,
   ELEMENT_NAME_HINT,
   MAX_ELEMENT_DESCRIPTION,
-  MAX_ELEMENT_IMAGES,
   type Element,
 } from "@/lib/element-mentions";
 import {
@@ -18,7 +18,8 @@ import {
 //
 // A user's saved characters, products or objects: a name
 // (mentioned in prompts as @name), a description and
-// reference images from their media library. Private to
+// reference files from their media library: images,
+// videos and voice clips, at least one in all. Private to
 // the user, like the library.
 // --------------------------------------------------
 
@@ -28,6 +29,8 @@ function toElement(doc: ElementDoc): Element {
     name: doc.name,
     description: doc.description,
     images: doc.images,
+    videos: doc.videos ?? [],
+    audios: doc.audios ?? [],
     createdAt: doc.createdAt.toISOString(),
     updatedAt: doc.updatedAt.toISOString(),
   };
@@ -37,16 +40,23 @@ export type ElementResult =
   | { ok: true; element: Element }
   | { ok: false; status: number; error: string };
 
-type Fields = { name?: unknown; description?: unknown; images?: unknown };
+type Fields = { name?: unknown; description?: unknown; images?: unknown; videos?: unknown; audios?: unknown };
 
-type Checked =
-  | { ok: true; values: Partial<Pick<ElementDoc, "name" | "nameKey" | "description" | "images">> }
-  | { ok: false; status: number; error: string };
+type Values = Partial<Pick<ElementDoc, "name" | "nameKey" | "description" | "images" | "videos" | "audios">>;
 
-// Validates whichever fields are given. Images must be
-// the user's own library image files.
-async function check(userId: string, fields: Fields, creating: boolean): Promise<Checked> {
-  const values: Partial<Pick<ElementDoc, "name" | "nameKey" | "description" | "images">> = {};
+type Checked = { ok: true; values: Values } | { ok: false; status: number; error: string };
+
+// Validates whichever fields are given. Files must be
+// the user's own library files of that kind; current is
+// the element being edited (its other lists count
+// towards "at least one file").
+async function check(
+  userId: string,
+  fields: Fields,
+  current: Pick<ElementDoc, "images" | "videos" | "audios"> | null
+): Promise<Checked> {
+  const creating = current === null;
+  const values: Values = {};
 
   if (creating || fields.name !== undefined) {
     const name = typeof fields.name === "string" ? fields.name.trim().replace(/^@/, "") : "";
@@ -73,30 +83,40 @@ async function check(userId: string, fields: Fields, creating: boolean): Promise
     values.description = description;
   }
 
-  if (creating || fields.images !== undefined) {
-    const images = Array.isArray(fields.images)
-      ? [...new Set(fields.images.filter((url): url is string => typeof url === "string" && url !== ""))]
+  for (const media of ELEMENT_MEDIA) {
+    const given = fields[media.list];
+    if (!creating && given === undefined) continue;
+
+    const urls = Array.isArray(given)
+      ? [...new Set(given.filter((url): url is string => typeof url === "string" && url !== ""))]
       : [];
 
-    if (!images.length || images.length > MAX_ELEMENT_IMAGES) {
-      return {
-        ok: false,
-        status: 400,
-        error: `Add 1 to ${MAX_ELEMENT_IMAGES} reference images`,
-      };
+    if (urls.length > media.max) {
+      return { ok: false, status: 400, error: `Up to ${media.max} ${media.many}` };
     }
 
-    const owned = await (await libraryFilesCollection()).countDocuments({
-      userId,
-      kind: "image",
-      url: { $in: images },
-    });
+    if (urls.length) {
+      const owned = await (await libraryFilesCollection()).countDocuments({
+        userId,
+        kind: media.kind,
+        url: { $in: urls },
+      });
 
-    if (owned !== images.length) {
-      return { ok: false, status: 400, error: "Images must come from your library" };
+      if (owned !== urls.length) {
+        return { ok: false, status: 400, error: `${media.many[0].toUpperCase()}${media.many.slice(1)} must come from your library` };
+      }
     }
 
-    values.images = images;
+    values[media.list] = urls;
+  }
+
+  const total = ELEMENT_MEDIA.reduce(
+    (sum, media) => sum + (values[media.list] ?? current?.[media.list] ?? []).length,
+    0
+  );
+
+  if (!total) {
+    return { ok: false, status: 400, error: "Add at least one image, video or voice clip" };
   }
 
   return { ok: true, values };
@@ -114,7 +134,7 @@ export async function listElements(userId: string): Promise<Element[]> {
 }
 
 export async function createElement(userId: string, fields: Fields): Promise<ElementResult> {
-  const checked = await check(userId, fields, true);
+  const checked = await check(userId, fields, null);
   if (!checked.ok) return checked;
 
   const now = new Date();
@@ -143,11 +163,15 @@ export async function updateElement(
 ): Promise<ElementResult> {
   if (!ObjectId.isValid(id)) return { ok: false, status: 404, error: "Element not found" };
 
-  const checked = await check(userId, fields, false);
+  const elements = await elementsCollection();
+  const current = await elements.findOne({ _id: new ObjectId(id), userId });
+  if (!current) return { ok: false, status: 404, error: "Element not found" };
+
+  const checked = await check(userId, fields, current);
   if (!checked.ok) return checked;
 
   try {
-    const doc = await (await elementsCollection()).findOneAndUpdate(
+    const doc = await elements.findOneAndUpdate(
       { _id: new ObjectId(id), userId },
       { $set: { ...checked.values, updatedAt: new Date() } },
       { returnDocument: "after" }

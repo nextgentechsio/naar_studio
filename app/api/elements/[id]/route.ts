@@ -10,7 +10,8 @@ type RouteContext = {
   }>;
 };
 
-// PATCH { name?, description?, images? } → { element }
+// PATCH { name?, description?, images?, videos?, audios? }
+//                                     → { element }
 export async function PATCH(request: Request, context: RouteContext) {
   const auth = await requireUser();
   if (auth.response) return auth.response;

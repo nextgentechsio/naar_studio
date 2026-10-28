@@ -8,7 +8,8 @@ export const runtime = "nodejs";
 // THE SIGNED-IN USER'S ELEMENTS (lib/elements.ts)
 //
 // GET                                → { elements }
-// POST { name, description, images } → { element }
+// POST { name, description, images, videos, audios }
+//                                    → { element }
 // --------------------------------------------------
 
 export async function GET() {

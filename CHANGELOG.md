@@ -20,8 +20,12 @@ The app shows its version and build in the sidebar and on the Account page
 - ElevenLabs as a third platform (its own page): text to speech, sound effects, music
   and voice changer, with every run saved, costed from ElevenLabs' API prices, and
   counted in History, Expenses and the Dashboard. Needs `ELEVENLABS_API_KEY`.
-- "Add to element" on generated images (Generate page and History): copies the image
-  into your library and adds it to an existing element or starts a new one.
+- Elements hold reference videos and voice clips as well as images (at least one file
+  in all). Mentioning one with @ puts each file in the model's matching input, e.g.
+  Seedance's reference images, videos and audio.
+- "Add to element" on generated images, videos and audio (Generate page and History):
+  copies the result into your library and adds it to an existing element or starts a
+  new one.
 - "Save to library" on generated images, videos and audio (Generate page and History),
   to pick them again as inputs in later runs.
 - An "Outputs" tab in the upload window: pick any of your past results of the field's

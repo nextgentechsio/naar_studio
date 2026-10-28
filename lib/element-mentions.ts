@@ -5,8 +5,9 @@
 // run is sent, each mention becomes plain words the model
 // understands: the name, plus its description if it has
 // one ("@maya walks" → "maya (a woman with red curly
-// hair) walks"). Its images go in the model's image input
-// when it's picked.
+// hair) walks"). Its files go in the model's matching
+// inputs when it's picked: images, reference videos and
+// voice (audio).
 // --------------------------------------------------
 
 export type Element = {
@@ -14,6 +15,8 @@ export type Element = {
   name: string;
   description: string;
   images: string[];
+  videos: string[];
+  audios: string[];
   createdAt: string;
   updatedAt: string;
 };
@@ -23,6 +26,36 @@ export type Element = {
 export const ELEMENT_NAME = /^[\p{L}\p{N}_-]{1,40}$/u;
 
 export const MAX_ELEMENT_IMAGES = 7;
+export const MAX_ELEMENT_VIDEOS = 3;
+export const MAX_ELEMENT_AUDIOS = 3;
+
+export type ElementMediaKind = "image" | "video" | "audio";
+
+// Each kind of file an element holds: its list on the
+// element, how many it takes and what it's called
+export const ELEMENT_MEDIA = [
+  { kind: "image", list: "images", max: MAX_ELEMENT_IMAGES, one: "image", many: "images" },
+  { kind: "video", list: "videos", max: MAX_ELEMENT_VIDEOS, one: "video", many: "videos" },
+  { kind: "audio", list: "audios", max: MAX_ELEMENT_AUDIOS, one: "voice clip", many: "voice clips" },
+] as const satisfies readonly {
+  kind: ElementMediaKind;
+  list: "images" | "videos" | "audios";
+  max: number;
+  one: string;
+  many: string;
+}[];
+
+export const elementMedia = (kind: ElementMediaKind) => ELEMENT_MEDIA.find((item) => item.kind === kind)!;
+
+// "3 images · 1 video", for lists
+export function elementSummary(element: Pick<Element, "images" | "videos" | "audios">): string {
+  return ELEMENT_MEDIA.filter((item) => element[item.list].length > 0)
+    .map((item) => {
+      const count = element[item.list].length;
+      return `${count} ${count === 1 ? item.one : item.many}`;
+    })
+    .join(" · ");
+}
 export const MAX_ELEMENT_DESCRIPTION = 500;
 
 export const ELEMENT_NAME_HINT =

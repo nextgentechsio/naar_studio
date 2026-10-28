@@ -1,5 +1,6 @@
 import { after, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
+import { isProvider, type Provider } from "@/lib/mongodb";
 import { maybePruneOutputs } from "@/lib/output-retention";
 import {
   HISTORY_STATUSES,
@@ -17,6 +18,7 @@ export const runtime = "nodejs";
 // ?page=1&pageSize=24&project=<id>&user=<id>
 // &model=<owner/name>&status=succeeded|failed|running&q=<text>
 // &from=<ISO>&to=<ISO> (created; to is exclusive)
+// &provider=replicate|higgsfield
 // &options=0 leaves out the filter dropdown values
 // An ISO date from the query; anything else is ignored
 function instant(value: string | null): Date | undefined {
@@ -63,6 +65,7 @@ export async function GET(request: Request) {
           ? (status as HistoryStatus)
           : undefined,
         q: params.get("q") || undefined,
+        provider: isProvider(params.get("provider")) ? (params.get("provider") as Provider) : undefined,
         createdFrom: instant(params.get("from")),
         createdTo: instant(params.get("to")),
         withOptions: params.get("options") !== "0",

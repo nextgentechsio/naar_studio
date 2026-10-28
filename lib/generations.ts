@@ -15,6 +15,7 @@ import {
 import {
   expensesCollection,
   generationsCollection,
+  providerMatch,
   type GenerationDoc,
   type Provider,
 } from "@/lib/mongodb";
@@ -240,6 +241,8 @@ export type HistoryQuery = {
   status?: HistoryStatus;
   // Case-insensitive match on the prompt
   q?: string;
+  // Replicate or Higgsfield
+  provider?: Provider;
   // Created from (inclusive) / before (exclusive); the
   // browser sends its local midnights
   createdFrom?: Date;
@@ -336,6 +339,8 @@ export async function listGenerations(
 
   const q = query.q?.trim().slice(0, 100);
   if (q) filter.prompt = { $regex: escapeRegex(q), $options: "i" };
+
+  if (query.provider) Object.assign(filter, providerMatch(query.provider));
 
   if (query.createdFrom || query.createdTo) {
     filter.createdAt = {

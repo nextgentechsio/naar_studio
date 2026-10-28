@@ -1,17 +1,25 @@
 "use client";
 
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useStudio } from "@/app/(studio)/_components/StudioProvider";
 import { useApiData } from "@/app/(studio)/_components/useApiData";
-import { Alert } from "@/app/components/ui/primitives";
-import { fetchExpenseReport, fetchHistoryPage } from "@/lib/client/data";
+import { Alert, cx } from "@/app/components/ui/primitives";
+import {
+  fetchExpenseReport,
+  fetchHistoryPage,
+  PLATFORMS,
+  readPlatform,
+  type Platform,
+} from "@/lib/client/data";
 
 // Totals come from the paged history API: the latest 5
 // plus the overall and succeeded counts (no filter
 // dropdown values needed)
-async function fetchDashboardHistory() {
+async function fetchDashboardHistory(platform: Platform) {
+  const provider = platform || undefined;
   const [latest, succeeded] = await Promise.all([
-    fetchHistoryPage({ pageSize: 5, withOptions: false }),
-    fetchHistoryPage({ pageSize: 1, status: "succeeded", withOptions: false }),
+    fetchHistoryPage({ pageSize: 5, provider, withOptions: false }),
+    fetchHistoryPage({ pageSize: 1, status: "succeeded", provider, withOptions: false }),
   ]);
 
   return {
@@ -22,7 +30,8 @@ async function fetchDashboardHistory() {
 }
 
 // Totals only: the entries aren't shown here
-const fetchSpendTotals = () => fetchExpenseReport({ withEntries: false });
+const fetchSpendTotals = (platform: Platform) =>
+  fetchExpenseReport({ withEntries: false, filters: { provider: platform || undefined } });
 
 // --------------------------------------------------
 // DASHBOARD
@@ -56,14 +65,23 @@ function SkeletonList({ count }: { count: number }) {
 export default function DashboardView() {
   const { projects } = useStudio();
 
+  // Replicate, Higgsfield or both: in the URL, like the
+  // other pages' filters
+  const router = useRouter();
+  const pathname = usePathname();
+  const platform = readPlatform(useSearchParams().get("platform"));
+
+  const choosePlatform = (next: Platform) =>
+    router.replace(next ? `${pathname}?platform=${next}` : pathname, { scroll: false });
+
   const history = useApiData(
-    "dashboard:history",
-    fetchDashboardHistory,
+    `dashboard:history:${platform}`,
+    () => fetchDashboardHistory(platform),
     "Unable to load history."
   );
   const expenses = useApiData(
-    "dashboard:spend",
-    fetchSpendTotals,
+    `dashboard:spend:${platform}`,
+    () => fetchSpendTotals(platform),
     "Unable to load expenses."
   );
 
@@ -91,18 +109,43 @@ export default function DashboardView() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.2em] text-fg-subtle">
-          Spend
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.2em] text-fg-subtle">
+            Spend
+          </p>
 
-        <h1 className="text-[28px] font-bold leading-tight tracking-[-0.02em] text-fg sm:text-[32px]">
-          Dashboard
-        </h1>
+          <h1 className="text-[28px] font-bold leading-tight tracking-[-0.02em] text-fg sm:text-[32px]">
+            Dashboard
+          </h1>
 
-        <p className="mt-1 text-sm text-fg-muted">
-          AI generation workspace overview
-        </p>
+          <p className="mt-1 text-sm text-fg-muted">
+            AI generation workspace overview
+          </p>
+        </div>
+
+        <div
+          role="group"
+          aria-label="Platform"
+          className="inline-flex rounded-full border border-line bg-surface p-1 shadow-card"
+        >
+          {PLATFORMS.map(([value, label]) => (
+            <button
+              key={value || "all"}
+              type="button"
+              aria-pressed={platform === value}
+              onClick={() => choosePlatform(value)}
+              className={cx(
+                "rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors",
+                platform === value
+                  ? "bg-accent text-on-accent shadow-sm"
+                  : "text-fg-muted hover:text-fg",
+              )}
+            >
+              {value ? label : "All"}
+            </button>
+          ))}
+        </div>
       </div>
 
       {error && <Alert>{error}</Alert>}

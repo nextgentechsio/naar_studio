@@ -78,6 +78,20 @@ export type ProjectDoc = {
 // Who ran a generation (and bills it)
 export type Provider = "replicate" | "higgsfield";
 
+export const PROVIDERS: Provider[] = ["replicate", "higgsfield"];
+
+export function isProvider(value: unknown): value is Provider {
+  return PROVIDERS.includes(value as Provider);
+}
+
+// Records from one platform. Older records have no
+// provider: they're all Replicate (Higgsfield came later).
+export function providerMatch(provider: Provider) {
+  return provider === "higgsfield"
+    ? { provider: "higgsfield" as const }
+    : { provider: { $ne: "higgsfield" as const } };
+}
+
 export type GenerationDoc = {
   _id: string;
   userId: string;

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useStudio } from "@/app/(studio)/_components/StudioProvider";
 import { useApiData } from "@/app/(studio)/_components/useApiData";
 import { Alert, Button, cx, formatCost } from "@/app/components/ui/primitives";
-import { fetchExpenseReport, fetchMoreExpenses } from "@/lib/client/data";
+import { fetchExpenseReport, fetchMoreExpenses, readPlatform } from "@/lib/client/data";
 import { errorMessage } from "@/lib/client/http";
 import type { ExpensePage, SpendGroup, SpendTotal } from "@/lib/expenses";
 import { canManageUsers } from "@/lib/roles";
@@ -86,7 +86,7 @@ function GroupTable({
   );
 }
 
-const FILTER_KEYS = ["project", "user", "model", "range", "from", "to"] as const;
+const FILTER_KEYS = ["platform", "project", "user", "model", "range", "from", "to"] as const;
 
 function readFilters(params: URLSearchParams): ExpenseFilterValues {
   const range = params.get("range") as ExpenseRange | null;
@@ -95,6 +95,7 @@ function readFilters(params: URLSearchParams): ExpenseFilterValues {
     project: params.get("project") ?? "",
     user: params.get("user") ?? "",
     model: params.get("model") ?? "",
+    platform: readPlatform(params.get("platform")),
     range: range && RANGES.some(([value]) => value === range) ? range : "",
     from: params.get("from") ?? "",
     to: params.get("to") ?? "",

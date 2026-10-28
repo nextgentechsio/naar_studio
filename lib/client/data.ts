@@ -32,6 +32,7 @@ export type HistoryFilters = {
   // Created between (ISO instants; to is exclusive)
   from?: string;
   to?: string;
+  provider?: "replicate" | "higgsfield";
   // false: skip the filter dropdown values (see
   // listGenerations)
   withOptions?: boolean;
@@ -114,10 +115,24 @@ export function localPeriods(now = new Date()) {
 
 // Expense filters as the API takes them: ids, and from/to
 // as ISO instants (to is exclusive)
+// Where a run was made (the Generate pages)
+export type Platform = "" | "replicate" | "higgsfield";
+
+export const PLATFORMS: [Platform, string][] = [
+  ["", "All platforms"],
+  ["replicate", "Replicate"],
+  ["higgsfield", "Higgsfield"],
+];
+
+export function readPlatform(value: string | null): Platform {
+  return PLATFORMS.some(([platform]) => platform === value) ? (value as Platform) : "";
+}
+
 export type ExpenseQuery = {
   project?: string;
   user?: string;
   model?: string;
+  provider?: "replicate" | "higgsfield";
   from?: string;
   to?: string;
 };

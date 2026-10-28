@@ -4,6 +4,9 @@ import {
   generationsCollection,
   type ExpenseDoc,
   type GenerationDoc,
+  isProvider,
+  providerMatch,
+  type Provider,
 } from "@/lib/mongodb";
 import { canManageUsers } from "@/lib/roles";
 import { currentNames } from "@/lib/names";
@@ -259,11 +262,12 @@ export type ExpenseFilters = {
   projectId?: string;
   userId?: string;
   model?: string;
+  provider?: Provider;
   from?: Date;
   to?: Date;
 };
 
-// From a request's query: ?project=&user=&model=&from=&to=
+// From a request's query: ?project=&user=&model=&provider=&from=&to=
 // (from/to as ISO instants). Anything malformed is left
 // out rather than refused.
 export function readExpenseFilters(params: URLSearchParams): ExpenseFilters {
@@ -282,6 +286,7 @@ export function readExpenseFilters(params: URLSearchParams): ExpenseFilters {
     projectId: id("project"),
     userId: id("user"),
     model: id("model"),
+    provider: isProvider(params.get("provider")) ? (params.get("provider") as Provider) : undefined,
     from: date("from"),
     to: date("to"),
   };
@@ -301,6 +306,7 @@ function dimensionFilter(
   if (filters.projectId) filter.projectId = filters.projectId;
   if (filters.userId && isManager) filter.userId = filters.userId;
   if (filters.model) filter.model = filters.model;
+  if (filters.provider) Object.assign(filter, providerMatch(filters.provider));
 
   return filter;
 }

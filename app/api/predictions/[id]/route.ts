@@ -1,5 +1,6 @@
 import { after, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/auth";
+import { providerName } from "@/lib/db/mongodb";
 import {
   applyPrediction,
   canViewGeneration,
@@ -57,9 +58,7 @@ export async function GET(
 
       return NextResponse.json(
         {
-          error: `Couldn't reach ${
-            generation.provider === "higgsfield" ? "Higgsfield" : "Replicate"
-          }. Retrying…`,
+          error: `Couldn't reach ${providerName(generation.provider)}. Retrying…`,
         },
         { status: 502 }
       );

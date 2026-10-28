@@ -71,8 +71,11 @@ export default function GenerationDrawer({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   // "Run again" goes back to the provider that ran it
-  const replicate = useGenerateStore("replicate");
-  const higgsfield = useGenerateStore("higgsfield");
+  const stores = {
+    replicate: useGenerateStore("replicate"),
+    higgsfield: useGenerateStore("higgsfield"),
+    elevenlabs: useGenerateStore("elevenlabs"),
+  };
 
   const [loaded, setLoaded] = useState<{
     id: string;
@@ -119,10 +122,8 @@ export default function GenerationDrawer({
     const detail = current?.detail;
     if (!detail) return;
 
-    const isHiggsfield = detail.provider === "higgsfield";
-    const { loadDraft, setError: setGenerateError } = isHiggsfield
-      ? higgsfield
-      : replicate;
+    const provider = detail.provider ?? "replicate";
+    const { loadDraft, setError: setGenerateError } = stores[provider];
 
     const projectActive = projects.some((item) => item.name === detail.project);
 
@@ -138,7 +139,7 @@ export default function GenerationDrawer({
       );
     }
 
-    router.push(isHiggsfield ? "/higgsfield" : "/replicate");
+    router.push(`/${provider}`);
   }
 
   function download() {

@@ -4,7 +4,7 @@ import net from "net";
 import path from "path";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import type { TestProject } from "vitest/node";
-import { FAKE_BLOB_TOKEN, FAKE_HF_CREDENTIALS, startFakeReplicate } from "./fake-replicate";
+import { FAKE_BLOB_TOKEN, FAKE_ELEVENLABS_KEY, FAKE_HF_CREDENTIALS, startFakeReplicate } from "./fake-replicate";
 
 // --------------------------------------------------
 // INTEGRATION SETUP
@@ -104,6 +104,9 @@ async function start(
     // Never the real (billable) Higgsfield API
     HF_CREDENTIALS: FAKE_HF_CREDENTIALS,
     HIGGSFIELD_API_URL: `${replicate.url}/hf`,
+    // Never the real (billable) ElevenLabs API
+    ELEVENLABS_API_KEY: FAKE_ELEVENLABS_KEY,
+    ELEVENLABS_API_URL: `${replicate.url}/el`,
     BLOB_READ_WRITE_TOKEN: FAKE_BLOB_TOKEN,
     VERCEL_BLOB_API_URL: `${replicate.url}/blob`,
     // Browser side (inlined into the test build only)

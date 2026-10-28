@@ -154,7 +154,7 @@ export default function HiggsfieldModelBrowser({
                       )}
                     >
                       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-raised text-fg-muted">
-                        <Icon name={item.output === "image" ? "image" : "video"} size={16} />
+                        <Icon name={item.output} size={16} />
                       </span>
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-medium text-fg">

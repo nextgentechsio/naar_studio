@@ -3,6 +3,7 @@ import {
   deleteSavedOutput,
   outputUrlFor,
   saveOutput,
+  saveOutputBytes,
   type SavedOutput,
 } from "@/lib/storage/generation-outputs";
 import { currentNames } from "@/lib/names";
@@ -13,6 +14,7 @@ import {
   isHiggsfieldOutputUrl,
 } from "@/lib/higgsfield/client";
 import {
+  providerName,
   expensesCollection,
   generationsCollection,
   providerMatch,
@@ -471,11 +473,106 @@ export async function fetchPrediction(
 // The run's current state from whichever provider ran
 // it, in Replicate's shape (see lib/higgsfield/client.ts)
 export function fetchGenerationStatus(
-  generation: Pick<GenerationDoc, "_id" | "provider">
+  generation: Pick<
+    GenerationDoc,
+    "_id" | "provider" | "status" | "createdAt" | "localOutputUrl" | "error" | "predictTime"
+  >
 ): ReturnType<typeof fetchPrediction> {
+  if (generation.provider === "elevenlabs") return Promise.resolve(localRunStatus(generation));
+
   return generation.provider === "higgsfield"
     ? checkHiggsfieldRequest(generation._id)
     : fetchPrediction(generation._id);
+}
+
+// --------------------------------------------------
+// RUNS DONE HERE (ElevenLabs)
+//
+// ElevenLabs answers with the audio itself, so the server
+// does the whole run (app/api/elevenlabs/generate) and
+// finishes the record with finishLocalRun; polling reads
+// the record. A run whose server work died is failed
+// after LOCAL_RUN_STALE_MS, so it can't stay "running".
+// --------------------------------------------------
+
+const LOCAL_RUN_STALE_MS = 15 * 60 * 1000;
+
+function localRunStatus(
+  generation: Pick<GenerationDoc, "_id" | "status" | "createdAt" | "localOutputUrl" | "error" | "predictTime">
+): { ok: true; prediction: Record<string, unknown> } {
+  const stale =
+    !isTerminalStatus(generation.status) &&
+    Date.now() - new Date(generation.createdAt).getTime() > LOCAL_RUN_STALE_MS;
+
+  return {
+    ok: true,
+    prediction: {
+      id: generation._id,
+      status: stale ? "failed" : generation.status,
+      output: generation.localOutputUrl ? [generation.localOutputUrl] : null,
+      error: stale ? "The run stopped before finishing. Please try again." : generation.error,
+      metrics: generation.predictTime === null ? {} : { predict_time: generation.predictTime },
+    },
+  };
+}
+
+export async function finishLocalRun(
+  generationId: string,
+  result:
+    | { ok: true; bytes: Buffer; contentType: string; costUsd: number | null; seconds: number }
+    | { ok: false; error: string; seconds: number }
+): Promise<void> {
+  const generations = await generationsCollection();
+  const now = new Date();
+
+  if (!result.ok) {
+    await generations.updateOne(
+      { _id: generationId, status: { $nin: [...TERMINAL_STATUSES] } },
+      {
+        $set: {
+          status: "failed",
+          error: result.error.slice(0, 2000),
+          predictTime: result.seconds,
+          completedAt: now,
+          updatedAt: now,
+        },
+      }
+    );
+    return;
+  }
+
+  const saved = await saveOutputBytes(generationId, result.bytes, result.contentType);
+  if (!saved) {
+    await finishLocalRun(generationId, { ok: false, error: "Couldn't save the result.", seconds: result.seconds });
+    return;
+  }
+
+  const updated = await generations.findOneAndUpdate(
+    { _id: generationId, status: { $nin: [...TERMINAL_STATUSES] } },
+    {
+      $set: {
+        status: "succeeded",
+        costUsd: result.costUsd,
+        localOutputUrl: outputUrlFor(generationId),
+        outputFileId: saved.fileId,
+        outputBlobUrl: saved.blobUrl,
+        outputContentType: saved.contentType,
+        outputSize: saved.size,
+        predictTime: result.seconds,
+        completedAt: now,
+        updatedAt: now,
+      },
+    },
+    { returnDocument: "after" }
+  );
+
+  // Already finished (or failed as stale) meanwhile
+  if (!updated) {
+    await deleteSavedOutput(saved);
+    return;
+  }
+
+  await recordExpense(updated, result.costUsd, now);
 }
 
 // Longest a save may hold its claim (download timeout is
@@ -527,7 +624,7 @@ export async function applyPrediction(
   let localOutputUrl: string | null = null;
   let saved: SavedOutput | null = null;
 
-  if (terminal && generation.provider !== "higgsfield") {
+  if (terminal && (generation.provider ?? "replicate") === "replicate") {
     try {
       // Price from Replicate's echoed input over the inputs
       // we stored: Replicate drops inputs after a while,
@@ -693,10 +790,7 @@ export async function reconcilePending(
               ...(failures >= MAX_RECONCILE_FAILURES
                 ? {
                     status: "unknown",
-                    error:
-                      generation.provider === "higgsfield"
-                        ? "Higgsfield no longer has this request."
-                        : "Replicate no longer has this prediction.",
+                    error: `${providerName(generation.provider)} no longer has this run.`,
                     completedAt: new Date(),
                   }
                 : {}),

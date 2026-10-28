@@ -16,6 +16,11 @@ The app shows its version and build in the sidebar and on the Account page
 
 ## [Unreleased]
 
+### Added
+- ElevenLabs as a third platform (its own page): text to speech, sound effects, music
+  and voice changer, with every run saved, costed from ElevenLabs' API prices, and
+  counted in History, Expenses and the Dashboard. Needs `ELEVENLABS_API_KEY`.
+
 ### Changed
 - Reorganised the code into folders by area (`lib/auth`, `lib/db`, `lib/replicate`,
   `lib/higgsfield`, `lib/storage`, `lib/spend`; the shared Generate UI in

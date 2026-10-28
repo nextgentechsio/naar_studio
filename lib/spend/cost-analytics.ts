@@ -43,6 +43,7 @@ export type DaySpend = {
   day: string;
   replicate: number;
   higgsfield: number;
+  elevenlabs: number;
   runs: number;
 };
 
@@ -74,7 +75,7 @@ export type CostAnalytics = {
   previous: SpendTotal;
   monthToDate: SpendTotal;
   days: DaySpend[];
-  byProvider: { replicate: SpendTotal; higgsfield: SpendTotal };
+  byProvider: Record<Provider, SpendTotal>;
   byModel: ModelSpend[];
   byProject: SpendGroup[];
   // Managers only (empty for users)
@@ -134,7 +135,7 @@ export async function getCostAnalytics(
                     $dateToString: { format: "%Y-%m-%d", date: "$incurredAt", timezone: query.timeZone },
                   },
                   // Older entries have no provider: Replicate's
-                  higgsfield: { $eq: ["$provider", "higgsfield"] },
+                  provider: { $ifNull: ["$provider", "replicate"] },
                 },
                 amountUsd: { $sum: { $ifNull: ["$amountUsd", 0] } },
                 runs: { $sum: 1 },
@@ -145,7 +146,7 @@ export async function getCostAnalytics(
             { $match: { incurredAt: { $gte: query.from, $lt: query.to } } },
             {
               $group: {
-                _id: { $eq: ["$provider", "higgsfield"] },
+                _id: { $ifNull: ["$provider", "replicate"] },
                 amountUsd: { $sum: { $ifNull: ["$amountUsd", 0] } },
                 count: { $sum: 1 },
                 unpriced: { $sum: { $cond: [{ $eq: ["$amountUsd", null] }, 1, 0] } },
@@ -157,7 +158,7 @@ export async function getCostAnalytics(
             {
               $group: {
                 _id: "$model",
-                higgsfield: { $max: { $eq: ["$provider", "higgsfield"] } },
+                provider: { $first: { $ifNull: ["$provider", "replicate"] } },
                 amountUsd: { $sum: { $ifNull: ["$amountUsd", 0] } },
                 runs: { $sum: 1 },
                 unpriced: { $sum: { $cond: [{ $eq: ["$amountUsd", null] }, 1, 0] } },
@@ -192,20 +193,19 @@ export async function getCostAnalytics(
   // Days: one row per day that had spend, both platforms
   const dayMap = new Map<string, DaySpend>();
   for (const row of (result?.days ?? []) as {
-    _id: { day: string; higgsfield: boolean };
+    _id: { day: string; provider: Provider };
     amountUsd: number;
     runs: number;
   }[]) {
-    const day = dayMap.get(row._id.day) ?? { day: row._id.day, replicate: 0, higgsfield: 0, runs: 0 };
-    if (row._id.higgsfield) day.higgsfield += row.amountUsd;
-    else day.replicate += row.amountUsd;
+    const day = dayMap.get(row._id.day) ?? { day: row._id.day, replicate: 0, higgsfield: 0, elevenlabs: 0, runs: 0 };
+    const provider = row._id.provider in day ? row._id.provider : "replicate";
+    day[provider] += row.amountUsd;
     day.runs += row.runs;
     dayMap.set(row._id.day, day);
   }
 
-  const providerRows = (result?.byProvider ?? []) as ({ _id: boolean } & SpendTotal)[];
-  const providerTotal = (higgsfield: boolean) =>
-    readTotal(providerRows.filter((row) => row._id === higgsfield));
+  const providerRows = (result?.byProvider ?? []) as ({ _id: Provider } & SpendTotal)[];
+  const providerTotal = (provider: Provider) => readTotal(providerRows.filter((row) => row._id === provider));
 
   const byProject = readGroups(result?.byProject);
   const byUser = readGroups(result?.byUser);
@@ -231,10 +231,14 @@ export async function getCostAnalytics(
     previous: readTotal(result?.previous),
     monthToDate: readTotal(result?.monthToDate),
     days: [...dayMap.values()].sort((a, b) => a.day.localeCompare(b.day)),
-    byProvider: { replicate: providerTotal(false), higgsfield: providerTotal(true) },
+    byProvider: {
+      replicate: providerTotal("replicate"),
+      higgsfield: providerTotal("higgsfield"),
+      elevenlabs: providerTotal("elevenlabs"),
+    },
     byModel: ((result?.byModel ?? []) as {
       _id: string;
-      higgsfield: boolean;
+      provider: Provider;
       amountUsd: number;
       runs: number;
       unpriced: number;
@@ -242,7 +246,7 @@ export async function getCostAnalytics(
       maxUsd: number | null;
     }[]).map((row) => ({
       model: row._id,
-      provider: row.higgsfield ? "higgsfield" : "replicate",
+      provider: row.provider,
       runs: row.runs,
       amountUsd: row.amountUsd,
       unpriced: row.unpriced,

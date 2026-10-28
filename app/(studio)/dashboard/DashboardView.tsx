@@ -36,15 +36,18 @@ import { BarList, SpendColumns, ViewSwitch, type DayValues, type Series } from "
 // the latest runs, whatever the period.
 // --------------------------------------------------
 
-type ProviderKey = "replicate" | "higgsfield";
+type ProviderKey = "replicate" | "higgsfield" | "elevenlabs";
 
+// Fixed order and colors: a platform keeps its color
+// whatever the filter (validated palette, --viz-*)
 const SERIES: Series<ProviderKey>[] = [
   { key: "replicate", label: "Replicate", color: "var(--viz-1)" },
   { key: "higgsfield", label: "Higgsfield", color: "var(--viz-2)" },
+  { key: "elevenlabs", label: "ElevenLabs", color: "var(--viz-3)" },
 ];
 
-const PROVIDER_LABEL: Record<ProviderKey, string> = { replicate: "Replicate", higgsfield: "Higgsfield" };
-const PROVIDER_COLOR: Record<ProviderKey, string> = { replicate: "var(--viz-1)", higgsfield: "var(--viz-2)" };
+const PROVIDER_LABEL = Object.fromEntries(SERIES.map((item) => [item.key, item.label])) as Record<ProviderKey, string>;
+const PROVIDER_COLOR = Object.fromEntries(SERIES.map((item) => [item.key, item.color])) as Record<ProviderKey, string>;
 
 // Rows past this many fold into "Other"
 const TOP_ROWS = 6;
@@ -200,7 +203,7 @@ export default function DashboardView() {
   // Every day of the period, zeros included
   const byDay = new Map(data?.days.map((day) => [day.day, day]) ?? []);
   const days: DayValues<ProviderKey>[] = period.days.map(
-    (day) => byDay.get(day) ?? { day, replicate: 0, higgsfield: 0, runs: 0 },
+    (day) => byDay.get(day) ?? { day, replicate: 0, higgsfield: 0, elevenlabs: 0, runs: 0 },
   );
 
   // Per priced run
@@ -349,7 +352,12 @@ export default function DashboardView() {
             data &&
             (platform
               ? `${data.total.count} billed runs`
-              : `Replicate ${formatCost(data.byProvider.replicate.amountUsd)} (${percent(data.byProvider.replicate.amountUsd, totalSpend)}%) · Higgsfield ${formatCost(data.byProvider.higgsfield.amountUsd)} (${percent(data.byProvider.higgsfield.amountUsd, totalSpend)}%)`)
+              : SERIES.filter((item) => data.byProvider[item.key].count > 0)
+                  .map(
+                    (item) =>
+                      `${item.label} ${formatCost(data.byProvider[item.key].amountUsd)} (${percent(data.byProvider[item.key].amountUsd, totalSpend)}%)`,
+                  )
+                  .join(" · ") || "No spend in this period")
           }
           action={<ViewSwitch table={trendTable} onChange={setTrendTable} />}
         >

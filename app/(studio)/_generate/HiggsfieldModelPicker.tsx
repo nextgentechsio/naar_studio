@@ -11,7 +11,7 @@ import {
 } from "@/lib/higgsfield/models";
 
 // --------------------------------------------------
-// HIGGSFIELD MODEL PICKER (Generate page, Higgsfield)
+// MODEL PICKER (Generate page: Higgsfield, ElevenLabs)
 //
 // Every model Higgsfield lists, grouped by what it does,
 // with "Browse all models" for search. Same layout as the
@@ -31,16 +31,20 @@ export default function HiggsfieldModelPicker({
   loading,
   onChoose,
   onBrowse,
+  priceHint = higgsfieldPriceHint,
 }: {
   model: string;
   models: HiggsfieldModel[];
   loading: boolean;
   onChoose: (id: string) => void;
-  onBrowse: () => void;
+  // "Browse all models" (left out for short lists)
+  onBrowse?: () => void;
+  // The model's price line (ElevenLabs passes its own)
+  priceHint?: (id: string) => string | null;
 }) {
   const current = models.find((item) => item.id === model);
   const unpriced = Boolean(model) && higgsfieldPriceKind(model) === "unreported";
-  const price = model ? (higgsfieldPriceHint(model) ?? "priced per run") : null;
+  const price = model ? (priceHint(model) ?? "priced per run") : null;
 
   return (
     <div className="min-w-0">
@@ -61,7 +65,7 @@ export default function HiggsfieldModelPicker({
           )}
           aria-hidden
         >
-          <Icon name={current?.output === "image" ? "image" : "video"} size={16} />
+          <Icon name={current?.output ?? "video"} size={16} />
         </span>
 
         <select
@@ -114,14 +118,16 @@ export default function HiggsfieldModelPicker({
               ? "Unpriced: usage not reported"
               : `${current?.task || CATEGORY_LABELS[current?.category ?? "other"]} · ${price}`}
         </p>
-        <button
-          type="button"
-          onClick={onBrowse}
-          className="inline-flex shrink-0 items-center gap-1 font-medium text-accent hover:underline"
-        >
-          <Icon name="search" size={12} />
-          Browse all models
-        </button>
+        {onBrowse && (
+          <button
+            type="button"
+            onClick={onBrowse}
+            className="inline-flex shrink-0 items-center gap-1 font-medium text-accent hover:underline"
+          >
+            <Icon name="search" size={12} />
+            Browse all models
+          </button>
+        )}
       </div>
     </div>
   );

@@ -76,20 +76,25 @@ export type ProjectDoc = {
 // One document per Replicate prediction; _id is the
 // Replicate prediction id.
 // Who ran a generation (and bills it)
-export type Provider = "replicate" | "higgsfield";
+export type Provider = "replicate" | "higgsfield" | "elevenlabs";
 
-const PROVIDERS: Provider[] = ["replicate", "higgsfield"];
+const PROVIDERS: Provider[] = ["replicate", "higgsfield", "elevenlabs"];
+
+// "Replicate", "Higgsfield", "ElevenLabs"
+export function providerName(provider: Provider | undefined): string {
+  return provider === "higgsfield" ? "Higgsfield" : provider === "elevenlabs" ? "ElevenLabs" : "Replicate";
+}
 
 export function isProvider(value: unknown): value is Provider {
   return PROVIDERS.includes(value as Provider);
 }
 
 // Records from one platform. Older records have no
-// provider: they're all Replicate (Higgsfield came later).
+// provider: they're all Replicate (the others came later).
 export function providerMatch(provider: Provider) {
-  return provider === "higgsfield"
-    ? { provider: "higgsfield" as const }
-    : { provider: { $ne: "higgsfield" as const } };
+  return provider === "replicate"
+    ? { provider: { $nin: ["higgsfield" as const, "elevenlabs" as const] } }
+    : { provider };
 }
 
 export type GenerationDoc = {

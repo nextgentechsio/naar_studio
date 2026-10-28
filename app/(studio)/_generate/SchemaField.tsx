@@ -63,7 +63,7 @@ export default function SchemaField({
           >
             {field.enum!.map((option) => (
               <option key={option} value={option}>
-                {option}
+                {field.enumLabels?.[option] ?? option}
               </option>
             ))}
           </select>

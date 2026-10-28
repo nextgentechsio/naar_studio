@@ -164,6 +164,37 @@ export async function saveOutput(
   return { fileId: upload.id, blobUrl: null, contentType, size };
 }
 
+// Saves an output we already hold (ElevenLabs answers
+// with the audio itself), to the same places saveOutput
+// does
+export async function saveOutputBytes(
+  generationId: string,
+  bytes: Buffer,
+  contentType: string
+): Promise<SavedOutput | null> {
+  if (!bytes.length || bytes.length > MAX_OUTPUT_BYTES) return null;
+
+  try {
+    if (blobUploadsEnabled()) {
+      const pathname = `${OUTPUT_BLOB_FOLDER}${generationId.replace(/[^\w.-]+/g, "_")}${EXTENSIONS[contentType] ?? ""}`;
+      const blob = await put(pathname, bytes, { access: "public", addRandomSuffix: true, contentType });
+      return { fileId: null, blobUrl: blob.url, contentType, size: bytes.length };
+    }
+
+    const bucket = await generationOutputsBucket();
+    const upload = bucket.openUploadStream(generationId, { metadata: { generationId, contentType } });
+    await new Promise<void>((resolve, reject) => {
+      upload.once("finish", () => resolve());
+      upload.once("error", reject);
+      upload.end(bytes);
+    });
+    return { fileId: upload.id, blobUrl: null, contentType, size: bytes.length };
+  } catch (error) {
+    console.error("Output save failed:", generationId, error);
+    return null;
+  }
+}
+
 // Removes a saved output from wherever it lives
 export async function deleteSavedOutput(
   saved: Pick<SavedOutput, "fileId" | "blobUrl"> | null | undefined

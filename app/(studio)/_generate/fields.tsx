@@ -12,6 +12,11 @@ export type SchemaProperty = {
   minimum?: number;
   maximum?: number;
   "x-order"?: number;
+  // Shown instead of the enum values (e.g. voice names
+  // for voice IDs)
+  enumLabels?: Record<string, string>;
+  // Under "Advanced settings" whatever its name
+  "x-advanced"?: boolean;
 };
 
 export type Schema = Record<string, SchemaProperty>;
@@ -107,7 +112,7 @@ export function fieldGroup(
   field: SchemaProperty
 ): "media" | "main" | "advanced" {
   if (fileKind(key, field)) return "media";
-  if (ADVANCED_FIELD.test(key)) return "advanced";
+  if (field["x-advanced"] || ADVANCED_FIELD.test(key)) return "advanced";
   return "main";
 }
 

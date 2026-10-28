@@ -50,6 +50,9 @@
      modes); 1 = Replicate, 2 = Higgsfield */
   --viz-1: #2a78d6;
   --viz-2: #eb6834;
+  /* 3 = ElevenLabs; under 3:1 on the light surface, so it
+     always comes with labels and a table view */
+  --viz-3: #1baf7a;
   --glass-edge: rgb(255 255 255 / 0.9);
   --glass-shadow: 0 28px 70px -24px rgb(13 13 13 / 0.28);
 
@@ -97,6 +100,7 @@
     --menu: #1a1a1d;
     --viz-1: #3987e5;
     --viz-2: #d95926;
+    --viz-3: #199e70;
     --glass-edge: rgb(255 255 255 / 0.09);
     --glass-shadow: 0 32px 90px -24px rgb(0 0 0 / 0.8);
 
@@ -141,6 +145,7 @@
   --menu: #1a1a1d;
   --viz-1: #3987e5;
   --viz-2: #d95926;
+  --viz-3: #199e70;
   --glass-edge: rgb(255 255 255 / 0.09);
   --glass-shadow: 0 32px 90px -24px rgb(0 0 0 / 0.8);
 
@@ -194,6 +199,7 @@
   --color-warning: var(--warning);
   --color-viz-1: var(--viz-1);
   --color-viz-2: var(--viz-2);
+  --color-viz-3: var(--viz-3);
 
   --shadow-card: var(--shadow-card);
 

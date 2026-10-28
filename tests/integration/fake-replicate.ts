@@ -45,6 +45,16 @@ const SCHEMA = {
 };
 
 export const FAKE_HF_CREDENTIALS = "fake-id:fake-secret";
+export const FAKE_ELEVENLABS_KEY = "fake-elevenlabs-key";
+
+// 128 kbps MP3: 16,000 bytes a second (what the app asks
+// ElevenLabs for, and prices audio by)
+const MP3_BYTES_PER_SECOND = 16_000;
+const fakeMp3 = (seconds: number) => {
+  const bytes = Buffer.alloc(Math.round(seconds * MP3_BYTES_PER_SECOND));
+  bytes.write("ID3", 0, "latin1");
+  return bytes;
+};
 
 // A few of Higgsfield's models, with real-shaped schemas
 const HF_MODELS = [
@@ -368,6 +378,53 @@ export async function startFakeReplicate() {
       const stored = hfStore.get(name);
       if (!stored) return send(404, { error: "Not found" });
       return serveBytes(req, res, stored.bytes, { "content-type": stored.type });
+    }
+
+    // ---------- fake ElevenLabs API (/el) ----------
+    // Answers with audio of a known length; "moderated" in
+    // the text is refused, as ElevenLabs' moderation does
+
+    if (path.startsWith("/el/")) {
+      requests.push({ method: req.method ?? "", path: path + url.search, body, bytes: raw.length });
+
+      if (req.headers["xi-api-key"] !== FAKE_ELEVENLABS_KEY) {
+        return send(401, { detail: { status: "invalid_api_key", message: "Invalid API key" } });
+      }
+
+      if (path === "/el/v1/voices" && req.method === "GET") {
+        return send(200, {
+          voices: [
+            { voice_id: "voice-rachel", name: "Rachel", category: "premade", labels: { gender: "female", accent: "american" } },
+            { voice_id: "voice-adam", name: "Adam", category: "premade", labels: { gender: "male", accent: "british" } },
+            { voice_id: "voice-mine", name: "My voice", category: "cloned", labels: {} },
+          ],
+        });
+      }
+
+      const audio = (seconds: number) => {
+        const bytes = fakeMp3(seconds);
+        res.writeHead(200, { "content-type": "audio/mpeg", "content-length": String(bytes.length) });
+        res.end(bytes);
+      };
+      const text = String((body as { text?: unknown; prompt?: unknown })?.text ?? (body as { prompt?: unknown })?.prompt ?? "");
+      if (/moderated/i.test(text)) {
+        return send(400, { detail: { status: "content_moderated", message: "This request was blocked by moderation." } });
+      }
+
+      if (path.startsWith("/el/v1/text-to-speech/") && req.method === "POST") return audio(2);
+      if (path === "/el/v1/sound-generation" && req.method === "POST") {
+        return audio(Number((body as { duration_seconds?: number })?.duration_seconds) || 5);
+      }
+      if (path === "/el/v1/music" && req.method === "POST") {
+        return audio(Number((body as { music_length_ms?: number })?.music_length_ms) / 1000 || 30);
+      }
+      if (path.startsWith("/el/v1/voice-changer/") && req.method === "POST") {
+        // Multipart: the recording must have been sent
+        if (!raw.toString("latin1").includes('name="audio"')) return send(422, { detail: [{ msg: "audio is required" }] });
+        return audio(3);
+      }
+
+      return send(404, { detail: "No fake" });
     }
 
     // ---------- fake Higgsfield API (/hf) ----------

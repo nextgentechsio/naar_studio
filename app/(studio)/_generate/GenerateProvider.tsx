@@ -33,14 +33,15 @@ import { useStudio } from "@/app/(studio)/_components/StudioProvider";
 // The server also finishes runs on its own (see
 // reconcilePending), so closing the tab loses nothing.
 //
-// One instance per provider (Replicate, Higgsfield), each
+// One instance per provider (Replicate, Higgsfield,
+// ElevenLabs), each
 // with its own form and run. useGenerate() reads the
 // Replicate one, or the one an <ActiveGenerate> picks
 // (the Higgsfield page), so the same page and fields
 // work for both.
 // --------------------------------------------------
 
-export type GenerateProviderId = "replicate" | "higgsfield";
+export type GenerateProviderId = "replicate" | "higgsfield" | "elevenlabs";
 
 // Where each provider loads a model's settings and
 // starts runs; both answer in the same shapes
@@ -49,6 +50,10 @@ const ENDPOINTS: Record<GenerateProviderId, { schema: string; generate: string }
   higgsfield: {
     schema: "/api/higgsfield/models/schema",
     generate: "/api/higgsfield/generate",
+  },
+  elevenlabs: {
+    schema: "/api/elevenlabs/models/schema",
+    generate: "/api/elevenlabs/generate",
   },
 };
 
@@ -196,6 +201,7 @@ const StoreContexts: Record<
 > = {
   replicate: createContext<GenerateContextValue | null>(null),
   higgsfield: createContext<GenerateContextValue | null>(null),
+  elevenlabs: createContext<GenerateContextValue | null>(null),
 };
 
 export function GenerateProvider({
@@ -369,7 +375,9 @@ export function GenerateProvider({
           logRequestError(err);
           setSchema({});
           setInputs({});
-          setError("Unable to load model settings.");
+          // The server's reason when it gave one (e.g. a
+          // rejected API key), not just "it failed"
+          setError(errorMessage(err, "Unable to load model settings."));
         })
         .finally(() => {
           if (latestModelRef.current === id) setSchemaLoading(false);

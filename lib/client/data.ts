@@ -33,7 +33,7 @@ export type HistoryFilters = {
   // Created between (ISO instants; to is exclusive)
   from?: string;
   to?: string;
-  provider?: "replicate" | "higgsfield";
+  provider?: "replicate" | "higgsfield" | "elevenlabs";
   // false: skip the filter dropdown values (see
   // listGenerations)
   withOptions?: boolean;
@@ -121,7 +121,7 @@ export async function fetchCostAnalytics(options: {
   from: Date;
   to: Date;
   monthStart: Date;
-  provider?: "replicate" | "higgsfield";
+  provider?: "replicate" | "higgsfield" | "elevenlabs";
 }): Promise<CostAnalytics> {
   const params = new URLSearchParams({
     from: options.from.toISOString(),
@@ -135,12 +135,13 @@ export async function fetchCostAnalytics(options: {
 }
 
 // Where a run was made (the Generate pages)
-export type Platform = "" | "replicate" | "higgsfield";
+export type Platform = "" | "replicate" | "higgsfield" | "elevenlabs";
 
 export const PLATFORMS: [Platform, string][] = [
   ["", "All platforms"],
   ["replicate", "Replicate"],
   ["higgsfield", "Higgsfield"],
+  ["elevenlabs", "ElevenLabs"],
 ];
 
 export function readPlatform(value: string | null): Platform {
@@ -151,7 +152,7 @@ export type ExpenseQuery = {
   project?: string;
   user?: string;
   model?: string;
-  provider?: "replicate" | "higgsfield";
+  provider?: "replicate" | "higgsfield" | "elevenlabs";
   from?: string;
   to?: string;
 };

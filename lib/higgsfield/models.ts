@@ -7,12 +7,18 @@
 // browser imports this.
 // --------------------------------------------------
 
+// Shared with ElevenLabs' list (lib/elevenlabs/models.ts),
+// whose models use the audio categories
 export type HiggsfieldCategory =
   | "text-to-video"
   | "image-to-video"
   | "video-to-video"
   | "text-to-image"
   | "image-edit"
+  | "text-to-speech"
+  | "sound-effects"
+  | "music"
+  | "voice-changer"
   | "other";
 
 // One model as the browser sees it (no input schema)
@@ -20,7 +26,7 @@ export type HiggsfieldModel = {
   id: string;
   title: string;
   description: string;
-  output: "video" | "image";
+  output: "video" | "image" | "audio";
   category: HiggsfieldCategory;
   // "Text to video", "Image edit", …
   task: string;
@@ -33,6 +39,10 @@ export const CATEGORY_LABELS: Record<HiggsfieldCategory, string> = {
   "video-to-video": "Video to video",
   "text-to-image": "Text to image",
   "image-edit": "Image editing",
+  "text-to-speech": "Text to speech",
+  "sound-effects": "Sound effects",
+  music: "Music",
+  "voice-changer": "Voice changer",
   other: "Other",
 };
 
@@ -42,6 +52,10 @@ export const CATEGORY_ORDER: HiggsfieldCategory[] = [
   "video-to-video",
   "text-to-image",
   "image-edit",
+  "text-to-speech",
+  "sound-effects",
+  "music",
+  "voice-changer",
   "other",
 ];
 

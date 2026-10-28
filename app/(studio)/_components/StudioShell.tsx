@@ -54,6 +54,7 @@ export default function StudioShell({
       items: [
         { href: "/replicate", label: "Replicate", icon: "sparkles" },
         { href: "/higgsfield", label: "Higgsfield", icon: "video" },
+        { href: "/elevenlabs", label: "ElevenLabs", icon: "audio" },
       ],
     },
     {

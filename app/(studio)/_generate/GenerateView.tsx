@@ -42,6 +42,12 @@ import {
   higgsfieldPriceKind,
   type HiggsfieldModel,
 } from "@/lib/higgsfield/models";
+import {
+  elevenLabsCostUsd,
+  elevenLabsPriceHint,
+  elevenLabsPriceIsExact,
+  findElevenLabsModel,
+} from "@/lib/elevenlabs/models";
 import { calculateReplicateCost } from "@/lib/replicate/cost";
 import { canManageProjects } from "@/lib/auth/roles";
 import {
@@ -77,13 +83,16 @@ const SEEDANCE_VIDEO_EDIT = "bytedance/seedance-2.5/video-edit";
 // Model dropdown groups, in this order
 const MODEL_KINDS = ["image", "video", "upscale"] as const;
 
-// The Higgsfield page's model list (and whether the
-// server has credentials); the Replicate page needs none
-type HiggsfieldModels = { enabled: boolean; models: HiggsfieldModel[] };
+// The Higgsfield and ElevenLabs pages' model lists (and
+// whether the server has credentials); Replicate's is the
+// catalog in this file
+type ListedModels = { enabled: boolean; models: HiggsfieldModel[] };
 
-const fetchHiggsfieldModels = () =>
-  fetchJson<HiggsfieldModels>("/api/higgsfield/models");
-const noModels = () => Promise.resolve<HiggsfieldModels>({ enabled: true, models: [] });
+const noModels = () => Promise.resolve<ListedModels>({ enabled: true, models: [] });
+
+const PROVIDER_NAMES = { replicate: "Replicate", higgsfield: "Higgsfield", elevenlabs: "ElevenLabs" } as const;
+// What an admin sets for each to work
+const PROVIDER_KEYS = { replicate: "REPLICATE_API_TOKEN", higgsfield: "HF_CREDENTIALS", elevenlabs: "ELEVENLABS_API_KEY" } as const;
 
 // Wait for typing to pause before asking Higgsfield
 const QUOTE_DELAY_MS = 500;
@@ -144,32 +153,37 @@ export default function GenerateView() {
   }, [runId]);
 
   // ---------- Provider ----------
-  // Same page for Replicate and Higgsfield; only the model
-  // list, prices and wording differ
+  // Same page for every platform; only the model list,
+  // prices and wording differ. Higgsfield and ElevenLabs
+  // list their own models; Replicate uses the catalog.
 
   const isHiggsfield = provider === "higgsfield";
-  const providerName = isHiggsfield ? "Higgsfield" : "Replicate";
+  const isElevenLabs = provider === "elevenlabs";
+  const isListed = isHiggsfield || isElevenLabs;
+  const providerName = PROVIDER_NAMES[provider];
 
-  const higgsfield = useApiData(
-    isHiggsfield ? "higgsfield:models" : "higgsfield:none",
-    isHiggsfield ? fetchHiggsfieldModels : noModels,
-    "Unable to load Higgsfield's models."
+  const listed = useApiData(
+    isListed ? `${provider}:models` : "listed:none",
+    isListed ? () => fetchJson<ListedModels>(`/api/${provider}/models`) : noModels,
+    `Unable to load ${providerName}'s models.`
   );
-  const higgsfieldModels = higgsfield.data?.models ?? [];
-  const higgsfieldModel = isHiggsfield
-    ? higgsfieldModels.find((item) => item.id === model)
+  const listedModels = listed.data?.models ?? [];
+  const listedModel = isListed
+    ? listedModels.find((item) => item.id === model)
     : undefined;
   // Known only once the list arrives
-  const notSetUp = isHiggsfield && higgsfield.data?.enabled === false;
+  const notSetUp = isListed && listed.data?.enabled === false;
 
   const catalogModel =
-    model && !isHiggsfield ? findCatalogModel(model) : undefined;
+    model && !isListed ? findCatalogModel(model) : undefined;
 
   // Has a price, so runs get an estimate and cost
   const priceKind = isHiggsfield && model ? higgsfieldPriceKind(model) : null;
   const priced = isHiggsfield
     ? Boolean(model) && priceKind !== "unreported"
-    : Boolean(catalogModel);
+    : isElevenLabs
+      ? Boolean(model && findElevenLabsModel(model))
+      : Boolean(catalogModel);
 
   const has = (key: string) =>
     Object.prototype.hasOwnProperty.call(schema, key);
@@ -192,7 +206,7 @@ export default function GenerateView() {
   // goes back to the resolution chosen before.
   const draftAvailable =
     isHiggsfield &&
-    higgsfieldModel?.output === "video" &&
+    listedModel?.output === "video" &&
     has("resolution") &&
     resolutionOptions.includes(DRAFT_RESOLUTION);
   const draft = draftAvailable && inputs.resolution === DRAFT_RESOLUTION;
@@ -299,13 +313,16 @@ export default function GenerateView() {
   }, [quoteKey]);
 
   const quoting = Boolean(quoteKey) && quote?.key !== quoteKey;
-  // Higgsfield's quote is the price; a metered estimate isn't
-  const exactQuote = priceKind === "quoted";
+  // Higgsfield's quote is the price, as is ElevenLabs' for
+  // speech (billed by the text); estimates aren't
+  const exactQuote = isElevenLabs ? Boolean(model) && elevenLabsPriceIsExact(model) : priceKind === "quoted";
 
   let estimate: number | null = null;
 
   if (isHiggsfield) {
     estimate = quote?.key === quoteKey ? quote.costUsd : null;
+  } else if (isElevenLabs) {
+    estimate = model && !schemaLoading ? elevenLabsCostUsd(model, inputs) : null;
   } else if (model && priced && !schemaLoading) {
     try {
       estimate = calculateReplicateCost(model, {
@@ -318,6 +335,9 @@ export default function GenerateView() {
   }
 
   const estimateDetail = [
+    isElevenLabs && exactQuote && typeof inputs.prompt === "string"
+      ? `${inputs.prompt.length.toLocaleString()} characters`
+      : "",
     inputs.resolution ? String(inputs.resolution) : "",
     inputs.duration ? `${inputs.duration}s` : "",
     inputs.quality ? `${inputs.quality} quality` : "",
@@ -330,7 +350,7 @@ export default function GenerateView() {
   const uploadsInFlight = Object.values(uploading).some((count) => count > 0);
 
   const missing = [
-    notSetUp && "ask an admin to set up Higgsfield",
+    notSetUp && `ask an admin to set up ${providerName}`,
     !project && "choose a project",
     !model && "choose a model",
     uploadsInFlight && "wait for uploads to finish",
@@ -361,8 +381,8 @@ export default function GenerateView() {
   // What is being made, from the model while it runs, and
   // from the actual output once it's ready
 
-  const makingMedia: "image" | "video" | null = higgsfieldModel
-    ? higgsfieldModel.output
+  const makingMedia: "image" | "video" | "audio" | null = listedModel
+    ? listedModel.output
     : catalogModel
       ? catalogModel.kind === "video" || /video/i.test(model)
         ? "video"
@@ -382,12 +402,18 @@ export default function GenerateView() {
     ? "This model needs a different video size, so it's being fixed first. It takes about as long as the video; please keep this tab open."
     : makingMedia === "video"
       ? "Videos can take a few minutes. You can leave this page; it's saved to History."
-      : makingMedia === "image"
-        ? "Images usually take a few seconds. It's also saved to History."
-        : "You can leave this page; the result is saved to History.";
+      : makingMedia === "audio"
+        ? "Speech and sounds take a few seconds; songs can take a minute or two. It's also saved to History."
+        : makingMedia === "image"
+          ? "Images usually take a few seconds. It's also saved to History."
+          : "You can leave this page; the result is saved to History.";
+
+  // What the model makes, for links that don't say (saved
+  // copies, e.g. ElevenLabs' audio, have no file extension)
+  const outputHint = listedModel ? `${listedModel.output}/*` : null;
 
   const readyType =
-    outputUrls.length > 0 ? getOutputType(outputUrls[0]) : makingMedia;
+    outputUrls.length > 0 ? getOutputType(outputUrls[0], outputHint) : makingMedia;
   const readyNoun =
     readyType === "video" ? "video" : readyType === "audio" ? "audio" : "image";
   const readyTitle =
@@ -410,7 +436,7 @@ export default function GenerateView() {
 
   return (
     <>
-      <h1 className="sr-only">{isHiggsfield ? "Higgsfield" : "Generate"}</h1>
+      <h1 className="sr-only">{isListed ? providerName : "Generate"}</h1>
 
       {/* Fills the screen between the top bar and the
           footer on laptops and up: 3.5rem top bar + 3rem
@@ -464,13 +490,15 @@ export default function GenerateView() {
               )}
             </div>
 
-            {isHiggsfield ? (
+            {isListed ? (
               <HiggsfieldModelPicker
                 model={model}
-                models={higgsfieldModels}
-                loading={higgsfield.loading}
+                models={listedModels}
+                loading={listed.loading}
                 onChoose={chooseModel}
-                onBrowse={() => setBrowsing(true)}
+                // ElevenLabs' short list needs no search
+                onBrowse={isHiggsfield ? () => setBrowsing(true) : undefined}
+                priceHint={isElevenLabs ? elevenLabsPriceHint : undefined}
               />
             ) : (
               <div className="min-w-0">
@@ -570,10 +598,10 @@ export default function GenerateView() {
 
             {/* Under both pickers: this model's other
                 versions (some take uploads) */}
-            {isHiggsfield && (
+            {isListed && (
               <HiggsfieldVariants
                 model={model}
-                models={higgsfieldModels}
+                models={listedModels}
                 onChoose={chooseModel}
                 className="sm:col-span-2"
               />
@@ -584,23 +612,25 @@ export default function GenerateView() {
           <div className="@container flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
             {notSetUp ? (
               <Alert tone="warning">
-                <p className="font-medium">Higgsfield isn&apos;t set up on the server</p>
+                <p className="font-medium">{providerName} isn&apos;t set up on the server</p>
                 <p className="mt-0.5 text-xs opacity-90">
-                  An admin needs to add HF_CREDENTIALS to the server&apos;s
+                  An admin needs to add {PROVIDER_KEYS[provider]} to the server&apos;s
                   environment.
                 </p>
               </Alert>
-            ) : isHiggsfield && higgsfield.error && !higgsfieldModels.length ? (
-              <Alert>{higgsfield.error}</Alert>
+            ) : isListed && listed.error && !listedModels.length ? (
+              <Alert>{listed.error}</Alert>
             ) : !model ? (
               <EmptyState
                 compact
-                icon={isHiggsfield ? "video" : "sparkles"}
+                icon={isHiggsfield ? "video" : isElevenLabs ? "audio" : "sparkles"}
                 title="Choose a model"
                 description={
                   isHiggsfield
                     ? "Pick one above or browse all Higgsfield models. Its prompt and settings appear here."
-                    : "Its prompt and settings appear here."
+                    : isElevenLabs
+                      ? "Speech, sound effects, music or the voice changer. Its settings appear here."
+                      : "Its prompt and settings appear here."
                 }
               />
             ) : schemaLoading ? (
@@ -856,9 +886,17 @@ export default function GenerateView() {
                         }
                       >
                         per run{estimateDetail ? ` · ${estimateDetail}` : ""}
-                        {exactQuote ? " · Higgsfield's price" : ""}
+                        {exactQuote ? ` · ${providerName}'s price` : ""}
+                        {isElevenLabs && !exactQuote ? " · exact after the run" : ""}
                         {priceKind === "metered" ? " · exact after the run" : ""}
                       </span>
+                    </>
+                  ) : isElevenLabs ? (
+                    <>
+                      <span className="font-mono text-base font-semibold text-fg">
+                        {elevenLabsPriceHint(model) ?? "—"}
+                      </span>
+                      <span className="text-xs text-fg-subtle">by the audio made · exact after the run</span>
                     </>
                   ) : isHiggsfield ? (
                     <>
@@ -989,7 +1027,7 @@ export default function GenerateView() {
                 )}
               >
                 {outputUrls.map((url, index) => {
-                  const outputType = getOutputType(url);
+                  const outputType = getOutputType(url, outputHint);
 
                   return (
                     <div
@@ -1072,7 +1110,7 @@ export default function GenerateView() {
               <div className="flex gap-1.5">
                 <dt className="text-fg-subtle">Output</dt>
                 <dd className="font-medium tabular-nums text-fg">
-                  <MediaDetails src={outputUrls[0]} kind={getOutputType(outputUrls[0])} />
+                  <MediaDetails src={outputUrls[0]} kind={getOutputType(outputUrls[0], outputHint)} />
                 </dd>
               </div>
               <div className="text-fg-subtle">Saved to History</div>
@@ -1084,7 +1122,7 @@ export default function GenerateView() {
       {browsing &&
         (isHiggsfield ? (
           <HiggsfieldModelBrowser
-            models={higgsfieldModels}
+            models={listedModels}
             current={model}
             onPick={chooseModel}
             onClose={() => setBrowsing(false)}

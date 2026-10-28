@@ -37,7 +37,9 @@ export default async function StudioLayout({
       {/* One per provider, each keeping its own form and run */}
       <GenerateProvider>
         <GenerateProvider provider="higgsfield">
-          <StudioShell>{children}</StudioShell>
+          <GenerateProvider provider="elevenlabs">
+            <StudioShell>{children}</StudioShell>
+          </GenerateProvider>
         </GenerateProvider>
       </GenerateProvider>
     </StudioProvider>

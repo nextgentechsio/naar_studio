@@ -105,7 +105,7 @@ export function canDeleteProjects(actor: Actor): boolean {
   return !actor.disabled && actor.role === "super_admin";
 }
 
-// Removing a run from History (its expense stays)
+// Removing a run everywhere, its expense included
 export function canDeleteGenerations(actor: Actor): boolean {
   return !actor.disabled && actor.role === "super_admin";
 }

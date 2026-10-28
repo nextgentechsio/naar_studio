@@ -16,7 +16,14 @@ export const runtime = "nodejs";
 //
 // ?page=1&pageSize=24&project=<id>&user=<id>
 // &model=<owner/name>&status=succeeded|failed|running&q=<text>
+// &from=<ISO>&to=<ISO> (created; to is exclusive)
 // &options=0 leaves out the filter dropdown values
+// An ISO date from the query; anything else is ignored
+function instant(value: string | null): Date | undefined {
+  const parsed = value ? new Date(value) : null;
+  return parsed && !Number.isNaN(parsed.getTime()) ? parsed : undefined;
+}
+
 export async function GET(request: Request) {
   const auth = await requireUser();
   if (auth.response) return auth.response;
@@ -56,6 +63,8 @@ export async function GET(request: Request) {
           ? (status as HistoryStatus)
           : undefined,
         q: params.get("q") || undefined,
+        createdFrom: instant(params.get("from")),
+        createdTo: instant(params.get("to")),
         withOptions: params.get("options") !== "0",
       })
     );

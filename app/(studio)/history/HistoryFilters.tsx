@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Icon } from "@/app/components/ui/Icon";
 import { Button, cx, inputClass } from "@/app/components/ui/primitives";
 import type { HistoryPage, HistoryStatus } from "@/lib/client/data";
+import { DATE_RANGES, type DateRange } from "@/lib/client/date-range";
 import { modelLabel } from "@/lib/model-catalog";
 
 // --------------------------------------------------
@@ -19,6 +20,21 @@ export type FilterValues = {
   model: string;
   user: string;
   status: "" | HistoryStatus;
+  // When it was created (see lib/client/date-range.ts);
+  // from/to: YYYY-MM-DD local days, for "custom"
+  range: DateRange;
+  from: string;
+  to: string;
+};
+
+// How each range reads in the Created menu
+const CREATED_LABELS: Record<DateRange, string> = {
+  "": "Created any time",
+  today: "Created today",
+  week: "Created this week",
+  month: "Created this month",
+  "30d": "Created in the last 30 days",
+  custom: "Created between…",
 };
 
 const STATUS_OPTIONS: ["" | HistoryStatus, string][] = [
@@ -77,7 +93,7 @@ export default function HistoryFilters({
   }, [draft, values.q, onChange]);
 
   const active =
-    values.q || values.project || values.model || values.user || values.status;
+    values.q || values.project || values.model || values.user || values.status || values.range;
 
   return (
     <div className="space-y-3 rounded-xl border border-line bg-surface p-3 shadow-card">
@@ -142,32 +158,74 @@ export default function HistoryFilters({
             ))}
           </select>
         )}
+
+        <select
+          aria-label="Created"
+          value={values.range}
+          onChange={(event) => {
+            const range = event.target.value as DateRange;
+            // Custom dates only mean something for "custom"
+            onChange(range === "custom" ? { range } : { range, from: "", to: "" });
+          }}
+          className={selectClass}
+        >
+          {DATE_RANGES.map(([value]) => (
+            <option key={value || "any"} value={value}>
+              {CREATED_LABELS[value]}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* min-h keeps the bar from growing when "Clear
           filters" appears */}
       <div className="flex min-h-8 flex-wrap items-center justify-between gap-2">
-        <div
-          role="group"
-          aria-label="Filter by status"
-          className="flex flex-wrap gap-1.5"
-        >
-          {STATUS_OPTIONS.filter(([value]) => value !== "hidden" || showHidden).map(([value, label]) => (
-            <button
-              key={label}
-              type="button"
-              aria-pressed={values.status === value}
-              onClick={() => onChange({ status: value })}
-              className={cx(
-                "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
-                values.status === value
-                  ? "border-accent bg-accent-soft text-accent"
-                  : "border-line text-fg-muted hover:border-line-strong hover:text-fg",
-              )}
-            >
-              {label}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-3">
+          <div
+            role="group"
+            aria-label="Filter by status"
+            className="flex flex-wrap gap-1.5"
+          >
+            {STATUS_OPTIONS.filter(([value]) => value !== "hidden" || showHidden).map(([value, label]) => (
+              <button
+                key={label}
+                type="button"
+                aria-pressed={values.status === value}
+                onClick={() => onChange({ status: value })}
+                className={cx(
+                  "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                  values.status === value
+                    ? "border-accent bg-accent-soft text-accent"
+                    : "border-line text-fg-muted hover:border-line-strong hover:text-fg",
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {values.range === "custom" && (
+            <div className="ui-rise flex items-center gap-1.5 text-xs text-fg-muted">
+              <span>Created</span>
+              <input
+                type="date"
+                aria-label="Created from"
+                value={values.from}
+                max={values.to || undefined}
+                onChange={(event) => onChange({ from: event.target.value })}
+                className={cx(inputClass, "h-8 w-auto px-2 text-xs")}
+              />
+              <span aria-hidden="true">–</span>
+              <input
+                type="date"
+                aria-label="Created to"
+                value={values.to}
+                min={values.from || undefined}
+                onChange={(event) => onChange({ to: event.target.value })}
+                className={cx(inputClass, "h-8 w-auto px-2 text-xs")}
+              />
+            </div>
+          )}
         </div>
 
         {active && (

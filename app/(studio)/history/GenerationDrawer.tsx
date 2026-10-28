@@ -372,7 +372,7 @@ export default function GenerationDrawer({
                   <p className="text-sm font-medium text-fg">Delete this run from History?</p>
                   <p className="mt-0.5 text-xs text-fg-muted">
                     Its saved output is removed for everyone and can&apos;t be
-                    recovered. Its cost stays in Expenses.
+                    recovered. Its cost is removed from Expenses too.
                   </p>
                   <div className="mt-3 flex gap-2">
                     <Button

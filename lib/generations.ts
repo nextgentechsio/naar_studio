@@ -13,6 +13,7 @@ import {
   isHiggsfieldOutputUrl,
 } from "@/lib/higgsfield";
 import {
+  expensesCollection,
   generationsCollection,
   type GenerationDoc,
   type Provider,
@@ -239,6 +240,10 @@ export type HistoryQuery = {
   status?: HistoryStatus;
   // Case-insensitive match on the prompt
   q?: string;
+  // Created from (inclusive) / before (exclusive); the
+  // browser sends its local midnights
+  createdFrom?: Date;
+  createdTo?: Date;
   // The filter dropdown values cost three extra queries
   // over all the viewer's runs; skip them when the page
   // already has them
@@ -331,6 +336,13 @@ export async function listGenerations(
 
   const q = query.q?.trim().slice(0, 100);
   if (q) filter.prompt = { $regex: escapeRegex(q), $options: "i" };
+
+  if (query.createdFrom || query.createdTo) {
+    filter.createdAt = {
+      ...(query.createdFrom && { $gte: query.createdFrom }),
+      ...(query.createdTo && { $lt: query.createdTo }),
+    };
+  }
 
   const collection = await generationsCollection();
 
@@ -694,11 +706,10 @@ export async function reconcilePending(
 // --------------------------------------------------
 // DELETE (super admin only, checked by the route)
 //
-// Removes a finished run from History, with its saved
-// output. Its expense stays: the money was spent, and
-// Dashboard and Expenses must still add up. A run still
-// going can't be deleted, since finishing it is what
-// records its cost.
+// Removes a finished run everywhere: History, its saved
+// output, and its expense (so Dashboard and Expenses no
+// longer count it). A run still going can't be deleted,
+// since finishing it is what records its cost.
 // --------------------------------------------------
 
 export type DeleteGenerationResult =
@@ -723,11 +734,14 @@ export async function deleteGeneration(id: string): Promise<DeleteGenerationResu
 
   // After the record is gone, so nothing points at a
   // deleted file (a copy still being saved is caught by
-  // the outputs/ sweep)
-  await deleteSavedOutput({
-    fileId: doc.outputFileId ?? null,
-    blobUrl: doc.outputBlobUrl ?? null,
-  });
+  // the outputs/ sweep). The expense shares the run's id.
+  await Promise.all([
+    deleteSavedOutput({
+      fileId: doc.outputFileId ?? null,
+      blobUrl: doc.outputBlobUrl ?? null,
+    }),
+    (await expensesCollection()).deleteOne({ _id: id }),
+  ]);
 
   return { ok: true };
 }

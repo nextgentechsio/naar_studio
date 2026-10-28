@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useStudio } from "@/app/(studio)/_components/StudioProvider";
 import { useApiData } from "@/app/(studio)/_components/useApiData";
 import { Alert, Button, cx, formatCost } from "@/app/components/ui/primitives";
@@ -138,9 +138,16 @@ export default function ExpensesView() {
   // Filter changes replace the history entry, like
   // History's filters (the custom dates only matter with
   // the custom range)
+  // The address as last asked for: two quick changes
+  // (e.g. both custom dates) build on each other
+  const latestQuery = useRef(searchParams.toString());
+  useEffect(() => {
+    latestQuery.current = searchParams.toString();
+  }, [searchParams]);
+
   const changeFilters = useCallback(
     (patch: Partial<ExpenseFilterValues>) => {
-      const next = new URLSearchParams(searchParams.toString());
+      const next = new URLSearchParams(latestQuery.current);
 
       for (const [key, value] of Object.entries(patch)) {
         if (value) next.set(key, value);
@@ -153,14 +160,18 @@ export default function ExpensesView() {
       }
 
       const search = next.toString();
+      latestQuery.current = search;
       router.replace(search ? `${pathname}?${search}` : pathname, {
         scroll: false,
       });
     },
-    [pathname, router, searchParams]
+    [pathname, router]
   );
 
-  const clearFilters = () => router.replace(pathname, { scroll: false });
+  const clearFilters = () => {
+    latestQuery.current = "";
+    router.replace(pathname, { scroll: false });
+  };
 
   const queryKey = new URLSearchParams(
     Object.entries(query).filter((entry): entry is [string, string] => Boolean(entry[1]))

@@ -21,6 +21,7 @@ import {
   type HistoryStatus,
 } from "@/lib/client/data";
 import { readCache, writeCache } from "@/lib/client/cache";
+import { isDateRange, rangeInstants, type DateRange } from "@/lib/client/date-range";
 import { errorMessage } from "@/lib/client/http";
 import {
   canDeleteGenerations,
@@ -53,7 +54,7 @@ const STATUSES: HistoryStatus[] = ["succeeded", "failed", "running", "hidden"];
 const GRID_CLASS =
   "grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5";
 
-const FILTER_KEYS = ["q", "project", "model", "user", "status"] as const;
+const FILTER_KEYS = ["q", "project", "model", "user", "status", "range", "from", "to"] as const;
 
 function readFilters(params: URLSearchParams): FilterValues {
   const status = params.get("status") as HistoryStatus | null;
@@ -64,6 +65,9 @@ function readFilters(params: URLSearchParams): FilterValues {
     model: params.get("model") ?? "",
     user: params.get("user") ?? "",
     status: status && STATUSES.includes(status) ? status : "",
+    range: isDateRange(params.get("range")) ? (params.get("range") as DateRange) : "",
+    from: params.get("from") ?? "",
+    to: params.get("to") ?? "",
   };
 }
 
@@ -92,9 +96,17 @@ export default function HistoryView() {
 
   // ---------- URL updates ----------
 
+  // The address as last asked for: two quick changes
+  // (e.g. both custom dates) must build on each other,
+  // not both on the address before either
+  const latestQuery = useRef(searchParams.toString());
+  useEffect(() => {
+    latestQuery.current = searchParams.toString();
+  }, [searchParams]);
+
   const updateUrl = useCallback(
     (patch: Record<string, string | null>, mode: "push" | "replace") => {
-      const next = new URLSearchParams(searchParams.toString());
+      const next = new URLSearchParams(latestQuery.current);
 
       for (const [key, value] of Object.entries(patch)) {
         if (value) next.set(key, value);
@@ -102,12 +114,13 @@ export default function HistoryView() {
       }
 
       const query = next.toString();
+      latestQuery.current = query;
       const url = query ? `${pathname}?${query}` : pathname;
 
       if (mode === "push") router.push(url, { scroll: false });
       else router.replace(url, { scroll: false });
     },
-    [pathname, router, searchParams],
+    [pathname, router],
   );
 
   // Filter changes go back to page 1 and replace the
@@ -126,6 +139,9 @@ export default function HistoryView() {
         model: null,
         user: null,
         status: null,
+        range: null,
+        from: null,
+        to: null,
         page: null,
       },
       "replace",
@@ -187,6 +203,11 @@ export default function HistoryView() {
       model: params.get("model") ?? undefined,
       user: params.get("user") ?? undefined,
       status: (params.get("status") as HistoryStatus) ?? undefined,
+      ...rangeInstants(
+        isDateRange(params.get("range")) ? (params.get("range") as DateRange) : "",
+        params.get("from") ?? "",
+        params.get("to") ?? "",
+      ),
       withOptions,
     })
       .then((data) => {

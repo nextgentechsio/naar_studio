@@ -14,9 +14,8 @@ import {
 } from "./helpers";
 
 // --------------------------------------------------
-// Deleting a run from History: the super admin only,
-// finished runs only. The saved output goes; the expense
-// stays.
+// Deleting a run: the super admin only, finished runs
+// only. The record, its saved output and its expense go.
 // --------------------------------------------------
 
 let root: Session;
@@ -54,7 +53,7 @@ describe("deleting a run", () => {
     expect((await api(`/api/generations/${id}`, { session: alice.session })).status).toBe(200);
   });
 
-  it("removes the record and its saved output, and keeps the expense", async () => {
+  it("removes the record, its saved output and its expense", async () => {
     const id = await finishedRun();
     const database = await db();
     const before = await database.collection("generations").findOne({ _id: id as never });
@@ -76,10 +75,8 @@ describe("deleting a run", () => {
     if (before?.outputBlobUrl) {
       expect((await fetch(before.outputBlobUrl)).status).toBe(404);
     }
-    // Spending still adds up
-    expect(await database.collection("expenses").findOne({ _id: id as never })).toMatchObject({
-      amountUsd: expense?.amountUsd,
-    });
+    // No longer counted in Expenses or the Dashboard
+    expect(await database.collection("expenses").findOne({ _id: id as never })).toBeNull();
 
     // Gone from the list
     const list = await api(`/api/generations?pageSize=100&options=0`, { session: root });

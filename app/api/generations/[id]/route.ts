@@ -44,7 +44,7 @@ export async function GET(_request: Request, context: RouteContext) {
 }
 
 // Removes a finished run and its saved output from
-// History; the super admin only. Its expense is kept.
+// History, and its expense; the super admin only.
 export async function DELETE(_request: Request, context: RouteContext) {
   const auth = await requireUser(["super_admin"]);
   if (auth.response) return auth.response;

@@ -29,6 +29,9 @@ export type HistoryFilters = {
   model?: string;
   status?: HistoryStatus;
   q?: string;
+  // Created between (ISO instants; to is exclusive)
+  from?: string;
+  to?: string;
   // false: skip the filter dropdown values (see
   // listGenerations)
   withOptions?: boolean;

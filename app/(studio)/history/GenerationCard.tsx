@@ -118,7 +118,7 @@ export default function GenerationCard({
               className="ui-backdrop pointer-events-auto absolute inset-0 flex flex-col items-center justify-center gap-2.5 rounded-t-xl bg-black/75 p-3 text-center backdrop-blur-sm"
             >
               <span className="text-sm font-medium text-white">Delete this run?</span>
-              <span className="text-[11px] leading-4 text-white/70">Its cost stays in Expenses.</span>
+              <span className="text-[11px] leading-4 text-white/70">Its cost is removed from Expenses too.</span>
               <span className="flex gap-1.5">
                 <button
                   type="button"

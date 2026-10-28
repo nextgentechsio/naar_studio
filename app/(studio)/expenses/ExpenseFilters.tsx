@@ -1,7 +1,8 @@
 "use client";
 
 import { Button, cx, inputClass } from "@/app/components/ui/primitives";
-import { localPeriods, type ExpenseQuery } from "@/lib/client/data";
+import type { ExpenseQuery } from "@/lib/client/data";
+import { DATE_RANGES, rangeInstants, type DateRange } from "@/lib/client/date-range";
 import type { ExpenseReport } from "@/lib/expenses";
 import { modelLabel } from "@/lib/model-catalog";
 
@@ -13,7 +14,7 @@ import { modelLabel } from "@/lib/model-catalog";
 // with Back, like History.
 // --------------------------------------------------
 
-export type ExpenseRange = "" | "today" | "week" | "month" | "30d" | "custom";
+export type ExpenseRange = DateRange;
 
 export type ExpenseFilterValues = {
   project: string;
@@ -25,53 +26,16 @@ export type ExpenseFilterValues = {
   to: string;
 };
 
-export const RANGES: [ExpenseRange, string][] = [
-  ["", "All time"],
-  ["today", "Today"],
-  ["week", "This week"],
-  ["month", "This month"],
-  ["30d", "Last 30 days"],
-  ["custom", "Custom"],
-];
-
-const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-
-// Local midnight at the start of a YYYY-MM-DD day
-function dayStart(day: string, addDays = 0): Date | null {
-  if (!DAY_PATTERN.test(day)) return null;
-
-  const [year, month, date] = day.split("-").map(Number);
-  const start = new Date(year, month - 1, date + addDays);
-
-  return Number.isNaN(start.getTime()) ? null : start;
-}
+export const RANGES = DATE_RANGES;
 
 // The filters as the API takes them: the range becomes
 // local-midnight instants, `to` exclusive
 export function toExpenseQuery(values: ExpenseFilterValues): ExpenseQuery {
-  const { todayStart, weekStart, monthStart } = localPeriods();
-  let from: Date | null = null;
-  let to: Date | null = null;
-
-  if (values.range === "today") from = todayStart;
-  if (values.range === "week") from = weekStart;
-  if (values.range === "month") from = monthStart;
-  if (values.range === "30d") {
-    from = new Date(todayStart);
-    from.setDate(todayStart.getDate() - 29);
-  }
-  if (values.range === "custom") {
-    from = dayStart(values.from);
-    // Through the end of the last day
-    to = dayStart(values.to, 1);
-  }
-
   return {
     project: values.project || undefined,
     user: values.user || undefined,
     model: values.model || undefined,
-    from: from?.toISOString(),
-    to: to?.toISOString(),
+    ...rangeInstants(values.range, values.from, values.to),
   };
 }
 

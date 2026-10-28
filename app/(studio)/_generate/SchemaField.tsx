@@ -12,6 +12,7 @@ import {
   textareaClass,
 } from "@/app/components/ui/primitives";
 import { useFileDrop } from "@/app/components/ui/useFileDrop";
+import { useSortable } from "@/app/components/ui/useSortable";
 import MediaCaption from "./MediaCaption";
 import MediaLibraryDialog from "./MediaLibraryDialog";
 import MediaPreviewDialog, { type MediaPreview } from "./MediaPreviewDialog";
@@ -280,11 +281,33 @@ function FileField({
       ? (filePreviews[singleUrl] ?? singleUrl)
       : null;
 
+  // REORDER: drag a file to a new place (or Alt + arrow
+  // keys on a focused one). The order is what the model
+  // gets, e.g. "image 1" in a prompt.
+  const reorderable = !single && files.length > 1;
+  const sortable = useSortable(files.map(String), (next) => updateInput(key, next), reorderable);
+
+  // Alt + ← / → (↑ / ↓ in the audio list)
+  function onMoveKey(event: KeyboardEvent<HTMLElement>, index: number | null) {
+    if (!reorderable || index === null || !event.altKey) return;
+    const step = event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : 0;
+    if (!step) return;
+    event.preventDefault();
+    sortable.move(index, index + step);
+    // Keep focus on the moved file
+    const button = event.currentTarget;
+    requestAnimationFrame(() => button.focus());
+  }
+
+  // A tile's drag handling, for uploaded files in a list
+  const sortProps = (tile: { url: string | null; index: number | null }) =>
+    reorderable && tile.url && tile.index !== null ? { ...sortable.itemProps(tile.url), "data-sortable": true } : {};
+
   // Uploaded files, then those still uploading, in one
   // list so a tile stays the same element when done
   // `url`: the uploaded file (for its size), once there is one
   const tiles: { src: string; url: string | null; index: number | null; progress?: number | null }[] = [
-    ...files.map((file, index) => ({
+    ...sortable.order.map((file, index) => ({
       src: filePreviews[String(file)] ?? String(file),
       url: String(file),
       index,
@@ -303,72 +326,6 @@ function FileField({
         ]
       : []),
   ];
-
-  // REORDER: drag an uploaded file onto another's place
-  // (or Alt + arrow keys on a focused one). The order is
-  // what the model gets, e.g. "image 1" in a prompt.
-  const [dragFrom, setDragFrom] = useState<number | null>(null);
-  const [dragOver, setDragOver] = useState<number | null>(null);
-  const reorderable = !single && files.length > 1;
-
-  function move(from: number, to: number) {
-    if (from === to || to < 0 || to >= files.length) return;
-    const next = [...files];
-    const [moved] = next.splice(from, 1);
-    next.splice(to, 0, moved);
-    updateInput(key, next);
-  }
-
-  // Props for a tile at this place in the list
-  function reorderProps(index: number | null): HTMLAttributes<HTMLElement> {
-    if (!reorderable || index === null) return {};
-
-    return {
-      draggable: true,
-      title: "Drag to change the order",
-      onDragStart: (event) => {
-        event.dataTransfer.effectAllowed = "move";
-        // Firefox only starts a drag with some data
-        event.dataTransfer.setData("text/plain", String(index));
-        setDragFrom(index);
-      },
-      onDragOver: (event) => {
-        if (dragFrom === null) return;
-        event.preventDefault();
-        event.dataTransfer.dropEffect = "move";
-        if (dragOver !== index) setDragOver(index);
-      },
-      onDrop: (event) => {
-        if (dragFrom === null) return;
-        event.preventDefault();
-        move(dragFrom, index);
-        setDragFrom(null);
-        setDragOver(null);
-      },
-      onDragEnd: () => {
-        setDragFrom(null);
-        setDragOver(null);
-      },
-    };
-  }
-
-  // Alt + ← / → (↑ / ↓ in the audio list) on a tile's button
-  function onMoveKey(event: KeyboardEvent<HTMLElement>, index: number | null) {
-    if (!reorderable || index === null || !event.altKey) return;
-    const step = event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : 0;
-    if (!step) return;
-    event.preventDefault();
-    move(index, index + step);
-    // Keep focus on the moved file's tile
-    const button = event.currentTarget;
-    requestAnimationFrame(() => button.focus());
-  }
-
-  const dropCue = (index: number | null) =>
-    index !== null && dragFrom !== null && cx(
-      dragFrom === index && "opacity-40",
-      dragOver === index && dragFrom !== index && "ring-2 ring-accent ring-offset-2 ring-offset-surface"
-    );
 
   // Its place, shown when the order can change
   const place = (index: number | null) =>
@@ -454,11 +411,10 @@ function FileField({
                 <PreviewTile
                   key={tile.src}
                   as="li"
-                  {...reorderProps(tile.index)}
+                  {...sortProps(tile)}
                   className={cx(
-                    "rounded-lg border border-line bg-sunken p-2 pr-12 transition-opacity",
-                    reorderable && tile.index !== null && "cursor-grab pl-7 active:cursor-grabbing",
-                    dropCue(tile.index)
+                    "rounded-lg border border-line bg-sunken p-2 pr-12",
+                    reorderable && tile.index !== null && "pl-7"
                   )}
                   progress={tile.progress}
                 >
@@ -470,17 +426,18 @@ function FileField({
                           aria-label={`${label} ${tile.index + 1}: Alt + arrow keys to move`}
                           aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
                           onKeyDown={(event) => onMoveKey(event, tile.index)}
-                          className="absolute inset-y-0 left-0 z-10 flex w-6 cursor-grab items-center justify-center text-[11px] font-semibold tabular-nums text-fg-subtle focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+                          className="absolute inset-y-0 left-0 z-10 flex w-6 cursor-[inherit] items-center justify-center text-[11px] font-semibold tabular-nums text-fg-subtle focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
                         >
                           {tile.index + 1}
                         </button>
                       )}
-                      <audio src={tile.src} controls className={cx("w-full", mediaClass)} />
+                      <audio src={tile.src} controls data-no-drag className={cx("w-full", mediaClass)} />
 
                       {tile.index !== null && (
                         <button
                           type="button"
                           aria-label={`Remove ${label} ${tile.index + 1}`}
+                          data-no-drag
                           onClick={() => removeImage(key, tile.index!)}
                           className="absolute right-2 top-1/2 z-10 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-fg-muted hover:bg-raised hover:text-fg"
                         >
@@ -501,12 +458,10 @@ function FileField({
                 <PreviewTile
                   key={tile.src}
                   as="li"
-                  {...reorderProps(tile.index)}
+                  {...sortProps(tile)}
                   className={cx(
-                    "group h-16 rounded-lg border border-line bg-black transition-opacity",
-                    kind === "video" ? "w-28" : "w-16",
-                    reorderable && tile.index !== null && "cursor-grab active:cursor-grabbing",
-                    dropCue(tile.index)
+                    "group h-16 rounded-lg border border-line bg-black",
+                    kind === "video" ? "w-28" : "w-16"
                   )}
                   progress={tile.progress}
                 >
@@ -539,10 +494,14 @@ function FileField({
                               ? label
                               : `${label} ${tile.index + 1}`
                         }`}
-                        onClick={(event) => openPreview(event.currentTarget, tile.src, tile.url)}
+                        onClick={(event) => !sortable.justDragged() && openPreview(event.currentTarget, tile.src, tile.url)}
                         onKeyDown={(event) => onMoveKey(event, tile.index)}
                         aria-keyshortcuts={reorderable && tile.index !== null ? "Alt+ArrowLeft Alt+ArrowRight" : undefined}
-                        className="absolute inset-0 flex cursor-zoom-in items-center justify-center rounded-lg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+                        className={cx(
+                          "absolute inset-0 flex items-center justify-center rounded-lg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent",
+                          // Sortable: the tile's grab cursor; a click still previews
+                          reorderable && tile.index !== null ? "cursor-[inherit]" : "cursor-zoom-in"
+                        )}
                       >
                         {kind === "video" && tile.progress === undefined && (
                           <span className="flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white transition-transform group-hover:scale-110">
@@ -561,12 +520,13 @@ function FileField({
                         <button
                           type="button"
                           aria-label={`Remove ${label}${single ? "" : ` ${tile.index + 1}`}`}
+                          data-no-drag
                           onClick={() =>
                             single
                               ? updateInput(key, "")
                               : removeImage(key, tile.index!)
                           }
-                          className="absolute right-1 top-1 z-10 flex h-5 w-5 items-center justify-center rounded-md bg-black/70 text-white opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-90"
+                          className="absolute right-1 top-1 z-10 flex h-5 w-5 items-center justify-center rounded-md bg-black/70 text-white opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 group-data-lifted:opacity-0! [@media(hover:none)]:opacity-90"
                         >
                           <Icon name="close" size={12} />
                         </button>
@@ -630,8 +590,11 @@ function PreviewTile({
   className,
   progress,
   children,
+  ref: itemRef,
   ...rest
 }: Omit<HTMLAttributes<HTMLElement>, "children"> & {
+  // e.g. a sortable list's, alongside the tile's own
+  ref?: (element: HTMLElement | null) => void;
   as?: "div" | "li";
   className?: string;
   // undefined: not uploading; null: uploading, no progress
@@ -658,7 +621,10 @@ function PreviewTile({
   return (
     <Tag
       {...rest}
-      ref={tile as never}
+      ref={(element: HTMLElement | null) => {
+        tile.current = element;
+        itemRef?.(element);
+      }}
       className={cx("relative overflow-hidden", className)}
       aria-busy={uploading || undefined}
     >

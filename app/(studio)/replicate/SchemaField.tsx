@@ -39,10 +39,10 @@ export default function SchemaField({
   fieldKey: string;
   field: SchemaProperty;
 }) {
-  const { inputs, updateInput } = useGenerate();
+  const { inputs, updateInput, schema, model } = useGenerate();
 
   const value = inputs[key];
-  const label = fieldLabel(key, field);
+  const label = fieldLabel(key, field, { schema, model });
   const kind = fileKind(key, field);
   const lowerKey = key.toLowerCase();
 

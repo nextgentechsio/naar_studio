@@ -111,7 +111,45 @@ export function fieldGroup(
   return "main";
 }
 
-export function fieldLabel(key: string, field: SchemaProperty) {
+// When a model takes both one main file and a list of
+// the same kind (Seedance video edit: video_url and
+// video_urls), the bare names read as "Video" and
+// "Videos". The main one is named for its job and the
+// lists become references.
+function pairedFileLabel(
+  key: string,
+  field: SchemaProperty,
+  schema: Schema,
+  model: string
+): string | null {
+  if (field.title) return null;
+
+  const single = key.match(/^(image|video|audio)_url$/);
+  if (single && schema[`${single[1]}_urls`]) {
+    const task = model.split("/").pop() ?? "";
+    if (single[1] === "video" && task === "video-edit") return "Video to edit";
+    if (single[1] === "video" && task === "video-extend") return "Video to extend";
+    return `Main ${single[1]}`;
+  }
+
+  // Any list next to a main file is a set of references
+  const list = key.match(/^(image|video|audio)_urls$/);
+  const hasMain = Object.keys(schema).some((name) => /^(image|video|audio)_url$/.test(name));
+  if (list && hasMain) {
+    return list[1] === "audio" ? "Reference audio" : `Reference ${list[1]}s`;
+  }
+
+  return null;
+}
+
+export function fieldLabel(
+  key: string,
+  field: SchemaProperty,
+  context?: { schema: Schema; model: string }
+) {
+  const paired = context && pairedFileLabel(key, field, context.schema, context.model);
+  if (paired) return paired;
+
   // Higgsfield names uploads by URL: image_urls → Images,
   // end_image_url → End image
   const name = key

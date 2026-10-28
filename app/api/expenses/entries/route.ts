@@ -4,9 +4,9 @@ import { listExpenses, readExpenseFilters } from "@/lib/expenses";
 
 export const runtime = "nodejs";
 
-// More expense entries, newest first, for "Load more".
-// ?cursor=<nextCursor from the previous page>&limit=50,
-// plus the same filters as /api/expenses
+// Expense entries, newest first: ?page=2 (numbered pages)
+// or ?cursor=<nextCursor from the previous page>, with
+// &limit=50 and the same filters as /api/expenses
 export async function GET(request: Request) {
   const auth = await requireUser();
   if (auth.response) return auth.response;
@@ -17,6 +17,7 @@ export async function GET(request: Request) {
     return NextResponse.json(
       await listExpenses(auth.user, {
         cursor: params.get("cursor") || undefined,
+        page: Number(params.get("page")) || undefined,
         limit: Number(params.get("limit")) || undefined,
         filters: readExpenseFilters(params),
       })

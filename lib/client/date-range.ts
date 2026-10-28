@@ -61,3 +61,52 @@ export function rangeInstants(
 
   return { from: from?.toISOString(), to: to?.toISOString() };
 }
+
+// --------------------------------------------------
+// DASHBOARD PERIODS
+// --------------------------------------------------
+
+export type DashboardRange = "7d" | "30d" | "90d" | "month";
+
+export const DASHBOARD_RANGES: [DashboardRange, string][] = [
+  ["7d", "Last 7 days"],
+  ["30d", "Last 30 days"],
+  ["90d", "Last 90 days"],
+  ["month", "This month"],
+];
+
+export function readDashboardRange(value: string | null): DashboardRange {
+  return DASHBOARD_RANGES.some(([range]) => range === value) ? (value as DashboardRange) : "30d";
+}
+
+// YYYY-MM-DD of a local date
+export function localDay(date: Date): string {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+// The period as local midnights (to: tomorrow, exclusive),
+// and every day in it, oldest first
+export function dashboardPeriod(range: DashboardRange, now = new Date()) {
+  const { todayStart, monthStart } = localPeriods(now);
+  const to = new Date(todayStart);
+  to.setDate(todayStart.getDate() + 1);
+
+  let from: Date;
+  if (range === "month") {
+    from = monthStart;
+  } else {
+    from = new Date(todayStart);
+    from.setDate(todayStart.getDate() - (Number.parseInt(range, 10) - 1));
+  }
+
+  const days: string[] = [];
+  for (const day = new Date(from); day < to; day.setDate(day.getDate() + 1)) {
+    days.push(localDay(day));
+  }
+
+  return { from, to, monthStart, days };
+}

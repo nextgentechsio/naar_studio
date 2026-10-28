@@ -1,4 +1,5 @@
 import { fetchJson } from "@/lib/client/http";
+import type { CostAnalytics } from "@/lib/cost-analytics";
 import type { ExpensePage, ExpenseReport } from "@/lib/expenses";
 import type {
   HistoryPage,
@@ -115,6 +116,24 @@ export function localPeriods(now = new Date()) {
 
 // Expense filters as the API takes them: ids, and from/to
 // as ISO instants (to is exclusive)
+// Spend analytics for the Dashboard (lib/cost-analytics.ts)
+export async function fetchCostAnalytics(options: {
+  from: Date;
+  to: Date;
+  monthStart: Date;
+  provider?: "replicate" | "higgsfield";
+}): Promise<CostAnalytics> {
+  const params = new URLSearchParams({
+    from: options.from.toISOString(),
+    to: options.to.toISOString(),
+    monthStart: options.monthStart.toISOString(),
+    tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  });
+  if (options.provider) params.set("provider", options.provider);
+
+  return fetchJson<CostAnalytics>(`/api/expenses/analytics?${params}`);
+}
+
 // Where a run was made (the Generate pages)
 export type Platform = "" | "replicate" | "higgsfield";
 
@@ -169,13 +188,13 @@ export function fetchExpenseReport({
   return fetchJson<ExpenseReport>(`/api/expenses?${params}`);
 }
 
-// The entries after a page's nextCursor, same filters
-export function fetchMoreExpenses(
-  cursor: string,
+// One numbered page of entries (1-based), same filters
+export function fetchExpensesPage(
+  page: number,
   filters: ExpenseQuery = {}
 ): Promise<ExpensePage> {
   const params = expenseParams(filters);
-  params.set("cursor", cursor);
+  params.set("page", String(page));
 
   return fetchJson<ExpensePage>(`/api/expenses/entries?${params}`);
 }

@@ -1,13 +1,13 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useStudio } from "@/app/(studio)/_components/StudioProvider";
 import { useApiData } from "@/app/(studio)/_components/useApiData";
+import { Icon } from "@/app/components/ui/Icon";
 import { Alert, Button, cx, formatCost } from "@/app/components/ui/primitives";
-import { fetchExpenseReport, fetchMoreExpenses, readPlatform } from "@/lib/client/data";
-import { errorMessage } from "@/lib/client/http";
-import type { ExpensePage, SpendGroup, SpendTotal } from "@/lib/expenses";
+import { fetchExpenseReport, fetchExpensesPage, readPlatform } from "@/lib/client/data";
+import type { SpendGroup, SpendTotal } from "@/lib/expenses";
 import { canManageUsers } from "@/lib/roles";
 import ExpenseFilters, {
   RANGES,
@@ -86,6 +86,10 @@ function GroupTable({
   );
 }
 
+// Entries per page (the server's EXPENSE_PAGE_SIZE: the
+// report brings the first page)
+const PAGE_SIZE = 50;
+
 const FILTER_KEYS = ["platform", "project", "user", "model", "range", "from", "to"] as const;
 
 function readFilters(params: URLSearchParams): ExpenseFilterValues {
@@ -159,6 +163,8 @@ export default function ExpensesView() {
         next.delete("from");
         next.delete("to");
       }
+      // New filters start from the first page
+      next.delete("page");
 
       const search = next.toString();
       latestQuery.current = search;
@@ -188,38 +194,35 @@ export default function ExpensesView() {
     "Unable to load expenses."
   );
 
-  // Pages after the first, from "Load more". Tied to the
-  // report they continue, so a fresher report starts over.
-  const [more, setMore] = useState<{
-    after: ExpensePage | null;
-    pages: ExpensePage[];
-  }>({ after: null, pages: [] });
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [moreError, setMoreError] = useState("");
+  // Numbered pages of the history. The first comes with
+  // the report; the selection's count says how many there
+  // are. The page is in the URL, like History's.
+  const entryCount = report?.totals.selected.count ?? 0;
+  const pageCount = Math.max(1, Math.ceil(entryCount / PAGE_SIZE));
+  const requestedPage = Math.floor(Number(searchParams.get("page")));
+  const page = Number.isFinite(requestedPage) && requestedPage > 1 ? requestedPage : 1;
 
-  const extraPages = more.after === report ? more.pages : [];
-  const entries = [
-    ...(report?.entries ?? []),
-    ...extraPages.flatMap((page) => page.entries),
-  ];
-  const nextCursor = extraPages.length
-    ? extraPages[extraPages.length - 1].nextCursor
-    : (report?.nextCursor ?? null);
+  const laterPage = useApiData(
+    page > 1 ? `expenses:page:${queryKey}:${page}` : "expenses:page:none",
+    () => (page > 1 ? fetchExpensesPage(page, query) : Promise.resolve(null)),
+    "Unable to load this page of expenses."
+  );
 
-  async function loadMore() {
-    if (!nextCursor || !report) return;
+  const entries = page > 1 ? (laterPage.data?.entries ?? []) : (report?.entries ?? []);
+  const entriesLoading = page > 1 ? laterPage.loading : !report;
+  const first = entryCount ? (Math.min(page, pageCount) - 1) * PAGE_SIZE + 1 : 0;
+  const last = Math.min(page * PAGE_SIZE, entryCount);
 
-    setLoadingMore(true);
-    setMoreError("");
+  const historyTop = useRef<HTMLDivElement>(null);
 
-    try {
-      const page = await fetchMoreExpenses(nextCursor, query);
-      setMore({ after: report, pages: [...extraPages, page] });
-    } catch (err) {
-      setMoreError(errorMessage(err, "Unable to load more expenses."));
-    } finally {
-      setLoadingMore(false);
-    }
+  function goToPage(next: number) {
+    const params = new URLSearchParams(latestQuery.current);
+    if (next > 1) params.set("page", String(next));
+    else params.delete("page");
+    const search = params.toString();
+    latestQuery.current = search;
+    router.push(search ? `${pathname}?${search}` : pathname, { scroll: false });
+    historyTop.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   const cards: [string, SpendTotal | undefined][] = [
@@ -313,19 +316,25 @@ export default function ExpensesView() {
           )}
         </div>
 
-        <div className="overflow-hidden rounded-2xl border border-line bg-surface">
+        <div ref={historyTop} className="scroll-mt-20 overflow-hidden rounded-2xl border border-line bg-surface">
           <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-line px-5 py-4">
             <span className="font-semibold">Expense history</span>
 
             {report && (
               <span className="text-xs text-fg-subtle">
-                {report.totals.selected.count} billed ·{" "}
-                {formatCost(report.totals.selected.amountUsd)}
+                {entryCount > PAGE_SIZE && `Showing ${first}–${last} of `}
+                {entryCount} billed · {formatCost(report.totals.selected.amountUsd)}
               </span>
             )}
           </div>
 
-          {!report ? (
+          {laterPage.error && page > 1 && (
+            <div className="px-5 pt-4">
+              <Alert>{laterPage.error}</Alert>
+            </div>
+          )}
+
+          {entriesLoading ? (
             error ? (
               <div className="p-10 text-center text-sm text-fg-subtle">
                 Expenses could not be loaded.
@@ -335,10 +344,16 @@ export default function ExpensesView() {
             )
           ) : !entries.length ? (
             <div className="p-10 text-center text-sm text-fg-subtle">
-              {filtered ? "No expenses match these filters." : "No expenses yet."}
+              {page > pageCount && entryCount
+                ? "There's nothing on this page."
+                : filtered
+                  ? "No expenses match these filters."
+                  : "No expenses yet."}
             </div>
           ) : (
-            <div className="divide-y divide-line">
+            <div
+              className={cx("divide-y divide-line transition-opacity", laterPage.refreshing && "opacity-60")}
+            >
               {entries.map((item) => (
                 <div
                   key={item.id}
@@ -366,18 +381,24 @@ export default function ExpensesView() {
             </div>
           )}
 
-          {/* The first 50 come with the report; older ones
-              on request */}
-          {report && (nextCursor || moreError) && (
-            <div className="flex flex-col items-center gap-2 border-t border-line px-5 py-4">
-              {moreError && <p className="text-sm text-danger">{moreError}</p>}
+          {report && pageCount > 1 && (
+            <nav
+              aria-label="Expense history pages"
+              className="flex items-center justify-between gap-3 border-t border-line px-5 py-3"
+            >
+              <Button size="sm" icon="chevronLeft" disabled={page <= 1} onClick={() => goToPage(page - 1)}>
+                Previous
+              </Button>
 
-              {nextCursor && (
-                <Button size="sm" onClick={loadMore} disabled={loadingMore}>
-                  {loadingMore ? "Loading…" : "Load more"}
-                </Button>
-              )}
-            </div>
+              <span className="text-sm text-fg-muted">
+                Page {Math.min(page, pageCount)} of {pageCount}
+              </span>
+
+              <Button size="sm" disabled={page >= pageCount} onClick={() => goToPage(Math.min(pageCount, page + 1))}>
+                Next
+                <Icon name="chevronRight" size={16} />
+              </Button>
+            </nav>
           )}
         </div>
       </div>

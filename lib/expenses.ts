@@ -164,7 +164,7 @@ async function backfillExpenses() {
     .toArray();
 }
 
-async function ensureBackfilled() {
+export async function ensureBackfilled() {
   if (!globalForBackfill.expenseBackfillPromise) {
     globalForBackfill.expenseBackfillPromise =
       backfillExpenses().catch((error) => {
@@ -180,7 +180,7 @@ async function ensureBackfilled() {
 // READ
 // --------------------------------------------------
 
-function totalStages(match?: Record<string, unknown>) {
+export function totalStages(match?: Record<string, unknown>) {
   return [
     ...(match ? [{ $match: match }] : []),
     {
@@ -200,7 +200,7 @@ function totalStages(match?: Record<string, unknown>) {
   ];
 }
 
-function groupStages(idField: string, nameField: string) {
+export function groupStages(idField: string, nameField: string) {
   return [
     {
       $group: {
@@ -227,7 +227,7 @@ const EMPTY_TOTAL: SpendTotal = {
   unpriced: 0,
 };
 
-function readTotal(rows: unknown): SpendTotal {
+export function readTotal(rows: unknown): SpendTotal {
   const row = (rows as SpendTotal[] | undefined)?.[0];
 
   return row
@@ -239,7 +239,7 @@ function readTotal(rows: unknown): SpendTotal {
     : EMPTY_TOTAL;
 }
 
-function readGroups(rows: unknown): SpendGroup[] {
+export function readGroups(rows: unknown): SpendGroup[] {
   return (
     (rows as (SpendTotal & {
       _id: string;
@@ -294,7 +294,7 @@ export function readExpenseFilters(params: URLSearchParams): ExpenseFilters {
 
 // What the viewer may see, narrowed by everything but
 // the date range
-function dimensionFilter(
+export function dimensionFilter(
   actor: StoredUser,
   filters: ExpenseFilters
 ): Filter<ExpenseDoc> {
@@ -463,9 +463,12 @@ function decodeCursor(cursor: string): { time: Date; id: string } | null {
   return at > 0 && id && !Number.isNaN(time.getTime()) ? { time, id } : null;
 }
 
+// One page of entries: after a cursor, or by page number
+// (1-based, for numbered pages; the report's "selected"
+// count says how many there are)
 export async function listExpenses(
   actor: StoredUser,
-  options: { limit?: number; cursor?: string; filters?: ExpenseFilters } = {}
+  options: { limit?: number; cursor?: string; page?: number; filters?: ExpenseFilters } = {}
 ): Promise<ExpensePage> {
   const limit = Math.min(
     Math.max(1, Math.floor(options.limit || EXPENSE_PAGE_SIZE)),
@@ -485,10 +488,17 @@ export async function listExpenses(
     ];
   }
 
+  // Finite and bounded: skip(Infinity) makes Mongo throw
+  const page =
+    !after && options.page && Number.isFinite(options.page)
+      ? Math.min(Math.max(1, Math.floor(options.page)), 100_000)
+      : 1;
+
   // One extra tells whether another page follows
   const docs = await (await expensesCollection())
     .find(filter)
     .sort({ incurredAt: -1, _id: -1 })
+    .skip((page - 1) * limit)
     .limit(limit + 1)
     .toArray();
 

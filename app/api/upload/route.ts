@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth/auth";
 import {
   readReplicateJson,
   replicateApiUrl,
   replicateErrorMessage,
   replicateHeaders,
   upstreamStatus,
-} from "@/lib/replicate-api";
+} from "@/lib/replicate/api";
 
 export const runtime = "nodejs";
 

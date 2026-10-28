@@ -1,4 +1,4 @@
-import { fetchAllowed } from "@/lib/output-source";
+import { fetchAllowed } from "@/lib/storage/output-source";
 
 // --------------------------------------------------
 // VIDEO SIZE AND LENGTH (server side)
@@ -6,7 +6,7 @@ import { fetchAllowed } from "@/lib/output-source";
 // Reads an MP4 / MOV's width, height and length from its
 // "moov" box, with a few range requests instead of the
 // whole download. Used to bill metered Higgsfield runs
-// (lib/higgsfield.ts). Null when the file can't be read
+// (lib/higgsfield/client.ts). Null when the file can't be read
 // or isn't a video.
 // --------------------------------------------------
 

@@ -5,7 +5,7 @@ import { Icon } from "@/app/components/ui/Icon";
 import { Button, cx, inputClass } from "@/app/components/ui/primitives";
 import type { HistoryPage, HistoryStatus } from "@/lib/client/data";
 import { DATE_RANGES, type DateRange } from "@/lib/client/date-range";
-import { modelLabel } from "@/lib/model-catalog";
+import { modelLabel } from "@/lib/replicate/catalog";
 
 // --------------------------------------------------
 // HISTORY FILTER BAR

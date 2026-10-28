@@ -3,8 +3,8 @@
 import { Button, cx, inputClass } from "@/app/components/ui/primitives";
 import { PLATFORMS, type ExpenseQuery, type Platform } from "@/lib/client/data";
 import { DATE_RANGES, rangeInstants, type DateRange } from "@/lib/client/date-range";
-import type { ExpenseReport } from "@/lib/expenses";
-import { modelLabel } from "@/lib/model-catalog";
+import type { ExpenseReport } from "@/lib/spend/expenses";
+import { modelLabel } from "@/lib/replicate/catalog";
 
 // --------------------------------------------------
 // EXPENSES FILTER BAR

@@ -7,14 +7,14 @@
 // lose their GridFS pointers (outputFileId, image.fileId),
 // so the new database has no dependency on GridFS; the
 // copy refuses to run if any record still needs one
-// (see scripts/check-blob-dependencies.mjs).
+// (see scripts/migrations/check-blob-dependencies.mjs).
 //
 // Re-runnable: it mirrors the source each time (upserts
 // every record, removes records deleted at the source),
 // so run it again right before switching MONGODB_URI.
 //
-//   node scripts/copy-database.mjs --dry-run
-//   node scripts/copy-database.mjs
+//   node scripts/migrations/copy-database.mjs --dry-run
+//   node scripts/migrations/copy-database.mjs
 //
 // TARGET_MONGODB_URI defaults to MONGO_MONGODB_URI (the
 // Vercel integration's variable). Same database name
@@ -27,7 +27,7 @@ import { fileURLToPath } from "node:url";
 import nextEnv from "@next/env";
 import { MongoClient } from "mongodb";
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 nextEnv.loadEnvConfig(ROOT, true, { info() {}, error: console.error });
 
 const SOURCE = process.env.MONGODB_URI;

@@ -23,7 +23,7 @@ export type Series<K extends string> = {
 };
 
 // Round the axis top to 1, 2, 2.5 or 5 × 10^n, in 4 steps
-export function niceScale(max: number): { top: number; ticks: number[] } {
+function niceScale(max: number): { top: number; ticks: number[] } {
   if (!(max > 0)) return { top: 1, ticks: [0, 0.25, 0.5, 0.75, 1] };
 
   const rough = max / 4;
@@ -34,7 +34,7 @@ export function niceScale(max: number): { top: number; ticks: number[] } {
 }
 
 // Axis money: "$0", "$0.25", "$12", "$1.2K"
-export function axisUsd(value: number): string {
+function axisUsd(value: number): string {
   if (value === 0) return "$0";
   if (value >= 1000) return `$${+(value / 1000).toFixed(1)}K`;
   if (value >= 10) return `$${Math.round(value)}`;

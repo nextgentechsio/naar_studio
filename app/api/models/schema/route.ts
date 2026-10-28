@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth/auth";
 import {
   readReplicateJson,
   replicateApiUrl,
   replicateErrorMessage,
   upstreamStatus,
-} from "@/lib/replicate-api";
+} from "@/lib/replicate/api";
 import {
   isValidModelId,
   modelPath,
-} from "@/lib/replicate-model";
+} from "@/lib/replicate/model";
 
 export async function GET(request: Request) {
   const auth = await requireUser();

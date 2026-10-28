@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth/auth";
 import {
   getProjectImage,
   openProjectImage,
@@ -7,7 +7,7 @@ import {
   PROJECT_IMAGE_MAX_BYTES,
   removeProjectImage,
   setProjectImage,
-} from "@/lib/project-images";
+} from "@/lib/storage/project-images";
 
 export const runtime = "nodejs";
 

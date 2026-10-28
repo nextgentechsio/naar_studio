@@ -1,33 +1,33 @@
-import { recordExpense } from "@/lib/expenses";
+import { recordExpense } from "@/lib/spend/expenses";
 import {
   deleteSavedOutput,
   outputUrlFor,
   saveOutput,
   type SavedOutput,
-} from "@/lib/generation-outputs";
+} from "@/lib/storage/generation-outputs";
 import { currentNames } from "@/lib/names";
 import type { Filter } from "mongodb";
 import {
   checkHiggsfieldRequest,
   higgsfieldRunCostUsd,
   isHiggsfieldOutputUrl,
-} from "@/lib/higgsfield";
+} from "@/lib/higgsfield/client";
 import {
   expensesCollection,
   generationsCollection,
   providerMatch,
   type GenerationDoc,
   type Provider,
-} from "@/lib/mongodb";
+} from "@/lib/db/mongodb";
 import {
   readReplicateJson,
   replicateApiUrl,
   replicateErrorMessage,
   replicateHeaders,
-} from "@/lib/replicate-api";
-import { calculateReplicateCost } from "@/lib/replicate-cost";
-import { canHideGenerations, canManageUsers } from "@/lib/roles";
-import type { StoredUser } from "@/lib/users";
+} from "@/lib/replicate/api";
+import { calculateReplicateCost } from "@/lib/replicate/cost";
+import { canHideGenerations, canManageUsers } from "@/lib/auth/roles";
+import type { StoredUser } from "@/lib/auth/users";
 
 // --------------------------------------------------
 // GENERATION HISTORY (MongoDB "generations")
@@ -267,7 +267,7 @@ export type HistoryPage = {
   };
 };
 
-export const HISTORY_MAX_PAGE_SIZE = 60;
+const HISTORY_MAX_PAGE_SIZE = 60;
 
 // What a list row shows (see toPublicGeneration): the
 // stored inputs stay in the database
@@ -469,7 +469,7 @@ export async function fetchPrediction(
 }
 
 // The run's current state from whichever provider ran
-// it, in Replicate's shape (see lib/higgsfield.ts)
+// it, in Replicate's shape (see lib/higgsfield/client.ts)
 export function fetchGenerationStatus(
   generation: Pick<GenerationDoc, "_id" | "provider">
 ): ReturnType<typeof fetchPrediction> {

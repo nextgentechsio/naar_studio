@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth/auth";
 import {
   getPricingSnapshots,
   getTodayPricing,
   savePricingSnapshot,
   type PricingSnapshot,
-} from "@/lib/replicate-pricing";
+} from "@/lib/replicate/pricing";
 
 export async function GET() {
   const auth = await requireUser();

@@ -1,7 +1,7 @@
 import { after, NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
-import { isProvider, type Provider } from "@/lib/mongodb";
-import { maybePruneOutputs } from "@/lib/output-retention";
+import { requireUser } from "@/lib/auth/auth";
+import { isProvider, type Provider } from "@/lib/db/mongodb";
+import { maybePruneOutputs } from "@/lib/storage/output-retention";
 import {
   HISTORY_STATUSES,
   listGenerations,

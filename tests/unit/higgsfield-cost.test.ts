@@ -5,7 +5,7 @@ import {
   higgsfieldPriceKind,
   meteredCostUsd,
   type HiggsfieldUsage,
-} from "@/lib/higgsfield-models";
+} from "@/lib/higgsfield/models";
 
 const usage = (patch: Partial<HiggsfieldUsage>): HiggsfieldUsage => ({
   width: 1280,

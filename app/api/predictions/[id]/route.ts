@@ -1,5 +1,5 @@
 import { after, NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth/auth";
 import {
   applyPrediction,
   canViewGeneration,

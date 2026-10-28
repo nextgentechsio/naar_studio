@@ -1,17 +1,17 @@
 import { NextResponse } from "next/server";
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
-import { requireUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth/auth";
 import {
   blobUploadsEnabled,
   INPUT_CONTENT_TYPES,
   INPUT_PREFIX,
   MAX_INPUT_BYTES,
-} from "@/lib/input-uploads";
+} from "@/lib/storage/input-uploads";
 
 export const runtime = "nodejs";
 
 // --------------------------------------------------
-// DIRECT UPLOADS TO VERCEL BLOB (see lib/input-uploads.ts)
+// DIRECT UPLOADS TO VERCEL BLOB (see lib/storage/input-uploads.ts)
 //
 // GET:  is this available here? (else use /api/upload)
 // POST: a time-limited upload token for one input file,

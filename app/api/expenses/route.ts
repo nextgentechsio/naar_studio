@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
-import { getExpenseReport, readExpenseFilters } from "@/lib/expenses";
+import { requireUser } from "@/lib/auth/auth";
+import { getExpenseReport, readExpenseFilters } from "@/lib/spend/expenses";
 
 export const runtime = "nodejs";
 

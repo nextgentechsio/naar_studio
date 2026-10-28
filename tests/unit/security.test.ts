@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { isValidModelId, modelPath } from "@/lib/replicate-model";
+import { isValidModelId, modelPath } from "@/lib/replicate/model";
 import {
   assignableRoles,
   canAssignRole,
@@ -8,8 +8,8 @@ import {
   canManageUser,
   canManageUsers,
   type PublicUser,
-} from "@/lib/roles";
-import { safeNextPath } from "@/lib/safe-next";
+} from "@/lib/auth/roles";
+import { safeNextPath } from "@/lib/auth/safe-next";
 
 type Actor = Pick<PublicUser, "id" | "role" | "disabled">;
 
@@ -119,11 +119,11 @@ describe("safeNextPath (post-login redirect)", () => {
 });
 
 describe("session tokens", () => {
-  let session: typeof import("@/lib/session");
+  let session: typeof import("@/lib/auth/session");
 
   beforeAll(async () => {
     process.env.SESSION_SECRET = "x".repeat(48);
-    session = await import("@/lib/session");
+    session = await import("@/lib/auth/session");
   });
 
   it("round-trips uid and version", () => {

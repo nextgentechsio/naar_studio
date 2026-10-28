@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fieldLabel, type Schema } from "@/app/(studio)/replicate/fields";
+import { fieldLabel, type Schema } from "@/app/(studio)/_generate/fields";
 
 // Seedance 2.5 video edit's file inputs, as Higgsfield
 // sends them (no titles)

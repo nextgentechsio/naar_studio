@@ -2,7 +2,7 @@
 // HIGGSFIELD MODELS (shared by server and browser)
 //
 // The model list comes from Higgsfield's API (see
-// lib/higgsfield.ts); this is what both sides need to
+// lib/higgsfield/client.ts); this is what both sides need to
 // show and price it. No SDK or credentials here: the
 // browser imports this.
 // --------------------------------------------------
@@ -67,7 +67,7 @@ export function taskFromSlug(slug: string): string {
 }
 
 // What Higgsfield's storage accepts for input files
-// (presigned uploads, see lib/higgsfield.ts); other types
+// (presigned uploads, see lib/higgsfield/client.ts); other types
 // go to Vercel Blob
 export const HIGGSFIELD_UPLOAD_TYPES = [
   "image/jpeg",
@@ -178,7 +178,7 @@ export function fitVideo(width: number, height: number, limits: VideoLimits): Vi
 //
 // - "quoted" (most models): Higgsfield's estimate
 //   endpoint gives the exact price of a run for our
-//   account, discounts included (lib/higgsfield.ts).
+//   account, discounts included (lib/higgsfield/client.ts).
 // - "metered": billed by what the run produced (the
 //   video's size and length, and any input videos), by
 //   the formulas below, which Higgsfield publishes. The

@@ -6,11 +6,9 @@ import { cx } from "@/app/components/ui/primitives";
 //
 // The same line at the bottom of every page: copyright
 // on the left, app and version on the right (the build
-// in its tooltip). A fixed 40px tall (FOOTER_HEIGHT), so
-// layouts that size to the viewport can allow for it.
+// in its tooltip). A fixed 40px (h-10) tall: the Generate
+// page's height allows for it (_generate/GenerateView.tsx).
 // --------------------------------------------------
-
-export const FOOTER_HEIGHT = "2.5rem";
 
 export default function AppFooter({ className }: { className?: string }) {
   return (

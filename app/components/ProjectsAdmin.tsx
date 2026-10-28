@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import ProjectAvatar from "@/app/components/ProjectAvatar";
 import { useFileDrop } from "@/app/components/ui/useFileDrop";
-import { prepareProjectPhoto } from "@/lib/prepare-image";
-import type { PublicProject } from "@/lib/roles";
+import { prepareProjectPhoto } from "@/lib/storage/prepare-image";
+import type { PublicProject } from "@/lib/auth/roles";
 
 // --------------------------------------------------
 // PROJECT MANAGEMENT (admins and the super admin;

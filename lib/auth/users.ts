@@ -9,19 +9,19 @@ import { promisify } from "util";
 import {
   HEARTBEAT_MIN_WRITE_MS,
   presenceOf,
-} from "@/lib/presence";
+} from "@/lib/auth/presence";
 import {
   isDuplicateKeyError,
   usersCollection,
   type UserDoc,
-} from "@/lib/mongodb";
+} from "@/lib/db/mongodb";
 import {
   canAssignRole,
   canManageUser,
   isRole,
   type PublicUser,
   type Role,
-} from "@/lib/roles";
+} from "@/lib/auth/roles";
 
 const scrypt = promisify(scryptCallback) as (
   password: string,

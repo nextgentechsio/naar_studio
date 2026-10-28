@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
-import { getSession, getSessionStartedAt } from "@/lib/auth";
-import { toPublicUser } from "@/lib/users";
-import { GenerateProvider } from "./_components/GenerateProvider";
+import { getSession, getSessionStartedAt } from "@/lib/auth/auth";
+import { toPublicUser } from "@/lib/auth/users";
+import { GenerateProvider } from "./_generate/GenerateProvider";
 import StudioShell from "./_components/StudioShell";
 import { StudioProvider } from "./_components/StudioProvider";
 

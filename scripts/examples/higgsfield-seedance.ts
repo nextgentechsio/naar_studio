@@ -2,7 +2,7 @@
 // HIGGSFIELD EXAMPLE: Seedance 2.5 text-to-video
 //
 // Run with: npm run higgsfield:example
-// (node --env-file=.env.local index.ts)
+// (node --env-file=.env.local scripts/examples/higgsfield-seedance.ts)
 //
 // Needs HF_CREDENTIALS ("key-id:key-secret") in
 // .env.local, which Git ignores. Server-side only: the

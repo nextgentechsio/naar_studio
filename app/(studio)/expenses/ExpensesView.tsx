@@ -7,8 +7,8 @@ import { useApiData } from "@/app/(studio)/_components/useApiData";
 import { Icon } from "@/app/components/ui/Icon";
 import { Alert, Button, cx, formatCost } from "@/app/components/ui/primitives";
 import { fetchExpenseReport, fetchExpensesPage, readPlatform } from "@/lib/client/data";
-import type { SpendGroup, SpendTotal } from "@/lib/expenses";
-import { canManageUsers } from "@/lib/roles";
+import type { SpendGroup, SpendTotal } from "@/lib/spend/expenses";
+import { canManageUsers } from "@/lib/auth/roles";
 import ExpenseFilters, {
   RANGES,
   toExpenseQuery,

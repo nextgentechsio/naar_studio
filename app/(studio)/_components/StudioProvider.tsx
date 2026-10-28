@@ -10,8 +10,8 @@ import {
 import { fetchActiveProjects } from "@/lib/client/data";
 import { errorMessage } from "@/lib/client/http";
 import { goToSignIn } from "@/lib/client/session-ended";
-import { HEARTBEAT_MS } from "@/lib/presence";
-import type { PublicProject, PublicUser } from "@/lib/roles";
+import { HEARTBEAT_MS } from "@/lib/auth/presence";
+import type { PublicProject, PublicUser } from "@/lib/auth/roles";
 
 // --------------------------------------------------
 // STUDIO CONTEXT
@@ -61,7 +61,7 @@ export function StudioProvider({
   }, [refreshProjects]);
 
   // Presence heartbeat while this tab is visible, so the
-  // super admin can see who's online (lib/presence.ts)
+  // super admin can see who's online (lib/auth/presence.ts)
   useEffect(() => {
     // Also notices, within a minute, that this session
     // ended (signed in elsewhere, disabled, password reset)

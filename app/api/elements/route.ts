@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth/auth";
 import { createElement, listElements } from "@/lib/elements";
 
 export const runtime = "nodejs";

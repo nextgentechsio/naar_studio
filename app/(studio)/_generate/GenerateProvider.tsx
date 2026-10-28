@@ -12,17 +12,17 @@ import {
   buildGenerationInputs,
   schemaDefaults,
   type Schema,
-} from "@/app/(studio)/replicate/fields";
+} from "@/app/(studio)/_generate/fields";
 import { errorMessage, fetchJson, logRequestError } from "@/lib/client/http";
 import { currentElements } from "@/lib/client/elements";
 import { uploadToLibrary } from "@/lib/client/library";
 import { checkVideo, fitVideoAt, resizeVideo } from "@/lib/client/resize-video";
-import { videoLimitsFor } from "@/lib/higgsfield-models";
+import { videoLimitsFor } from "@/lib/higgsfield/models";
 import { expandMentions } from "@/lib/element-mentions";
 import { uploadHiggsfieldInput, uploadInputFile } from "@/lib/client/upload";
-import type { ModelKind } from "@/lib/model-catalog";
-import type { BrowsableModel } from "@/lib/replicate-models";
-import { useStudio } from "./StudioProvider";
+import type { ModelKind } from "@/lib/replicate/catalog";
+import type { BrowsableModel } from "@/lib/replicate/models";
+import { useStudio } from "@/app/(studio)/_components/StudioProvider";
 
 // --------------------------------------------------
 // GENERATE STATE
@@ -470,7 +470,7 @@ export function GenerateProvider({
           );
 
         // Videos a model would refuse for their size are
-        // resized first (Seedance: lib/higgsfield-models.ts).
+        // resized first (Seedance: lib/higgsfield/models.ts).
         // The ring shows resizing, then uploading.
         let sending = file;
         let note = "";

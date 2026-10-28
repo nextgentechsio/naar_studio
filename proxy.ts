@@ -4,14 +4,14 @@ import {
   isSessionConfigured,
   SESSION_COOKIE,
   verifySessionToken,
-} from "@/lib/session";
+} from "@/lib/auth/session";
 
 // --------------------------------------------------
 // SESSION GATE FOR THE WHOLE APP
 //
 // Optimistic check only (cookie signature + expiry).
 // Route handlers do the authoritative check via
-// requireUser() in lib/auth.ts, which also catches
+// requireUser() in lib/auth/auth.ts, which also catches
 // disabled users and revoked sessions.
 // --------------------------------------------------
 

@@ -26,7 +26,7 @@ function set(next: State) {
   listeners.forEach((listener) => listener());
 }
 
-export function reloadElements(): Promise<void> {
+function reloadElements(): Promise<void> {
   loading ??= fetchJson<{ elements: Element[] }>("/api/elements")
     .then((data) => set({ elements: data.elements, error: "" }))
     .catch((err) => {

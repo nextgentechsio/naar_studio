@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth/auth";
 import {
   addLibraryFile,
   LIBRARY_KINDS,
@@ -7,12 +7,12 @@ import {
   libraryFolder,
   listLibrary,
   type LibraryKind,
-} from "@/lib/media-library";
+} from "@/lib/storage/media-library";
 
 export const runtime = "nodejs";
 
 // --------------------------------------------------
-// THE SIGNED-IN USER'S MEDIA LIBRARY (lib/media-library.ts)
+// THE SIGNED-IN USER'S MEDIA LIBRARY (lib/storage/media-library.ts)
 //
 // GET  ?kind=image|video|audio → { enabled, folder, files }
 //      (no kind: files is empty)

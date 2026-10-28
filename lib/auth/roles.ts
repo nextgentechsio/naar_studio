@@ -11,7 +11,7 @@
 // user:        manages no one
 // --------------------------------------------------
 
-import type { Presence } from "@/lib/presence";
+import type { Presence } from "@/lib/auth/presence";
 
 export const ROLES = [
   "super_admin",

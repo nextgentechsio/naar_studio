@@ -7,10 +7,10 @@ import {
   isProvider,
   providerMatch,
   type Provider,
-} from "@/lib/mongodb";
-import { canManageUsers } from "@/lib/roles";
+} from "@/lib/db/mongodb";
+import { canManageUsers } from "@/lib/auth/roles";
 import { currentNames } from "@/lib/names";
-import type { StoredUser } from "@/lib/users";
+import type { StoredUser } from "@/lib/auth/users";
 
 // --------------------------------------------------
 // EXPENSE LEDGER (MongoDB "expenses")
@@ -72,8 +72,8 @@ export type ExpensePage = {
   nextCursor: string | null;
 };
 
-export const EXPENSE_PAGE_SIZE = 50;
-export const EXPENSE_MAX_PAGE_SIZE = 100;
+const EXPENSE_PAGE_SIZE = 50;
+const EXPENSE_MAX_PAGE_SIZE = 100;
 
 function toPublicExpense(doc: ExpenseDoc): PublicExpense {
   return {

@@ -3,10 +3,10 @@ import {
   buildGenerationInputs,
   orderSchemaFields,
   schemaDefaults,
-} from "@/app/(studio)/replicate/fields";
+} from "@/app/(studio)/_generate/fields";
 import { formatCost } from "@/app/components/ui/primitives";
 import { getOutputType, getOutputUrls } from "@/lib/client/outputs";
-import { sniffImageType } from "@/lib/project-images";
+import { sniffImageType } from "@/lib/storage/project-images";
 
 describe("buildGenerationInputs (what Replicate receives)", () => {
   it("wraps single image inputs in arrays", () => {

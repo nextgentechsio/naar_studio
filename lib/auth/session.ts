@@ -6,7 +6,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 // Cookie value: base64url(payload).base64url(hmac)
 // No filesystem access here, so proxy.ts can use it
 // for the fast signature/expiry check. Route handlers
-// additionally check the user store (see lib/auth.ts).
+// additionally check the user store (see lib/auth/auth.ts).
 // --------------------------------------------------
 
 export const SESSION_COOKIE = "ai_studio_session";

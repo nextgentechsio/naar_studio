@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
-import { isHiggsfieldOutputUrl } from "@/lib/higgsfield";
-import { fetchAllowed, isReplicateDeliveryUrl } from "@/lib/output-source";
+import { requireUser } from "@/lib/auth/auth";
+import { isHiggsfieldOutputUrl } from "@/lib/higgsfield/client";
+import { fetchAllowed, isReplicateDeliveryUrl } from "@/lib/storage/output-source";
 
 export const runtime = "nodejs";
 
@@ -14,7 +14,7 @@ export const runtime = "nodejs";
 // fetches server-side, so an open URL would let callers
 // reach internal hosts (SSRF): only the two providers'
 // output hosts are allowed, and every redirect hop is
-// re-checked (lib/output-source.ts).
+// re-checked (lib/storage/output-source.ts).
 //
 // It deliberately does NOT accept api.replicate.com
 // prediction URLs: those are fetched with our account

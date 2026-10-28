@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inputSchemaFromModel, shapeInputs } from "@/lib/replicate-inputs";
+import { inputSchemaFromModel, shapeInputs } from "@/lib/replicate/inputs";
 
 const model = {
   latest_version: {

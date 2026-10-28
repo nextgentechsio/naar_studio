@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth/auth";
 import {
   HiggsfieldRequestError,
   higgsfieldConfigured,
   listHiggsfieldModels,
-} from "@/lib/higgsfield";
+} from "@/lib/higgsfield/client";
 
 export const runtime = "nodejs";
 

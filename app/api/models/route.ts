@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
-import { replicateApiUrl, upstreamStatus } from "@/lib/replicate-api";
+import { requireUser } from "@/lib/auth/auth";
+import { replicateApiUrl, upstreamStatus } from "@/lib/replicate/api";
 
 type ReplicateModel = {
   owner: string;

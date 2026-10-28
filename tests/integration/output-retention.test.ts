@@ -76,7 +76,7 @@ const outputStatus = async (id: string) =>
 
 describe("output retention", () => {
   it("deletes Blob outputs older than 7 days and keeps the records", async () => {
-    const { pruneExpiredOutputs } = await import("@/lib/output-retention");
+    const { pruneExpiredOutputs } = await import("@/lib/storage/output-retention");
 
     const old = await finishedRun();
     const recent = await finishedRun();
@@ -110,7 +110,7 @@ describe("output retention", () => {
   });
 
   it("also deletes older GridFS outputs (records from before Blob)", async () => {
-    const { pruneExpiredOutputs } = await import("@/lib/output-retention");
+    const { pruneExpiredOutputs } = await import("@/lib/storage/output-retention");
     const database = await db();
 
     // A record as the app wrote them before Blob: file in GridFS

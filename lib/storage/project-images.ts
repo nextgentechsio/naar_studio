@@ -2,14 +2,14 @@ import { createHash } from "crypto";
 import { Readable } from "stream";
 import { del, put } from "@vercel/blob";
 import { ObjectId } from "mongodb";
-import { blobUploadsEnabled } from "@/lib/input-uploads";
+import { blobUploadsEnabled } from "@/lib/storage/input-uploads";
 import {
   projectImagesBucket,
   projectsCollection,
   type ProjectDoc,
   type ProjectImage,
   type ProjectImageType,
-} from "@/lib/mongodb";
+} from "@/lib/db/mongodb";
 
 // --------------------------------------------------
 // PROJECT PHOTOS

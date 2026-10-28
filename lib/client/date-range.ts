@@ -80,7 +80,7 @@ export function readDashboardRange(value: string | null): DashboardRange {
 }
 
 // YYYY-MM-DD of a local date
-export function localDay(date: Date): string {
+function localDay(date: Date): string {
   return [
     date.getFullYear(),
     String(date.getMonth() + 1).padStart(2, "0"),

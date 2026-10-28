@@ -27,7 +27,7 @@ import {
   canDeleteGenerations,
   canHideGenerations,
   canManageUsers,
-} from "@/lib/roles";
+} from "@/lib/auth/roles";
 import GenerationCard, { GenerationCardSkeleton } from "./GenerationCard";
 import GenerationDrawer from "./GenerationDrawer";
 import HistoryFilters, { type FilterValues } from "./HistoryFilters";

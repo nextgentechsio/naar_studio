@@ -5,7 +5,7 @@ import {
   type Db,
   type ObjectId,
 } from "mongodb";
-import type { Role } from "@/lib/roles";
+import type { Role } from "@/lib/auth/roles";
 
 // --------------------------------------------------
 // MONGODB CONNECTION
@@ -27,7 +27,7 @@ export type UserDoc = {
   // ended session can say why: a new sign-in elsewhere
   // (one session per account) or a password change
   sessionEndReason?: "signin" | "password";
-  // Presence (see lib/presence.ts)
+  // Presence (see lib/auth/presence.ts)
   lastSeenAt?: Date | null;
   signedOutAt?: Date | null;
   createdAt: Date;
@@ -78,7 +78,7 @@ export type ProjectDoc = {
 // Who ran a generation (and bills it)
 export type Provider = "replicate" | "higgsfield";
 
-export const PROVIDERS: Provider[] = ["replicate", "higgsfield"];
+const PROVIDERS: Provider[] = ["replicate", "higgsfield"];
 
 export function isProvider(value: unknown): value is Provider {
   return PROVIDERS.includes(value as Provider);
@@ -128,7 +128,7 @@ export type GenerationDoc = {
   // Set while one request copies the output to storage
   outputSavingUntil?: Date | null;
   // Saved copy deleted by the retention cleanup
-  // (lib/output-retention.ts)
+  // (lib/storage/output-retention.ts)
   outputExpiredAt?: Date | null;
   // Hidden by the super admin: then only they can see it
   // (its cost still counts in Expenses)

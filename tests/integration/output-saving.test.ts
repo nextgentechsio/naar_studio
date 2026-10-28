@@ -113,7 +113,7 @@ describe("saving outputs", () => {
   });
 
   it("sweeps stray output files older than 7 days, and only those", async () => {
-    const { pruneOldBlobs } = await import("@/lib/input-uploads");
+    const { pruneOldBlobs } = await import("@/lib/storage/input-uploads");
     const state = await blobState();
 
     const stray = (name: string, days: number) => ({

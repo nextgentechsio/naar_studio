@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import MediaLibraryDialog from "@/app/(studio)/replicate/MediaLibraryDialog";
+import MediaLibraryDialog from "@/app/(studio)/_generate/MediaLibraryDialog";
 import { removeElement, saveElement, type Element } from "@/lib/client/elements";
 import { errorMessage, logRequestError } from "@/lib/client/http";
 import { uploadToLibrary } from "@/lib/client/library";

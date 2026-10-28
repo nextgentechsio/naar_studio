@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { MODEL_IDS, calculateReplicateCost } from "@/lib/replicate-cost";
-import { MODEL_CATALOG } from "@/lib/model-catalog";
+import { MODEL_IDS, calculateReplicateCost } from "@/lib/replicate/cost";
+import { MODEL_CATALOG } from "@/lib/replicate/catalog";
 
 const ok = (input: Record<string, unknown> = {}, extra = {}) => ({
   status: "succeeded",

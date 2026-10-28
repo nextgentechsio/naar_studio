@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
-import { deleteLibraryFile } from "@/lib/media-library";
+import { requireUser } from "@/lib/auth/auth";
+import { deleteLibraryFile } from "@/lib/storage/media-library";
 
 export const runtime = "nodejs";
 

@@ -83,7 +83,7 @@ export function loginRoot() {
 }
 
 let counter = 0;
-export const unique = (prefix: string) =>
+const unique = (prefix: string) =>
   `${prefix}${Date.now().toString(36)}${++counter}`;
 
 export async function createUser(

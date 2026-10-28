@@ -11,7 +11,7 @@ import {
   higgsfieldPriceKind,
   type HiggsfieldCategory,
   type HiggsfieldModel,
-} from "@/lib/higgsfield-models";
+} from "@/lib/higgsfield/models";
 import { higgsfieldModelName } from "./HiggsfieldModelPicker";
 
 // --------------------------------------------------

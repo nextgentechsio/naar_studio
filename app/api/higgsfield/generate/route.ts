@@ -5,7 +5,7 @@ import {
   CredentialsMissedError,
   NotEnoughCreditsError,
 } from "@higgsfield/client/v2";
-import { requireUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth/auth";
 import { recordGeneration } from "@/lib/generations";
 import {
   cancelHiggsfieldRequest,
@@ -15,8 +15,8 @@ import {
   quoteHiggsfield,
   shapeHiggsfieldInputs,
   startHiggsfield,
-} from "@/lib/higgsfield";
-import { approxMeteredCostUsd, higgsfieldPriceKind } from "@/lib/higgsfield-models";
+} from "@/lib/higgsfield/client";
+import { approxMeteredCostUsd, higgsfieldPriceKind } from "@/lib/higgsfield/models";
 import { findActiveProjectByName } from "@/lib/projects";
 
 export const runtime = "nodejs";

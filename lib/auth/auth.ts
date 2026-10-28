@@ -1,16 +1,16 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { SESSION_REPLACED } from "@/lib/client/session-ended";
-import type { Role } from "@/lib/roles";
+import type { Role } from "@/lib/auth/roles";
 import {
   SESSION_COOKIE,
   SESSION_MAX_AGE_SECONDS,
   verifySessionToken,
-} from "@/lib/session";
+} from "@/lib/auth/session";
 import {
   findUserById,
   type StoredUser,
-} from "@/lib/users";
+} from "@/lib/auth/users";
 
 // --------------------------------------------------
 // CURRENT USER (authoritative check)

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import GenerateView from "./GenerateView";
+import GenerateView from "@/app/(studio)/_generate/GenerateView";
 
 export const metadata: Metadata = { title: "Replicate" };
 

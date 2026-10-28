@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth/auth";
 import {
   findHiggsfieldModel,
   higgsfieldConfigured,
   quoteHiggsfield,
   shapeHiggsfieldInputs,
-} from "@/lib/higgsfield";
-import { approxMeteredCostUsd, higgsfieldPriceKind } from "@/lib/higgsfield-models";
+} from "@/lib/higgsfield/client";
+import { approxMeteredCostUsd, higgsfieldPriceKind } from "@/lib/higgsfield/models";
 
 export const runtime = "nodejs";
 

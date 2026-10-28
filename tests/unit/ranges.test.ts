@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseRange } from "@/lib/generation-outputs";
+import { parseRange } from "@/lib/storage/generation-outputs";
 
 describe("parseRange (saved output byte ranges)", () => {
   it("reads normal, open-ended and suffix ranges", () => {

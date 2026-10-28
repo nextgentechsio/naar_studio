@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
-import type { GenerationDoc } from "@/lib/mongodb";
+import type { GenerationDoc } from "@/lib/db/mongodb";
 
 // --------------------------------------------------
 // Race conditions in the generation bookkeeping, driven
@@ -15,11 +15,11 @@ process.env.REPLICATE_API_URL = `${inject("replicateUrl")}/v1`;
 process.env.REPLICATE_API_TOKEN = "test-token";
 
 let lib: typeof import("@/lib/generations");
-let mongo: typeof import("@/lib/mongodb");
+let mongo: typeof import("@/lib/db/mongodb");
 
 beforeAll(async () => {
   lib = await import("@/lib/generations");
-  mongo = await import("@/lib/mongodb");
+  mongo = await import("@/lib/db/mongodb");
 });
 
 afterAll(async () => {

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth/auth";
 import { recordGeneration } from "@/lib/generations";
 import { findActiveProjectByName } from "@/lib/projects";
 import {
@@ -7,10 +7,10 @@ import {
   replicateApiUrl,
   replicateErrorMessage,
   replicateHeaders,
-} from "@/lib/replicate-api";
-import { calculateReplicateCost } from "@/lib/replicate-cost";
-import { inputSchemaFromModel, shapeInputs } from "@/lib/replicate-inputs";
-import { isValidModelId, modelPath } from "@/lib/replicate-model";
+} from "@/lib/replicate/api";
+import { calculateReplicateCost } from "@/lib/replicate/cost";
+import { inputSchemaFromModel, shapeInputs } from "@/lib/replicate/inputs";
+import { isValidModelId, modelPath } from "@/lib/replicate/model";
 
 export const runtime = "nodejs";
 

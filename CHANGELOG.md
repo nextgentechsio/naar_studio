@@ -16,6 +16,17 @@ The app shows its version and build in the sidebar and on the Account page
 
 ## [Unreleased]
 
+### Changed
+- Reorganised the code into folders by area (`lib/auth`, `lib/db`, `lib/replicate`,
+  `lib/higgsfield`, `lib/storage`, `lib/spend`; the shared Generate UI in
+  `app/(studio)/_generate`; scripts in `scripts/migrations` and `scripts/examples`).
+  See the README's "Project structure".
+- Copyright and version moved to a footer at the bottom of every page.
+
+### Removed
+- Unused code, the unused `replicate` package, default Next.js images and two old
+  output images no record points to.
+
 ## [1.0.0] - 2026-10-28
 
 First versioned release.

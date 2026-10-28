@@ -1,4 +1,4 @@
-import { findCatalogModel } from "@/lib/model-catalog";
+import { findCatalogModel } from "@/lib/replicate/catalog";
 
 // --------------------------------------------------
 // REPLICATE MODEL LISTINGS (server side)

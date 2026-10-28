@@ -59,7 +59,7 @@ describe("direct uploads", () => {
   it("deletes uploads older than 7 days", async () => {
     process.env.BLOB_READ_WRITE_TOKEN = FAKE_BLOB_TOKEN;
     process.env.VERCEL_BLOB_API_URL = `${replicateUrl}/blob`;
-    const { pruneOldInputs } = await import("@/lib/input-uploads");
+    const { pruneOldInputs } = await import("@/lib/storage/input-uploads");
 
     const blob = (name: string, days: number) => ({
       url: `https://store.public.blob.vercel-storage.com/${name}`,

@@ -8,7 +8,7 @@ import {
   totalStages,
   type SpendGroup,
   type SpendTotal,
-} from "@/lib/expenses";
+} from "@/lib/spend/expenses";
 import {
   expensesCollection,
   generationsCollection,
@@ -16,10 +16,10 @@ import {
   type ExpenseDoc,
   type GenerationDoc,
   type Provider,
-} from "@/lib/mongodb";
+} from "@/lib/db/mongodb";
 import { currentNames } from "@/lib/names";
-import { canHideGenerations, canManageUsers } from "@/lib/roles";
-import type { StoredUser } from "@/lib/users";
+import { canHideGenerations, canManageUsers } from "@/lib/auth/roles";
+import type { StoredUser } from "@/lib/auth/users";
 
 // --------------------------------------------------
 // COST ANALYTICS (the Dashboard)

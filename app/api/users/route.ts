@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
-import { createUser, listUsers } from "@/lib/users";
+import { requireUser } from "@/lib/auth/auth";
+import { createUser, listUsers } from "@/lib/auth/users";
 
 export const runtime = "nodejs";
 

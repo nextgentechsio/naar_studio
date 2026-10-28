@@ -1,6 +1,6 @@
 import { upload } from "@vercel/blob/client";
 import { fetchJson } from "@/lib/client/http";
-import { HIGGSFIELD_UPLOAD_TYPES } from "@/lib/higgsfield-models";
+import { HIGGSFIELD_UPLOAD_TYPES } from "@/lib/higgsfield/models";
 
 // --------------------------------------------------
 // INPUT FILE UPLOAD (browser only)
@@ -8,7 +8,7 @@ import { HIGGSFIELD_UPLOAD_TYPES } from "@/lib/higgsfield-models";
 // Straight to Vercel Blob when the server has it set up
 // (Vercel caps requests through our server at 4.5 MB);
 // otherwise through /api/upload, e.g. in local dev. See
-// lib/input-uploads.ts. Returns a URL Replicate can read.
+// lib/storage/input-uploads.ts. Returns a URL Replicate can read.
 // --------------------------------------------------
 
 // Above this, Blob uploads in parallel parts with retries

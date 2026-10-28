@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Icon } from "@/app/components/ui/Icon";
 import { Spinner, cx } from "@/app/components/ui/primitives";
 import { getOutputType } from "@/lib/client/outputs";
-import { OUTPUT_RETENTION_DAYS } from "@/lib/output-retention-days";
+import { OUTPUT_RETENTION_DAYS } from "@/lib/storage/output-retention-days";
 
 // --------------------------------------------------
 // OUTPUT PREVIEW

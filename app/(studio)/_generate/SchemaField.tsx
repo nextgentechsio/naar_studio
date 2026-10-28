@@ -1,7 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { useGenerate } from "@/app/(studio)/_components/GenerateProvider";
+import { useGenerate } from "@/app/(studio)/_generate/GenerateProvider";
 import { Icon } from "@/app/components/ui/Icon";
 import {
   Button,

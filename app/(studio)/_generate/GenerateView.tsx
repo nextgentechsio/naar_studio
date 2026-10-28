@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useGenerate } from "@/app/(studio)/_components/GenerateProvider";
+import { useGenerate } from "@/app/(studio)/_generate/GenerateProvider";
 import { useStudio } from "@/app/(studio)/_components/StudioProvider";
 import { useApiData } from "@/app/(studio)/_components/useApiData";
-import HiggsfieldModelBrowser from "@/app/(studio)/higgsfield/HiggsfieldModelBrowser";
+import HiggsfieldModelBrowser from "@/app/(studio)/_generate/HiggsfieldModelBrowser";
 import HiggsfieldModelPicker, {
   HiggsfieldVariants,
-} from "@/app/(studio)/higgsfield/HiggsfieldModelPicker";
+} from "@/app/(studio)/_generate/HiggsfieldModelPicker";
 import ProjectAvatar from "@/app/components/ProjectAvatar";
 import { Icon } from "@/app/components/ui/Icon";
 import {
@@ -36,14 +36,14 @@ import {
   findCatalogModel,
   KIND_LABELS,
   MODEL_CATALOG,
-} from "@/lib/model-catalog";
+} from "@/lib/replicate/catalog";
 import {
   higgsfieldPriceHint,
   higgsfieldPriceKind,
   type HiggsfieldModel,
-} from "@/lib/higgsfield-models";
-import { calculateReplicateCost } from "@/lib/replicate-cost";
-import { canManageProjects } from "@/lib/roles";
+} from "@/lib/higgsfield/models";
+import { calculateReplicateCost } from "@/lib/replicate/cost";
+import { canManageProjects } from "@/lib/auth/roles";
 import {
   ASPECT_RATIOS,
   buildGenerationInputs,

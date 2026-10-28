@@ -10,7 +10,7 @@
 //     right size.
 // Exit code 0 only when there are no dependencies left.
 //
-//   node scripts/check-blob-dependencies.mjs
+//   node scripts/migrations/check-blob-dependencies.mjs
 // --------------------------------------------------
 
 import path from "node:path";
@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 import nextEnv from "@next/env";
 import { MongoClient } from "mongodb";
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 nextEnv.loadEnvConfig(ROOT, true, { info() {}, error: console.error });
 
 // Asks for one byte: proves the file is there and gives

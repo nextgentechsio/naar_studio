@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/auth";
-import { canManageProjects } from "@/lib/roles";
+import { getCurrentUser } from "@/lib/auth/auth";
+import { canManageProjects } from "@/lib/auth/roles";
 import ProjectsView from "./ProjectsView";
 
 export const metadata: Metadata = { title: "Projects" };

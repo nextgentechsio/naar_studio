@@ -142,7 +142,7 @@ export const FAKE_BLOB_TOKEN = "vercel_blob_rw_teststore_secret123";
 // A minimal MP4: ftyp, mdat, then moov (mvhd and one
 // video track's tkhd), enough for the app to read the
 // video's size and length
-export function fakeMp4(width: number, height: number, seconds: number): Buffer {
+function fakeMp4(width: number, height: number, seconds: number): Buffer {
   const box = (type: string, ...parts: Buffer[]) => {
     const body = Buffer.concat(parts);
     const head = Buffer.alloc(8);
@@ -172,12 +172,12 @@ export function fakeMp4(width: number, height: number, seconds: number): Buffer 
 export const FAKE_OUTPUT_MP4 = fakeMp4(720, 960, 5);
 // What /__control/input.mp4 serves (a 4s input video,
 // the shortest Seedance accepts)
-export const FAKE_INPUT_MP4 = fakeMp4(1280, 720, 4);
+const FAKE_INPUT_MP4 = fakeMp4(1280, 720, 4);
 // /__control/small.mp4: a phone clip just under Seedance's
 // minimum frame size (407,040 of 409,600 pixels)
-export const FAKE_SMALL_MP4 = fakeMp4(480, 848, 9);
+const FAKE_SMALL_MP4 = fakeMp4(480, 848, 9);
 // /__control/short.mp4: right size, but under 4 seconds
-export const FAKE_SHORT_MP4 = fakeMp4(482, 850, 3.9);
+const FAKE_SHORT_MP4 = fakeMp4(482, 850, 3.9);
 
 // Bytes, honouring a "Range: bytes=a-b" header
 function serveBytes(

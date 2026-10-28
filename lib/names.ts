@@ -1,4 +1,4 @@
-import { projectsCollection, usersCollection } from "@/lib/mongodb";
+import { projectsCollection, usersCollection } from "@/lib/db/mongodb";
 
 // --------------------------------------------------
 // CURRENT NAMES

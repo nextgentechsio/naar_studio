@@ -30,7 +30,7 @@ const DEPTH_LAYERS = 24;
 const DEPTH_PX = 8;
 
 // Flight from the orbit to the landing spot
-export const NAAR_LOADER_FLIGHT_MS = 650;
+const NAAR_LOADER_FLIGHT_MS = 650;
 // Flight, then the balls rest on their spots for 2 seconds
 // before the output is shown
 export const NAAR_LOADER_LAND_MS = NAAR_LOADER_FLIGHT_MS + 2000;

@@ -12,8 +12,8 @@
 // GridFS id and size) are skipped, so a second run just
 // before the switch-over picks up anything new.
 //
-//   node scripts/copy-files-to-blob.mjs --dry-run
-//   node scripts/copy-files-to-blob.mjs
+//   node scripts/migrations/copy-files-to-blob.mjs --dry-run
+//   node scripts/migrations/copy-files-to-blob.mjs
 //
 // Reads MONGODB_URI, MONGODB_DB and BLOB_READ_WRITE_TOKEN
 // from .env.local the same way Next.js does. Manifest:
@@ -29,7 +29,7 @@ import nextEnv from "@next/env";
 import { put } from "@vercel/blob";
 import { GridFSBucket, MongoClient } from "mongodb";
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 nextEnv.loadEnvConfig(ROOT, true, { info() {}, error: console.error });
 
 const MANIFEST = process.env.BLOB_MANIFEST_PATH || path.join(ROOT, ".migration/blob-manifest.json");

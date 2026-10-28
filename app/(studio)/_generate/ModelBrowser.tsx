@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useGenerate } from "@/app/(studio)/_components/GenerateProvider";
+import { useGenerate } from "@/app/(studio)/_generate/GenerateProvider";
 import { Icon } from "@/app/components/ui/Icon";
 import {
   Alert,
@@ -11,7 +11,7 @@ import {
   Spinner,
 } from "@/app/components/ui/primitives";
 import { errorMessage, fetchJson, logRequestError } from "@/lib/client/http";
-import type { BrowsableModel } from "@/lib/replicate-models";
+import type { BrowsableModel } from "@/lib/replicate/models";
 
 // --------------------------------------------------
 // BROWSE ALL REPLICATE MODELS

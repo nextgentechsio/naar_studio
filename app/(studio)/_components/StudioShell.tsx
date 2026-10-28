@@ -15,7 +15,7 @@ import {
   canManageProjects,
   canManageUsers,
   ROLE_LABELS,
-} from "@/lib/roles";
+} from "@/lib/auth/roles";
 import AppFooter from "@/app/components/AppFooter";
 import { APP_NAME } from "@/lib/app-info";
 import { signOut, useStudio } from "./StudioProvider";

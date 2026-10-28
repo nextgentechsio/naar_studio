@@ -20,9 +20,9 @@ import {
   readDashboardRange,
 } from "@/lib/client/date-range";
 import { formatDateTime } from "@/lib/client/format";
-import type { CostAnalytics } from "@/lib/cost-analytics";
-import { modelLabel } from "@/lib/model-catalog";
-import { canManageUsers } from "@/lib/roles";
+import type { CostAnalytics } from "@/lib/spend/cost-analytics";
+import { modelLabel } from "@/lib/replicate/catalog";
+import { canManageUsers } from "@/lib/auth/roles";
 import { BarList, SpendColumns, ViewSwitch, type DayValues, type Series } from "./charts";
 
 // --------------------------------------------------

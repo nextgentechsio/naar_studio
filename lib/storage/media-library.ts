@@ -1,11 +1,11 @@
 import { del, head } from "@vercel/blob";
 import { ObjectId } from "mongodb";
-import { blobUploadsEnabled } from "@/lib/input-uploads";
+import { blobUploadsEnabled } from "@/lib/storage/input-uploads";
 import {
   isDuplicateKeyError,
   libraryFilesCollection,
   type LibraryFileDoc,
-} from "@/lib/mongodb";
+} from "@/lib/db/mongodb";
 
 // --------------------------------------------------
 // MEDIA LIBRARY
@@ -23,7 +23,7 @@ import {
 // come from Blob itself, never the browser.
 // --------------------------------------------------
 
-export const LIBRARY_PREFIX = "library/";
+const LIBRARY_PREFIX = "library/";
 
 export type LibraryKind = LibraryFileDoc["kind"];
 
@@ -53,7 +53,7 @@ export function libraryFolder(userId: string): string {
   return `${LIBRARY_PREFIX}${userId.replace(/[^\w-]+/g, "_")}/`;
 }
 
-export function libraryKind(contentType: string): LibraryKind | null {
+function libraryKind(contentType: string): LibraryKind | null {
   const kind = contentType.split("/")[0];
   return LIBRARY_KINDS.includes(kind as LibraryKind) ? (kind as LibraryKind) : null;
 }

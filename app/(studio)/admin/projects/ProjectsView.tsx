@@ -3,7 +3,7 @@
 import { useStudio } from "@/app/(studio)/_components/StudioProvider";
 import ProjectsAdmin from "@/app/components/ProjectsAdmin";
 import { PageHeader } from "@/app/components/ui/primitives";
-import { canDeleteProjects } from "@/lib/roles";
+import { canDeleteProjects } from "@/lib/auth/roles";
 
 export default function ProjectsView() {
   const { currentUser, refreshProjects } = useStudio();

@@ -11,7 +11,7 @@ import {
   isDuplicateKeyError,
   libraryFilesCollection,
   type ElementDoc,
-} from "@/lib/mongodb";
+} from "@/lib/db/mongodb";
 
 // --------------------------------------------------
 // ELEMENTS

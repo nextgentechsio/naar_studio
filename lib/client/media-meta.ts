@@ -60,7 +60,7 @@ function read(src: string, kind: MediaKind): Promise<MediaMeta | null> {
   });
 }
 
-export function readMediaMeta(src: string, kind: MediaKind): Promise<MediaMeta | null> {
+function readMediaMeta(src: string, kind: MediaKind): Promise<MediaMeta | null> {
   const key = `${kind}:${src}`;
   let meta = metas.get(key);
   if (!meta) {
@@ -72,7 +72,7 @@ export function readMediaMeta(src: string, kind: MediaKind): Promise<MediaMeta |
 
 // Bytes of a file at a link (a HEAD request; Content-
 // Length is readable across origins), or of a local one
-export function readFileSize(url: string): Promise<number | null> {
+function readFileSize(url: string): Promise<number | null> {
   let size = sizes.get(url);
   if (!size) {
     size = fetch(url, { method: url.startsWith("blob:") ? "GET" : "HEAD" })
@@ -123,7 +123,7 @@ export function useMediaMeta(
 }
 
 // "0:09", "1:05", "1:02:03"
-export function formatClock(seconds: number): string {
+function formatClock(seconds: number): string {
   const total = Math.max(0, Math.round(seconds));
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);
@@ -131,7 +131,7 @@ export function formatClock(seconds: number): string {
   return h ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
 }
 
-export function formatBytes(bytes: number): string {
+function formatBytes(bytes: number): string {
   if (bytes >= 1024 * 1024 * 1024) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
   return `${Math.max(1, Math.round(bytes / 1024))} KB`;

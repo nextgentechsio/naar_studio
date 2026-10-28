@@ -1,12 +1,12 @@
 import type { GridFSFile } from "mongodb";
-import { generationsCollection, getDb } from "@/lib/mongodb";
+import { generationsCollection, getDb } from "@/lib/db/mongodb";
 import {
   deleteOutputBlobs,
   deleteOutputFile,
   OUTPUT_BLOB_FOLDER,
-} from "@/lib/generation-outputs";
-import { pruneOldBlobs, pruneOldInputs } from "@/lib/input-uploads";
-import { OUTPUT_RETENTION_DAYS } from "@/lib/output-retention-days";
+} from "@/lib/storage/generation-outputs";
+import { pruneOldBlobs, pruneOldInputs } from "@/lib/storage/input-uploads";
+import { OUTPUT_RETENTION_DAYS } from "@/lib/storage/output-retention-days";
 
 // --------------------------------------------------
 // OUTPUT RETENTION
@@ -16,14 +16,13 @@ import { OUTPUT_RETENTION_DAYS } from "@/lib/output-retention-days";
 // generation record and its expense stay forever (history
 // and spend reports are unaffected); the record is marked
 // `outputExpiredAt` so the UI can say why it's gone.
-// Uploaded input files (lib/input-uploads.ts) follow the
+// Uploaded input files (lib/storage/input-uploads.ts) follow the
 // same period.
 //
 // Runs at most once an hour per server process, after a
 // response (see scheduleOutputPrune), so no cron needed.
 // --------------------------------------------------
 
-export { OUTPUT_RETENTION_DAYS };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const PRUNE_INTERVAL_MS = 60 * 60 * 1000;
@@ -31,7 +30,7 @@ const BATCH_SIZE = 100;
 // Bounded work per pass; the rest goes next hour
 const MAX_BATCHES = 10;
 
-export function outputCutoff(now: Date): Date {
+function outputCutoff(now: Date): Date {
   return new Date(now.getTime() - OUTPUT_RETENTION_DAYS * DAY_MS);
 }
 

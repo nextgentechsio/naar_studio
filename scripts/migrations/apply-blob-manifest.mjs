@@ -2,7 +2,7 @@
 // POINT RECORDS AT THEIR BLOB COPIES
 //
 // Step two of moving files out of MongoDB, after
-// scripts/copy-files-to-blob.mjs. From the manifest it
+// scripts/migrations/copy-files-to-blob.mjs. From the manifest it
 // sets `outputBlobUrl` on generations and
 // `image.blobUrl` on projects, only where the record
 // still points at the very same GridFS file with the
@@ -12,8 +12,8 @@
 // field changes, so the app keeps working either way.
 // Undo: unset those fields.
 //
-//   node scripts/apply-blob-manifest.mjs --dry-run
-//   node scripts/apply-blob-manifest.mjs
+//   node scripts/migrations/apply-blob-manifest.mjs --dry-run
+//   node scripts/migrations/apply-blob-manifest.mjs
 // --------------------------------------------------
 
 import { readFile } from "node:fs/promises";
@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 import nextEnv from "@next/env";
 import { MongoClient, ObjectId } from "mongodb";
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 nextEnv.loadEnvConfig(ROOT, true, { info() {}, error: console.error });
 
 const MANIFEST = process.env.BLOB_MANIFEST_PATH || path.join(ROOT, ".migration/blob-manifest.json");

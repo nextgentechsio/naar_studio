@@ -1,4 +1,4 @@
-import { MODEL_IDS } from "@/lib/replicate-cost";
+import { MODEL_IDS } from "@/lib/replicate/cost";
 
 // --------------------------------------------------
 // APPROVED MODEL CATALOG
@@ -119,7 +119,7 @@ export function findCatalogModel(
 
 // Friendly name for display ("Nano Banana"); models
 // outside the catalog keep their Replicate id
-// Higgsfield runs (see lib/higgsfield.ts); not in the
+// Higgsfield runs (see lib/higgsfield/client.ts); not in the
 // catalog, which lists Replicate models
 const OTHER_PROVIDER_LABELS: Record<string, string> = {
   "bytedance/seedance-2.5/text-to-video": "Seedance 2.5 · Higgsfield",

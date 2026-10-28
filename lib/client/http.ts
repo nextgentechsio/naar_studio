@@ -12,7 +12,7 @@ import { goToSignIn } from "@/lib/client/session-ended";
 
 // An error response from our API, with what was asked.
 // Its message is the server's readable reason.
-export class ApiError extends Error {
+class ApiError extends Error {
   constructor(
     message: string,
     readonly url: string,

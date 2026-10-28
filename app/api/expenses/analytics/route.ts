@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
-import { getCostAnalytics, isTimeZone } from "@/lib/cost-analytics";
-import { isProvider, type Provider } from "@/lib/mongodb";
+import { requireUser } from "@/lib/auth/auth";
+import { getCostAnalytics, isTimeZone } from "@/lib/spend/cost-analytics";
+import { isProvider, type Provider } from "@/lib/db/mongodb";
 
 export const runtime = "nodejs";
 
@@ -15,7 +15,7 @@ function instant(value: string | null): Date | null {
 }
 
 // --------------------------------------------------
-// COST ANALYTICS for the Dashboard (lib/cost-analytics.ts)
+// COST ANALYTICS for the Dashboard (lib/spend/cost-analytics.ts)
 //
 // ?from=&to=        the period (ISO; to is exclusive)
 // &monthStart=      the viewer's 1st-of-month midnight

@@ -3,7 +3,7 @@ import {
   MAX_ATTEMPTS,
   WINDOW_MS,
   createLoginThrottle,
-} from "@/lib/login-throttle";
+} from "@/lib/auth/login-throttle";
 
 describe("login throttle", () => {
   it("allows MAX_ATTEMPTS, then blocks, counting attempts as they start", () => {

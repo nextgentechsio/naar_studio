@@ -1,12 +1,12 @@
 import { fetchJson } from "@/lib/client/http";
-import type { CostAnalytics } from "@/lib/cost-analytics";
-import type { ExpensePage, ExpenseReport } from "@/lib/expenses";
+import type { CostAnalytics } from "@/lib/spend/cost-analytics";
+import type { ExpensePage, ExpenseReport } from "@/lib/spend/expenses";
 import type {
   HistoryPage,
   HistoryStatus,
   PublicGeneration,
 } from "@/lib/generations";
-import type { PublicProject } from "@/lib/roles";
+import type { PublicProject } from "@/lib/auth/roles";
 
 // --------------------------------------------------
 // API READERS (browser only)
@@ -51,7 +51,7 @@ export async function fetchActiveProjects(): Promise<PublicProject[]> {
   return data.projects ?? [];
 }
 
-export function historyQueryString(filters: HistoryFilters): string {
+function historyQueryString(filters: HistoryFilters): string {
   const params = new URLSearchParams();
 
   const { withOptions, ...rest } = filters;
@@ -116,7 +116,7 @@ export function localPeriods(now = new Date()) {
 
 // Expense filters as the API takes them: ids, and from/to
 // as ISO instants (to is exclusive)
-// Spend analytics for the Dashboard (lib/cost-analytics.ts)
+// Spend analytics for the Dashboard (lib/spend/cost-analytics.ts)
 export async function fetchCostAnalytics(options: {
   from: Date;
   to: Date;

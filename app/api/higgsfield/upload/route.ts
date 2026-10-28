@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
-import { createHiggsfieldUpload, higgsfieldConfigured } from "@/lib/higgsfield";
-import { HIGGSFIELD_UPLOAD_TYPES } from "@/lib/higgsfield-models";
+import { requireUser } from "@/lib/auth/auth";
+import { createHiggsfieldUpload, higgsfieldConfigured } from "@/lib/higgsfield/client";
+import { HIGGSFIELD_UPLOAD_TYPES } from "@/lib/higgsfield/models";
 
 export const runtime = "nodejs";
 

@@ -7,19 +7,19 @@ import {
   useSyncExternalStore,
 } from "react";
 import { PasswordInput } from "@/app/components/ui/primitives";
-import { formatLastSeen } from "@/lib/presence";
+import { formatLastSeen } from "@/lib/auth/presence";
 import {
   assignableRoles,
   canManageUser,
   ROLE_LABELS,
   type PublicUser,
   type Role,
-} from "@/lib/roles";
+} from "@/lib/auth/roles";
 
 // --------------------------------------------------
 // USER MANAGEMENT (super_admin + admin)
 //
-// Controls are hidden based on lib/roles.ts, but every
+// Controls are hidden based on lib/auth/roles.ts, but every
 // action is re-checked by /api/users on the server.
 // --------------------------------------------------
 

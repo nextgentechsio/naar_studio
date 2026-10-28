@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
-import { requireUser } from "@/lib/auth";
-import { INPUT_CONTENT_TYPES, MAX_INPUT_BYTES } from "@/lib/input-uploads";
-import { libraryEnabled, libraryFolder } from "@/lib/media-library";
+import { requireUser } from "@/lib/auth/auth";
+import { INPUT_CONTENT_TYPES, MAX_INPUT_BYTES } from "@/lib/storage/input-uploads";
+import { libraryEnabled, libraryFolder } from "@/lib/storage/media-library";
 
 export const runtime = "nodejs";
 

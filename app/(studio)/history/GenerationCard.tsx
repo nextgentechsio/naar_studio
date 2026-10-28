@@ -5,7 +5,7 @@ import { Icon } from "@/app/components/ui/Icon";
 import { Badge, cx, formatCost } from "@/app/components/ui/primitives";
 import type { PublicGeneration } from "@/lib/client/data";
 import { formatDateTime } from "@/lib/client/format";
-import { modelLabel } from "@/lib/model-catalog";
+import { modelLabel } from "@/lib/replicate/catalog";
 import OutputPreview, { isRunningStatus } from "./OutputPreview";
 
 // One tile in the History grid; opens the detail drawer.

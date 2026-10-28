@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
-import { toPublicUser } from "@/lib/users";
+import { requireUser } from "@/lib/auth/auth";
+import { toPublicUser } from "@/lib/auth/users";
 
 export const runtime = "nodejs";
 

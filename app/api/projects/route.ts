@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth/auth";
 import {
   createProject,
   listProjects,
 } from "@/lib/projects";
-import { canManageProjects } from "@/lib/roles";
+import { canManageProjects } from "@/lib/auth/roles";
 
 export const runtime = "nodejs";
 

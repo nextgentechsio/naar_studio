@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth/auth";
 import { createHash } from "crypto";
-import { openBlobOutput, openOutput, parseRange } from "@/lib/generation-outputs";
+import { openBlobOutput, openOutput, parseRange } from "@/lib/storage/generation-outputs";
 import { canViewGeneration, getGeneration } from "@/lib/generations";
 
 export const runtime = "nodejs";

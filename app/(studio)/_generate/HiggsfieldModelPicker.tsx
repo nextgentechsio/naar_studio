@@ -8,7 +8,7 @@ import {
   higgsfieldPriceHint,
   higgsfieldPriceKind,
   type HiggsfieldModel,
-} from "@/lib/higgsfield-models";
+} from "@/lib/higgsfield/models";
 
 // --------------------------------------------------
 // HIGGSFIELD MODEL PICKER (Generate page, Higgsfield)

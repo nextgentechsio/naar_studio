@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
-import { findHiggsfieldModel, formSchema } from "@/lib/higgsfield";
+import { requireUser } from "@/lib/auth/auth";
+import { findHiggsfieldModel, formSchema } from "@/lib/higgsfield/client";
 
 export const runtime = "nodejs";
 

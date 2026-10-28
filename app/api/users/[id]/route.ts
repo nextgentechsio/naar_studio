@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth/auth";
 import {
   createSessionToken,
   SESSION_COOKIE,
   SESSION_MAX_AGE_SECONDS,
-} from "@/lib/session";
+} from "@/lib/auth/session";
 import {
   deleteUser,
   findUserById,
   updateUser,
-} from "@/lib/users";
+} from "@/lib/auth/users";
 
 export const runtime = "nodejs";
 

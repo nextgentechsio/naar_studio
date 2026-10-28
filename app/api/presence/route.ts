@@ -1,12 +1,12 @@
 import { after, NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
-import { maybePruneOutputs } from "@/lib/output-retention";
-import { recordHeartbeat } from "@/lib/users";
+import { requireUser } from "@/lib/auth/auth";
+import { maybePruneOutputs } from "@/lib/storage/output-retention";
+import { recordHeartbeat } from "@/lib/auth/users";
 
 export const runtime = "nodejs";
 
 // Heartbeat from an open, visible app tab (see
-// lib/presence.ts). Any signed-in user.
+// lib/auth/presence.ts). Any signed-in user.
 export async function POST() {
   const auth = await requireUser();
   if (auth.response) return auth.response;

@@ -3,12 +3,12 @@ import {
   isDuplicateKeyError,
   projectsCollection,
   type ProjectDoc,
-} from "@/lib/mongodb";
+} from "@/lib/db/mongodb";
 import {
   deleteProjectImageFile,
   projectImageUrl,
-} from "@/lib/project-images";
-import type { PublicProject } from "@/lib/roles";
+} from "@/lib/storage/project-images";
+import type { PublicProject } from "@/lib/auth/roles";
 
 // --------------------------------------------------
 // PROJECTS (MongoDB "projects" collection)

@@ -4,14 +4,14 @@ import {
   isSessionConfigured,
   SESSION_COOKIE,
   SESSION_MAX_AGE_SECONDS,
-} from "@/lib/session";
-import { loginThrottle } from "@/lib/login-throttle";
+} from "@/lib/auth/session";
+import { loginThrottle } from "@/lib/auth/login-throttle";
 import {
   hasAnyUsers,
   startNewSession,
   toPublicUser,
   verifyCredentials,
-} from "@/lib/users";
+} from "@/lib/auth/users";
 
 export const runtime = "nodejs";
 

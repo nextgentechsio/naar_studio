@@ -1,5 +1,5 @@
 import { config as configureSdk, higgsfield } from "@higgsfield/client/v2";
-import type { Schema, SchemaProperty } from "@/app/(studio)/replicate/fields";
+import type { Schema, SchemaProperty } from "@/app/(studio)/_generate/fields";
 import {
   approxMeteredCostUsd,
   categoryFor,
@@ -11,9 +11,9 @@ import {
   videoLimitsFor,
   type HiggsfieldModel,
   type HiggsfieldUsage,
-} from "@/lib/higgsfield-models";
-import { shapeInputs, type InputSchema } from "@/lib/replicate-inputs";
-import { videoInfo } from "@/lib/video-info";
+} from "@/lib/higgsfield/models";
+import { shapeInputs, type InputSchema } from "@/lib/replicate/inputs";
+import { videoInfo } from "@/lib/storage/video-info";
 
 // --------------------------------------------------
 // HIGGSFIELD (server side)
@@ -472,7 +472,7 @@ export async function createHiggsfieldUpload(
 }
 
 // --------------------------------------------------
-// PRICES (see lib/higgsfield-models.ts)
+// PRICES (see lib/higgsfield/models.ts)
 // --------------------------------------------------
 
 const QUOTE_TIMEOUT_MS = 15_000;
@@ -511,7 +511,7 @@ export async function quoteHiggsfield(
 // Input files we may read to measure: our own uploads
 // (Vercel Blob) and Higgsfield's outputs. Never an
 // arbitrary host from the form.
-export function isMeasurableInput(url: URL): boolean {
+function isMeasurableInput(url: URL): boolean {
   return (
     (url.protocol === "https:" && url.hostname.endsWith(".blob.vercel-storage.com")) ||
     isHiggsfieldOutputUrl(url)
@@ -597,7 +597,7 @@ export async function higgsfieldRunCostUsd(
 // INPUT VIDEO CHECK (before a run starts)
 //
 // Seedance refuses videos outside its pixel range or
-// 4–30 s (lib/higgsfield-models.ts). Uploads are resized in the
+// 4–30 s (lib/higgsfield/models.ts). Uploads are resized in the
 // browser, but a file picked from the library may be
 // too small or large: say so now, not after a failed
 // run. Videos that can't be measured are let through.

@@ -1,9 +1,9 @@
 import { fetchJson } from "@/lib/client/http";
 import { safeFileName, uploadToBlob } from "@/lib/client/upload";
-import type { LibraryFile, LibraryKind } from "@/lib/media-library";
+import type { LibraryFile, LibraryKind } from "@/lib/storage/media-library";
 
 // --------------------------------------------------
-// MEDIA LIBRARY (browser only, see lib/media-library.ts)
+// MEDIA LIBRARY (browser only, see lib/storage/media-library.ts)
 //
 // Uploads go to the user's library folder on Vercel
 // Blob and are listed for reuse in later runs. Without

@@ -6,7 +6,7 @@
 // (one session per account); the login page says so.
 // --------------------------------------------------
 
-// Also sent by the server (lib/auth.ts) with the 401
+// Also sent by the server (lib/auth/auth.ts) with the 401
 export const SESSION_REPLACED = "session_replaced";
 
 export function goToSignIn(code?: unknown) {

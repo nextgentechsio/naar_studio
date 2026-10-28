@@ -1,7 +1,7 @@
 import { createServer, type Server } from "http";
 import type { AddressInfo } from "net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { videoInfo } from "@/lib/video-info";
+import { videoInfo } from "@/lib/storage/video-info";
 
 // --------------------------------------------------
 // Measuring a fragmented MP4 (what a browser's

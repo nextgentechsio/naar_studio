@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { useGenerateStore } from "@/app/(studio)/_components/GenerateProvider";
+import { useGenerateStore } from "@/app/(studio)/_generate/GenerateProvider";
 import { useStudio } from "@/app/(studio)/_components/StudioProvider";
 import { Icon } from "@/app/components/ui/Icon";
 import {
@@ -22,9 +22,9 @@ import {
 import { formatDateTime, formatDuration } from "@/lib/client/format";
 import { errorMessage } from "@/lib/client/http";
 import { downloadOutput, getOutputType } from "@/lib/client/outputs";
-import { MediaDetails } from "@/app/(studio)/replicate/MediaCaption";
-import { modelLabel } from "@/lib/model-catalog";
-import { canDeleteGenerations, canHideGenerations } from "@/lib/roles";
+import { MediaDetails } from "@/app/(studio)/_generate/MediaCaption";
+import { modelLabel } from "@/lib/replicate/catalog";
+import { canDeleteGenerations, canHideGenerations } from "@/lib/auth/roles";
 import { useDialog } from "@/app/(studio)/_components/useDialog";
 import OutputPreview, { isRunningStatus } from "./OutputPreview";
 

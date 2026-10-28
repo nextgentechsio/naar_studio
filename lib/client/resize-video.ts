@@ -1,10 +1,10 @@
-import { fitVideo, videoLengthProblem, type VideoLimits } from "@/lib/higgsfield-models";
+import { fitVideo, videoLengthProblem, type VideoLimits } from "@/lib/higgsfield/models";
 
 // --------------------------------------------------
 // RESIZE A VIDEO IN THE BROWSER (before upload)
 //
 // For models with size limits (Seedance: see
-// lib/higgsfield-models.ts). The video plays once,
+// lib/higgsfield/models.ts). The video plays once,
 // unseen and unheard, while each frame is drawn at the
 // new size and recorded as MP4 with its sound, so it
 // takes about as long as the clip. Same shape, so
@@ -65,7 +65,7 @@ function mp4Type(): string | null {
 // The video's own size and length, from its metadata (a
 // file, or a link: only the start of it is read). The
 // length can be NaN or Infinity for some recordings.
-export function readVideoSize(
+function readVideoSize(
   source: File | string
 ): Promise<{ width: number; height: number; seconds: number } | null> {
   return new Promise((resolve) => {

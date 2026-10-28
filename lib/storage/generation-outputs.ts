@@ -3,9 +3,9 @@ import { pipeline } from "stream/promises";
 import type { ReadableStream as NodeReadableStream } from "stream/web";
 import { del, put } from "@vercel/blob";
 import { ObjectId } from "mongodb";
-import { blobUploadsEnabled } from "@/lib/input-uploads";
-import { generationOutputsBucket } from "@/lib/mongodb";
-import { fetchAllowed, isAllowedOutputSource } from "@/lib/output-source";
+import { blobUploadsEnabled } from "@/lib/storage/input-uploads";
+import { generationOutputsBucket } from "@/lib/db/mongodb";
+import { fetchAllowed, isAllowedOutputSource } from "@/lib/storage/output-source";
 
 // --------------------------------------------------
 // SAVED OUTPUTS

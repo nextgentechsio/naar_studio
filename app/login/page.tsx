@@ -5,7 +5,7 @@ import ThemeToggle from "@/app/components/ThemeToggle";
 import { NaarLogo } from "@/app/components/ui/NaarLogo";
 import AppFooter from "@/app/components/AppFooter";
 import { APP_NAME, COMPANY } from "@/lib/app-info";
-import { safeNextPath } from "@/lib/safe-next";
+import { safeNextPath } from "@/lib/auth/safe-next";
 import {
   Alert,
   Button,

@@ -5,7 +5,7 @@ import {
   useStudio,
 } from "@/app/(studio)/_components/StudioProvider";
 import { APP_NAME, APP_COMMIT, APP_VERSION } from "@/lib/app-info";
-import { ROLE_LABELS } from "@/lib/roles";
+import { ROLE_LABELS } from "@/lib/auth/roles";
 
 // --------------------------------------------------
 // ACCOUNT

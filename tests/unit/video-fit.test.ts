@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fitVideo, videoLengthProblem, videoLimitsFor } from "@/lib/higgsfield-models";
+import { fitVideo, videoLengthProblem, videoLimitsFor } from "@/lib/higgsfield/models";
 
 const limits = videoLimitsFor("bytedance/seedance-2.5/video-edit")!;
 

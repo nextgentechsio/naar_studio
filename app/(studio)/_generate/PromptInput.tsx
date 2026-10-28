@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Fragment, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { useGenerate } from "@/app/(studio)/_components/GenerateProvider";
+import { useGenerate } from "@/app/(studio)/_generate/GenerateProvider";
 import ElementDialog from "@/app/(studio)/elements/ElementDialog";
 import { useElements, type Element } from "@/lib/client/elements";
 import { mentionedElements } from "@/lib/element-mentions";

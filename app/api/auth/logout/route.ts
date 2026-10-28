@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { SESSION_COOKIE, verifySessionToken } from "@/lib/session";
-import { recordSignOut } from "@/lib/users";
+import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth/session";
+import { recordSignOut } from "@/lib/auth/users";
 
 export const runtime = "nodejs";
 

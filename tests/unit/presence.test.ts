@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ONLINE_WINDOW_MS, formatLastSeen, presenceOf } from "@/lib/presence";
+import { ONLINE_WINDOW_MS, formatLastSeen, presenceOf } from "@/lib/auth/presence";
 
 const now = Date.parse("2026-10-08T12:00:00Z");
 const ago = (ms: number) => new Date(now - ms);

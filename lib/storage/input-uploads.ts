@@ -1,5 +1,5 @@
 import { del, list } from "@vercel/blob";
-import { OUTPUT_RETENTION_DAYS } from "@/lib/output-retention-days";
+import { OUTPUT_RETENTION_DAYS } from "@/lib/storage/output-retention-days";
 
 // --------------------------------------------------
 // INPUT FILES ON VERCEL BLOB
@@ -37,7 +37,7 @@ const globalForSweep = globalThis as unknown as {
 // Deletes files in a Blob folder uploaded before the
 // retention cutoff. Returns how many were removed. Used
 // for inputs/, and for outputs/ as a safety net behind
-// the record-based cleanup (lib/output-retention.ts).
+// the record-based cleanup (lib/storage/output-retention.ts).
 export async function pruneOldBlobs(prefix: string, now = new Date()): Promise<number> {
   if (!blobUploadsEnabled()) return 0;
 

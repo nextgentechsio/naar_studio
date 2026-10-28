@@ -49,9 +49,6 @@ const SERIES: Series<ProviderKey>[] = [
 const PROVIDER_LABEL = Object.fromEntries(SERIES.map((item) => [item.key, item.label])) as Record<ProviderKey, string>;
 const PROVIDER_COLOR = Object.fromEntries(SERIES.map((item) => [item.key, item.color])) as Record<ProviderKey, string>;
 
-// Rows past this many fold into "Other"
-const TOP_ROWS = 6;
-
 async function fetchRecent(platform: Platform) {
   const page = await fetchHistoryPage({ pageSize: 6, provider: platform || undefined, withOptions: false });
   return page.generations;
@@ -98,7 +95,7 @@ function StatTile({
   loading: boolean;
 }) {
   return (
-    <div className="rounded-2xl border border-line bg-surface p-5 shadow-card">
+    <div className="min-w-0 rounded-2xl border border-line bg-surface p-4 shadow-card sm:p-5">
       <p className="text-xs font-medium text-fg-subtle">{label}</p>
       {loading ? (
         <>
@@ -107,7 +104,7 @@ function StatTile({
         </>
       ) : (
         <>
-          <p className="mt-2 text-[28px] font-semibold leading-tight text-fg">{value}</p>
+          <p className="mt-2 text-2xl font-semibold leading-tight text-fg sm:text-[28px]">{value}</p>
           {footer && <p className="mt-2 text-xs">{footer}</p>}
         </>
       )}
@@ -149,16 +146,6 @@ function PlatformDot({ provider }: { provider: ProviderKey }) {
       {PROVIDER_LABEL[provider]}
     </span>
   );
-}
-
-// Top rows, the rest as one "Other" row
-function foldRows<T>(rows: T[], value: (row: T) => number) {
-  if (rows.length <= TOP_ROWS + 1) return { top: rows, other: null };
-  const rest = rows.slice(TOP_ROWS);
-  return {
-    top: rows.slice(0, TOP_ROWS),
-    other: { count: rest.length, value: rest.reduce((sum, row) => sum + value(row), 0) },
-  };
 }
 
 // --------------------------------------------------
@@ -221,9 +208,6 @@ export default function DashboardView() {
   const forecast =
     data && monthDaysSoFar > 0.25 ? (data.monthToDate.amountUsd / monthDaysSoFar) * daysInMonth : null;
 
-  const models = foldRows(data?.byModel ?? [], (row) => row.amountUsd);
-  const projects = foldRows(data?.byProject ?? [], (row) => row.amountUsd);
-  const people = foldRows(data?.byUser ?? [], (row) => row.amountUsd);
   const totalSpend = data?.total.amountUsd ?? 0;
 
   const rangeLabel = DASHBOARD_RANGES.find(([value]) => value === range)?.[1] ?? "";
@@ -236,12 +220,13 @@ export default function DashboardView() {
         <p className="mt-1 text-sm text-fg-muted">Where the money goes, and how runs are doing</p>
       </div>
 
-      {/* One row of filters scoping everything below */}
+      {/* One row of filters scoping everything below (on
+          phones, each scrolls sideways if it doesn't fit) */}
       <div className="flex flex-wrap items-center gap-3">
         <div
           role="group"
           aria-label="Period"
-          className="inline-flex rounded-full border border-line bg-surface p-1 shadow-card"
+          className="inline-flex [scrollbar-width:none] max-w-full overflow-x-auto rounded-full border border-line bg-surface p-1 shadow-card"
         >
           {DASHBOARD_RANGES.map(([value, label]) => (
             <button
@@ -250,7 +235,7 @@ export default function DashboardView() {
               aria-pressed={range === value}
               onClick={() => setFilter("range", value)}
               className={cx(
-                "rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors",
+                "shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition-colors sm:px-3.5",
                 range === value ? "bg-accent text-on-accent shadow-sm" : "text-fg-muted hover:text-fg",
               )}
             >
@@ -262,7 +247,7 @@ export default function DashboardView() {
         <div
           role="group"
           aria-label="Platform"
-          className="inline-flex rounded-full border border-line bg-surface p-1 shadow-card"
+          className="inline-flex [scrollbar-width:none] max-w-full overflow-x-auto rounded-full border border-line bg-surface p-1 shadow-card"
         >
           {PLATFORMS.map(([value, label]) => (
             <button
@@ -271,7 +256,7 @@ export default function DashboardView() {
               aria-pressed={platform === value}
               onClick={() => setFilter("platform", value)}
               className={cx(
-                "flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors",
+                "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition-colors sm:px-3.5",
                 platform === value ? "bg-accent text-on-accent shadow-sm" : "text-fg-muted hover:text-fg",
               )}
             >
@@ -295,7 +280,7 @@ export default function DashboardView() {
 
       {/* Held at reduced opacity while a new slice loads */}
       <div className={cx("space-y-6 transition-opacity", analytics.refreshing && "opacity-60")}>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
           <StatTile
             label={`Spend · ${rangeLabel.toLowerCase()}`}
             loading={loading}
@@ -374,9 +359,9 @@ export default function DashboardView() {
               <div aria-hidden className="ui-skeleton h-48 rounded-lg" />
             ) : (
               <BarList
+                noun="models"
                 empty="No spend in this period."
-                rows={[
-                  ...models.top.map((row) => ({
+                rows={(data?.byModel ?? []).map((row) => ({
                     key: row.model,
                     label: (
                       <span className="flex items-center gap-2">
@@ -387,11 +372,7 @@ export default function DashboardView() {
                     detail: `${row.runs} run${row.runs === 1 ? "" : "s"} · ${percent(row.amountUsd, totalSpend)}% of spend${row.unpriced ? ` · ${row.unpriced} unpriced` : ""}`,
                     value: row.amountUsd,
                     color: PROVIDER_COLOR[row.provider],
-                  })),
-                  ...(models.other
-                    ? [{ key: "other", label: `Other (${models.other.count} models)`, value: models.other.value, color: "var(--fg-subtle)" }]
-                    : []),
-                ]}
+                  }))}
               />
             )}
           </Card>
@@ -402,37 +383,29 @@ export default function DashboardView() {
             ) : (
               <div className="space-y-6">
                 <BarList
+                  noun="projects"
                   empty="No spend in this period."
-                  rows={[
-                    ...projects.top.map((row) => ({
+                  rows={(data?.byProject ?? []).map((row) => ({
                       key: row.id,
                       label: row.name,
                       detail: `${row.count} run${row.count === 1 ? "" : "s"} · ${percent(row.amountUsd, totalSpend)}%`,
                       value: row.amountUsd,
                       color: "var(--fg-muted)",
-                    })),
-                    ...(projects.other
-                      ? [{ key: "other", label: `Other (${projects.other.count} projects)`, value: projects.other.value, color: "var(--fg-subtle)" }]
-                      : []),
-                  ]}
+                    }))}
                 />
                 {isManager && (data?.byUser.length ?? 0) > 0 && (
                   <div className="border-t border-line pt-5">
                     <p className="mb-3 text-xs font-medium text-fg-subtle">By person</p>
                     <BarList
+                      noun="people"
                       empty=""
-                      rows={[
-                        ...people.top.map((row) => ({
+                      rows={(data?.byUser ?? []).map((row) => ({
                           key: row.id,
                           label: row.name,
                           detail: `${row.count} run${row.count === 1 ? "" : "s"} · ${percent(row.amountUsd, totalSpend)}%`,
                           value: row.amountUsd,
                           color: "var(--fg-muted)",
-                        })),
-                        ...(people.other
-                          ? [{ key: "other", label: `Other (${people.other.count} people)`, value: people.other.value, color: "var(--fg-subtle)" }]
-                          : []),
-                      ]}
+                        }))}
                     />
                   </div>
                 )}
@@ -453,15 +426,16 @@ export default function DashboardView() {
           ) : modelChart ? (
             // "Chart": average per run, one bar per model
             <BarList
+              noun="models"
+              columns
               empty=""
               rows={[...data.byModel]
                 .filter((row) => row.averageUsd !== null)
                 .sort((a, b) => (b.averageUsd ?? 0) - (a.averageUsd ?? 0))
-                .slice(0, 10)
                 .map((row) => ({
                   key: row.model,
                   label: modelLabel(row.model),
-                  detail: `average per run · ${row.runs} runs`,
+                  detail: `average per run · ${row.runs} run${row.runs === 1 ? "" : "s"}`,
                   value: row.averageUsd ?? 0,
                   color: PROVIDER_COLOR[row.provider],
                 }))}

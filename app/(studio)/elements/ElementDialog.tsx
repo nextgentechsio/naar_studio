@@ -46,6 +46,7 @@ type Pending = { preview: string; progress: number | null };
 export default function ElementDialog({
   element,
   initialName = "",
+  initialImages = [],
   onClose,
   onSaved,
 }: {
@@ -54,6 +55,9 @@ export default function ElementDialog({
   // Prefilled name for a new one (e.g. what was typed
   // after @)
   initialName?: string;
+  // Reference images a new one starts with (e.g. a
+  // generated image: "Add to element")
+  initialImages?: string[];
   onClose: () => void;
   onSaved?: (element: Element) => void;
 }) {
@@ -63,7 +67,7 @@ export default function ElementDialog({
   const [direction, setDirection] = useState<"forward" | "back">("forward");
   const [name, setName] = useState(element?.name ?? initialName);
   const [description, setDescription] = useState(element?.description ?? "");
-  const [images, setImages] = useState<string[]>(element?.images ?? []);
+  const [images, setImages] = useState<string[]>(element?.images ?? initialImages);
   const [pending, setPending] = useState<Pending[]>([]);
   const [picking, setPicking] = useState(false);
   const [saving, setSaving] = useState(false);

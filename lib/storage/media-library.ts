@@ -1,11 +1,16 @@
-import { del, head } from "@vercel/blob";
+import { Readable } from "stream";
+import type { ReadableStream as NodeReadableStream } from "stream/web";
+import { del, head, put } from "@vercel/blob";
 import { ObjectId } from "mongodb";
-import { blobUploadsEnabled } from "@/lib/storage/input-uploads";
+import { blobUploadsEnabled, MAX_INPUT_BYTES } from "@/lib/storage/input-uploads";
 import {
   isDuplicateKeyError,
   libraryFilesCollection,
   type LibraryFileDoc,
 } from "@/lib/db/mongodb";
+import type { StoredUser } from "@/lib/auth/users";
+import { canViewGeneration, getGeneration } from "@/lib/generations";
+import { openOutput } from "@/lib/storage/generation-outputs";
 
 // --------------------------------------------------
 // MEDIA LIBRARY
@@ -165,4 +170,103 @@ export async function deleteLibraryFile(
   }
 
   return { ok: true };
+}
+
+// --------------------------------------------------
+// A RUN'S OUTPUT INTO THE LIBRARY
+//
+// "Save to library", and "Add to element" (elements are
+// made of library images, so a generated image is copied
+// in first). Only runs the viewer may see, finished, with
+// a saved image, video or audio; the same run twice gives
+// the same file.
+// --------------------------------------------------
+
+const MAX_COPY_BYTES = MAX_INPUT_BYTES;
+
+const OUTPUT_FILES: Record<string, { kind: LibraryKind; extension: string }> = {
+  "image/png": { kind: "image", extension: ".png" },
+  "image/jpeg": { kind: "image", extension: ".jpg" },
+  "image/webp": { kind: "image", extension: ".webp" },
+  "image/gif": { kind: "image", extension: ".gif" },
+  "video/mp4": { kind: "video", extension: ".mp4" },
+  "video/webm": { kind: "video", extension: ".webm" },
+  "video/quicktime": { kind: "video", extension: ".mov" },
+  "audio/mpeg": { kind: "audio", extension: ".mp3" },
+  "audio/wav": { kind: "audio", extension: ".wav" },
+  "audio/x-wav": { kind: "audio", extension: ".wav" },
+  "audio/ogg": { kind: "audio", extension: ".ogg" },
+};
+
+export async function saveGenerationToLibrary(
+  actor: StoredUser,
+  generationId: string
+): Promise<LibraryResult> {
+  if (!libraryEnabled()) {
+    return { ok: false, status: 501, error: "The library is not set up on the server" };
+  }
+
+  const generation = await getGeneration(generationId);
+  if (!generation || !canViewGeneration(actor, generation)) {
+    return { ok: false, status: 404, error: "Generation not found" };
+  }
+
+  // "image/png; charset=…" → "image/png"
+  const contentType = (generation.outputContentType ?? "").split(";")[0].trim().toLowerCase();
+  const type = OUTPUT_FILES[contentType];
+  if (generation.status !== "succeeded" || !(generation.outputBlobUrl || generation.outputFileId)) {
+    return { ok: false, status: 409, error: "This result is still being saved. Try again in a moment." };
+  }
+  if (!type) {
+    return { ok: false, status: 415, error: "This kind of file can't be saved to the library." };
+  }
+
+  const files = await libraryFilesCollection();
+  const existing = await files.findOne({ userId: actor.id, fromGenerationId: generationId });
+  if (existing) return { ok: true, file: toFile(existing) };
+
+  // The saved copy's bytes, from Blob or GridFS
+  let bytes: Buffer;
+  if (generation.outputBlobUrl) {
+    const response = await fetch(generation.outputBlobUrl, { cache: "no-store" });
+    if (!response.ok) {
+      await response.text().catch(() => "");
+      return { ok: false, status: 502, error: "Couldn't read the result. Please try again." };
+    }
+    bytes = Buffer.from(await response.arrayBuffer());
+  } else {
+    const chunks: Buffer[] = [];
+    for await (const chunk of Readable.fromWeb(
+      (await openOutput(generation.outputFileId!, null)) as unknown as NodeReadableStream<Uint8Array>
+    )) {
+      chunks.push(Buffer.from(chunk as Uint8Array));
+    }
+    bytes = Buffer.concat(chunks);
+  }
+  if (bytes.length > MAX_COPY_BYTES) {
+    return { ok: false, status: 413, error: "This file is too large for the library." };
+  }
+
+  const name = `run-${generationId.slice(0, 8)}${type.extension}`;
+  const blob = await put(`${libraryFolder(actor.id)}${name}`, bytes, {
+    access: "public",
+    addRandomSuffix: true,
+    contentType,
+  });
+
+  const doc: LibraryFileDoc = {
+    _id: new ObjectId(),
+    userId: actor.id,
+    url: blob.url,
+    pathname: blob.pathname,
+    name,
+    kind: type.kind,
+    contentType,
+    size: bytes.length,
+    fromGenerationId: generationId,
+    createdAt: new Date(),
+  };
+  await files.insertOne(doc);
+
+  return { ok: true, file: toFile(doc) };
 }

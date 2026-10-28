@@ -56,6 +56,8 @@ import {
   fieldGroup,
   orderSchemaFields,
 } from "./fields";
+import AddToElementDialog from "@/app/(studio)/elements/AddToElementDialog";
+import SaveToLibraryButton from "./SaveToLibraryButton";
 import ModelBrowserDialog from "./ModelBrowserDialog";
 import { MediaDetails } from "./MediaCaption";
 import PromptInput from "./PromptInput";
@@ -123,6 +125,7 @@ export default function GenerateView() {
   const projects = projectList.map((item) => item.name);
 
   const [browsing, setBrowsing] = useState(false);
+  const [addingToElement, setAddingToElement] = useState(false);
   // When a run succeeds, the loader's balls land on the n
   // and rest there before the output appears. A run that finished before
   // this page opened counts as landed (no replay on return).
@@ -998,6 +1001,13 @@ export default function GenerateView() {
                     Download{outputUrls.length > 1 ? ` ${index + 1}` : ""}
                   </Button>
                 ))}
+                {/* The saved copy is the first output */}
+                <SaveToLibraryButton key={result!.prediction.id} generationId={result!.prediction.id} size="sm" />
+                {readyType === "image" && (
+                  <Button variant="secondary" size="sm" icon="at" onClick={() => setAddingToElement(true)}>
+                    Add to element
+                  </Button>
+                )}
               </div>
             )}
           </div>
@@ -1130,6 +1140,14 @@ export default function GenerateView() {
         ) : (
           <ModelBrowserDialog onClose={() => setBrowsing(false)} />
         ))}
+
+      {addingToElement && result && outputUrls[0] && (
+        <AddToElementDialog
+          generationId={result.prediction.id}
+          preview={outputUrls[0]}
+          onClose={() => setAddingToElement(false)}
+        />
+      )}
     </>
   );
 }

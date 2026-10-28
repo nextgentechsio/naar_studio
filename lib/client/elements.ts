@@ -83,6 +83,23 @@ export async function saveElement(id: string | null, fields: ElementFields): Pro
   return element;
 }
 
+// One more reference image on an existing element
+export async function addImageToElement(element: Element, url: string): Promise<Element> {
+  if (element.images.includes(url)) return element;
+
+  const { element: updated } = await fetchJson<{ element: Element }>(
+    `/api/elements/${encodeURIComponent(element.id)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ images: [...element.images, url] }),
+    }
+  );
+
+  await reloadElements();
+  return updated;
+}
+
 export async function removeElement(id: string): Promise<void> {
   await fetchJson(`/api/elements/${encodeURIComponent(id)}`, { method: "DELETE" });
   await reloadElements();

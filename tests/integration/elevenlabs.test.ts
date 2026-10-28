@@ -102,6 +102,10 @@ describe("ElevenLabs", () => {
     expect(served.status).toBe(200);
     expect(served.headers.get("content-type")).toContain("audio/mpeg");
 
+    // Can be kept in the library, as audio
+    const kept = await api("/api/library/from-generation", { session: alice.session, json: { generationId: id } });
+    expect(kept.data.file).toMatchObject({ kind: "audio", contentType: "audio/mpeg" });
+
     // What ElevenLabs was asked for
     const sent = (await replicateRequests()).filter((request) => request.path.startsWith("/el/v1/text-to-speech/voice-rachel")).at(-1);
     expect(sent?.path).toContain("output_format=mp3_44100_128");

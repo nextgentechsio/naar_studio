@@ -26,6 +26,8 @@ import { MediaDetails } from "@/app/(studio)/_generate/MediaCaption";
 import { modelLabel } from "@/lib/replicate/catalog";
 import { canDeleteGenerations, canHideGenerations } from "@/lib/auth/roles";
 import { useDialog } from "@/app/(studio)/_components/useDialog";
+import AddToElementDialog from "@/app/(studio)/elements/AddToElementDialog";
+import SaveToLibraryButton from "@/app/(studio)/_generate/SaveToLibraryButton";
 import OutputPreview, { isRunningStatus } from "./OutputPreview";
 
 // --------------------------------------------------
@@ -70,6 +72,7 @@ export default function GenerationDrawer({
   const [hiding, setHiding] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [addingToElement, setAddingToElement] = useState(false);
   // "Run again" goes back to the provider that ran it
   const stores = {
     replicate: useGenerateStore("replicate"),
@@ -323,6 +326,18 @@ export default function GenerationDrawer({
                   </Button>
                 )}
 
+                {generation.status === "succeeded" && generation.outputUrl && (
+                  <SaveToLibraryButton key={id} generationId={id} />
+                )}
+
+                {generation.status === "succeeded" &&
+                  generation.outputUrl &&
+                  getOutputType(generation.outputUrl, generation.outputContentType) === "image" && (
+                    <Button icon="at" onClick={() => setAddingToElement(true)}>
+                      Add to element
+                    </Button>
+                  )}
+
                 {generation.prompt && (
                   <Button variant="ghost" icon="copy" onClick={copyPrompt}>
                     Copy prompt
@@ -442,6 +457,14 @@ export default function GenerationDrawer({
           )}
         </div>
       </aside>
+
+      {addingToElement && generation?.outputUrl && (
+        <AddToElementDialog
+          generationId={id}
+          preview={generation.outputUrl}
+          onClose={() => setAddingToElement(false)}
+        />
+      )}
     </div>
   );
 }

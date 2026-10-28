@@ -34,6 +34,8 @@ export type HistoryFilters = {
   from?: string;
   to?: string;
   provider?: "replicate" | "higgsfield" | "elevenlabs";
+  // Finished runs with a saved output of this kind
+  kind?: "image" | "video" | "audio";
   // false: skip the filter dropdown values (see
   // listGenerations)
   withOptions?: boolean;

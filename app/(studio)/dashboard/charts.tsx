@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type KeyboardEvent, type ReactNode } from "react";
+import { useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { cx, formatCost } from "@/app/components/ui/primitives";
 
 // --------------------------------------------------
@@ -286,32 +286,71 @@ export type BarRow = {
   color: string;
 };
 
-export function BarList({ rows, empty }: { rows: BarRow[]; empty: string }) {
+// Two lines a row: label, detail and value, then the bar
+// (the detail drops under the bar on phones). Every row
+// is listed; past a card's height the list scrolls inside
+// it, with a count saying how many there are. columns:
+// two columns on wide screens, for full-width cards
+// (ranked top to bottom, then across)
+export function BarList({
+  rows,
+  empty,
+  noun,
+  columns = false,
+}: {
+  rows: BarRow[];
+  empty: string;
+  // For the count, e.g. "models"
+  noun?: string;
+  columns?: boolean;
+}) {
   if (!rows.length) {
     return <p className="rounded-xl border border-dashed border-line p-8 text-center text-sm text-fg-subtle">{empty}</p>;
   }
 
   const max = Math.max(...rows.map((row) => row.value), 0);
+  // Rows that fit before it scrolls (2 columns: twice as many)
+  const scrolls = rows.length > (columns ? 2 * FIT_ROWS : FIT_ROWS);
 
   return (
-    <ul className="space-y-3">
-      {rows.map((row) => (
-        <li key={row.key}>
-          <div className="flex items-baseline justify-between gap-3 text-sm">
-            <span className="min-w-0 truncate text-fg">{row.label}</span>
-            <span className="shrink-0 tabular-nums font-medium text-fg">{formatCost(row.value)}</span>
-          </div>
-          <div className="mt-1.5 flex items-center gap-3">
-            <div className="h-2 flex-1 overflow-hidden rounded-r-[4px] bg-raised">
-              <div
-                className="h-full rounded-r-[4px]"
-                style={{ width: `${max > 0 ? Math.max(1.5, (row.value / max) * 100) : 0}%`, background: row.color }}
-              />
-            </div>
-          </div>
-          {row.detail && <p className="mt-1 text-xs text-fg-subtle">{row.detail}</p>}
-        </li>
-      ))}
-    </ul>
+    <div>
+      <div
+        tabIndex={scrolls ? 0 : undefined}
+        role={scrolls ? "region" : undefined}
+        aria-label={scrolls && noun ? `All ${rows.length} ${noun}` : undefined}
+        className="-mr-2 max-h-[22rem] overflow-y-auto pr-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+      >
+        <ul
+          className={cx("grid gap-y-3", columns && "lg:grid-flow-col lg:grid-rows-[repeat(var(--rows),auto)] lg:gap-x-10")}
+          // Column by column: first half left, rest right
+          style={columns ? ({ "--rows": Math.ceil(rows.length / 2) } as CSSProperties) : undefined}
+        >
+          {rows.map((row) => (
+            <li key={row.key} className="min-w-0">
+              <div className="flex items-baseline gap-3 text-sm">
+                <span className="min-w-0 flex-1 truncate text-fg">{row.label}</span>
+                {row.detail && <span className="hidden shrink-0 text-xs text-fg-subtle sm:inline">{row.detail}</span>}
+                <span className="w-16 shrink-0 text-right tabular-nums font-medium text-fg">{formatCost(row.value)}</span>
+              </div>
+              <div className="mt-1.5 h-1.5 overflow-hidden rounded-r-[4px] bg-raised">
+                <div
+                  className="h-full rounded-r-[4px]"
+                  style={{ width: `${max > 0 ? Math.max(1.5, (row.value / max) * 100) : 0}%`, background: row.color }}
+                />
+              </div>
+              {/* Phones: no room beside the label */}
+              {row.detail && <p className="mt-1 text-xs text-fg-subtle sm:hidden">{row.detail}</p>}
+            </li>
+          ))}
+        </ul>
+      </div>
+      {scrolls && noun && (
+        <p className="mt-3 text-xs text-fg-subtle">
+          {rows.length} {noun} · scroll for more
+        </p>
+      )}
+    </div>
   );
 }
+
+const FIT_ROWS = 8;

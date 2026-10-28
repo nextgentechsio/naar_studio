@@ -245,6 +245,9 @@ export type HistoryQuery = {
   q?: string;
   // Replicate or Higgsfield
   provider?: Provider;
+  // Only finished runs whose saved output is this kind
+  // (to pick as an input, see /api/library/from-generation)
+  outputKind?: "image" | "video" | "audio";
   // Created from (inclusive) / before (exclusive); the
   // browser sends its local midnights
   createdFrom?: Date;
@@ -343,6 +346,12 @@ export async function listGenerations(
   if (q) filter.prompt = { $regex: escapeRegex(q), $options: "i" };
 
   if (query.provider) Object.assign(filter, providerMatch(query.provider));
+
+  if (query.outputKind) {
+    filter.status = "succeeded";
+    filter.outputContentType = { $regex: `^${query.outputKind}/` };
+    filter.$and = [{ $or: [{ outputBlobUrl: { $ne: null } }, { outputFileId: { $ne: null } }] }];
+  }
 
   if (query.createdFrom || query.createdTo) {
     filter.createdAt = {

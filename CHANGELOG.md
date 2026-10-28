@@ -20,6 +20,14 @@ The app shows its version and build in the sidebar and on the Account page
 - ElevenLabs as a third platform (its own page): text to speech, sound effects, music
   and voice changer, with every run saved, costed from ElevenLabs' API prices, and
   counted in History, Expenses and the Dashboard. Needs `ELEVENLABS_API_KEY`.
+- "Add to element" on generated images (Generate page and History): copies the image
+  into your library and adds it to an existing element or starts a new one.
+- "Save to library" on generated images, videos and audio (Generate page and History),
+  to pick them again as inputs in later runs.
+- An "Outputs" tab in the upload window: pick any of your past results of the field's
+  type straight into an input (copied into your library as it's added).
+- Dashboard: Spend by model, project and person and Cost per model list every item
+  (no more "Other" row or 10-model cap), scrolling inside their card.
 
 ### Changed
 - Reorganised the code into folders by area (`lib/auth`, `lib/db`, `lib/replicate`,
@@ -27,6 +35,10 @@ The app shows its version and build in the sidebar and on the Account page
   `app/(studio)/_generate`; scripts in `scripts/migrations` and `scripts/examples`).
   See the README's "Project structure".
 - Copyright and version moved to a footer at the bottom of every page.
+- Dashboard uses its space better: two-line bar rows (details beside the name),
+  Cost per model in two columns on wide screens, the four totals as a 2×2 grid on
+  phones, and filters that stay on one line.
+- Rich white background in the light theme (no green tint).
 
 ### Removed
 - Unused code, the unused `replicate` package, default Next.js images and two old

@@ -1,16 +1,22 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
-import { logRequestError } from "@/lib/client/http";
+import { useStudio } from "@/app/(studio)/_components/StudioProvider";
+import { fetchHistoryPage } from "@/lib/client/data";
+import { formatDateTime } from "@/lib/client/format";
+import { errorMessage, logRequestError } from "@/lib/client/http";
 import {
   deleteFromLibrary,
   fetchLibrary,
   onLibraryChange,
+  saveRunToLibrary,
   type LibraryFile,
 } from "@/lib/client/library";
+import type { PublicGeneration } from "@/lib/generations";
+import { modelLabel } from "@/lib/replicate/catalog";
 import { Icon } from "@/app/components/ui/Icon";
 import { Modal } from "@/app/components/ui/Modal";
-import { Button, cx, EmptyState, inputClass } from "@/app/components/ui/primitives";
+import { Button, cx, EmptyState, inputClass, Spinner } from "@/app/components/ui/primitives";
 import { useFileDrop } from "@/app/components/ui/useFileDrop";
 import type { FileKind } from "./fields";
 import MediaCaption from "./MediaCaption";
@@ -21,14 +27,18 @@ import MediaCaption from "./MediaCaption";
 // Upload: new files, saved to the user's library as
 // they upload. Library: everything saved before, picked
 // to reuse without uploading again (double-click adds
-// one at once), searched, or deleted.
+// one at once), searched, or deleted. Outputs: the
+// user's own past results of this kind, copied into the
+// library when picked (saved outputs are private links
+// models can't fetch, and are deleted after 7 days).
 // --------------------------------------------------
 
-type Tab = "upload" | "library";
+type Tab = "upload" | "library" | "outputs";
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: "upload", label: "Upload" },
-  { id: "library", label: "Library" },
+const TABS: { id: Tab; label: string; icon: "upload" | "folder" | "history" }[] = [
+  { id: "upload", label: "Upload", icon: "upload" },
+  { id: "library", label: "Library", icon: "folder" },
+  { id: "outputs", label: "Outputs", icon: "history" },
 ];
 
 const UPLOAD_HINTS: Record<FileKind, string> = {
@@ -153,7 +163,15 @@ export default function MediaLibraryDialog({
               </p>
             )}
 
-            {tab === "upload" ? (
+            {tab === "outputs" ? (
+              <OutputsPane
+                key="outputs"
+                kind={kind}
+                multiple={multiple}
+                enabled={enabled}
+                onAdd={add}
+              />
+            ) : tab === "upload" ? (
               <UploadPane
                 key="upload"
                 kind={kind}
@@ -303,7 +321,7 @@ function Tabs({ tab, onChange, count }: { tab: Tab; onChange: (tab: Tab) => void
             tab === item.id ? "text-fg" : "text-fg-muted hover:text-fg"
           )}
         >
-          <Icon name={item.id === "upload" ? "upload" : "folder"} size={14} />
+          <Icon name={item.icon} size={14} />
           {item.label}
           {item.id === "library" && count > 0 && (
             <span className="rounded-full bg-raised px-1.5 text-xs tabular-nums text-fg-muted">{count}</span>
@@ -544,5 +562,268 @@ function Skeletons({ kind }: { kind: FileKind }) {
         <li key={index} className={cx("ui-skeleton rounded-xl", kind === "audio" ? "h-14" : "aspect-[4/5]")} />
       ))}
     </ul>
+  );
+}
+
+// --------------------------------------------------
+// OUTPUTS PANE: the user's own past results of this
+// kind, newest first. Picking copies them into the
+// library (once per run), then adds the copies.
+// --------------------------------------------------
+
+const OUTPUTS_PAGE_SIZE = 24;
+
+function OutputsPane({
+  kind,
+  multiple,
+  enabled,
+  onAdd,
+}: {
+  kind: FileKind;
+  multiple: boolean;
+  enabled: boolean;
+  onAdd: (urls: string[]) => void;
+}) {
+  const { currentUser } = useStudio();
+  const [runs, setRuns] = useState<PublicGeneration[] | null>(null);
+  const [page, setPage] = useState(1);
+  const [more, setMore] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  // Runs being copied into the library
+  const [adding, setAdding] = useState<string[]>([]);
+  const [error, setError] = useState("");
+
+  const noun = kind === "audio" ? "audio file" : kind;
+  const nouns = `${noun}s`;
+
+  const load = useCallback(
+    async (next: number) => {
+      setLoading(true);
+      try {
+        const data = await fetchHistoryPage({
+          kind,
+          user: currentUser.id,
+          page: next,
+          pageSize: OUTPUTS_PAGE_SIZE,
+          withOptions: false,
+        });
+        setRuns((previous) => (next === 1 ? data.generations : [...(previous ?? []), ...data.generations]));
+        setPage(next);
+        setMore(next * OUTPUTS_PAGE_SIZE < data.total);
+      } catch (err) {
+        logRequestError(err);
+        setError("Couldn't load your outputs.");
+        setRuns((previous) => previous ?? []);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [kind, currentUser.id]
+  );
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- loads on open
+  useEffect(() => void load(1), [load]);
+
+  async function add(ids: string[]) {
+    setAdding(ids);
+    setError("");
+    try {
+      const files = await Promise.all(ids.map((id) => saveRunToLibrary(id)));
+      onAdd(files.map((file) => file.url));
+    } catch (err) {
+      logRequestError(err);
+      setError(errorMessage(err, `Couldn't add the ${noun}. Please try again.`));
+      setAdding([]);
+    }
+  }
+
+  function toggle(id: string) {
+    if (!multiple) return void add([id]);
+    setSelected((previous) => (previous.includes(id) ? previous.filter((item) => item !== id) : [...previous, id]));
+  }
+
+  const busy = adding.length > 0;
+
+  return (
+    <div className="ui-step-forward flex min-h-0 flex-1 flex-col">
+      {error && (
+        <p role="alert" className="ui-rise mx-5 mt-3 flex items-center gap-2 text-sm text-danger">
+          <Icon name="alert" size={14} />
+          {error}
+        </p>
+      )}
+
+      <div className="min-h-[18rem] flex-1 overflow-y-auto p-5">
+        {!enabled ? (
+          <EmptyState
+            compact
+            icon="folder"
+            title="Not available"
+            description="The server has no file storage set up, so past outputs can't be reused."
+          />
+        ) : runs === null ? (
+          <Skeletons kind={kind} />
+        ) : runs.length === 0 ? (
+          <EmptyState
+            compact
+            icon="history"
+            title={`No ${nouns} made yet`}
+            description={`${noun[0].toUpperCase()}${noun.slice(1)}s you generate show up here, ready to use as inputs.`}
+          />
+        ) : (
+          <>
+            <ul className={cx("grid gap-3", kind === "audio" ? "grid-cols-1" : "grid-cols-2 sm:grid-cols-4")}>
+              {runs.map((run, index) => (
+                <OutputTile
+                  key={run.id}
+                  index={index % OUTPUTS_PAGE_SIZE}
+                  run={run}
+                  kind={kind}
+                  chosen={selected.includes(run.id)}
+                  multiple={multiple}
+                  adding={adding.includes(run.id)}
+                  disabled={busy}
+                  onToggle={() => toggle(run.id)}
+                  onAddNow={() => void add([run.id])}
+                />
+              ))}
+            </ul>
+            {more && (
+              <div className="mt-4 flex justify-center">
+                <Button size="sm" disabled={loading} onClick={() => void load(page + 1)}>
+                  {loading ? "Loading…" : "Show more"}
+                </Button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {multiple && runs && runs.length > 0 && (
+        <div className="flex items-center justify-between gap-3 border-t border-line px-5 py-3">
+          <span className="text-sm text-fg-muted" aria-live="polite">
+            {busy ? (
+              "Adding…"
+            ) : selected.length ? (
+              <>
+                <span className="font-medium text-fg">{selected.length}</span> selected
+                <button
+                  type="button"
+                  onClick={() => setSelected([])}
+                  className="ml-2 text-xs text-fg-subtle underline-offset-2 hover:text-fg hover:underline"
+                >
+                  Clear
+                </button>
+              </>
+            ) : (
+              `Select ${nouns} to add · double-click adds one`
+            )}
+          </span>
+          <Button variant="primary" disabled={!selected.length || busy} onClick={() => void add(selected)}>
+            Add {selected.length > 1 ? `${selected.length} ${nouns}` : noun}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OutputTile({
+  index,
+  run,
+  kind,
+  chosen,
+  multiple,
+  adding,
+  disabled,
+  onToggle,
+  onAddNow,
+}: {
+  index: number;
+  run: PublicGeneration;
+  kind: FileKind;
+  chosen: boolean;
+  multiple: boolean;
+  adding: boolean;
+  disabled: boolean;
+  onToggle: () => void;
+  onAddNow: () => void;
+}) {
+  const src = run.outputUrl ?? "";
+  const label = run.prompt || modelLabel(run.model);
+  const meta = `${modelLabel(run.model)} · ${formatDateTime(run.createdAt)}`;
+
+  return (
+    <li className="ui-rise group relative" style={{ "--i": index } as React.CSSProperties}>
+      <button
+        type="button"
+        aria-pressed={multiple ? chosen : undefined}
+        aria-label={`${label} (${meta})`}
+        title={`${label}\n${meta}`}
+        disabled={disabled}
+        onClick={onToggle}
+        onDoubleClick={() => multiple && onAddNow()}
+        className={cx(
+          "block w-full overflow-hidden rounded-xl border text-left transition-all duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-default",
+          chosen
+            ? "border-accent ring-2 ring-accent/40"
+            : "border-line enabled:hover:-translate-y-0.5 enabled:hover:border-line-strong enabled:hover:shadow-lg"
+        )}
+      >
+        {kind === "audio" ? (
+          <span className="flex items-center gap-3 bg-sunken p-3">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-raised text-fg-muted">
+              <Icon name="audio" size={14} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm text-fg">{label}</span>
+              <span className="block truncate text-xs text-fg-subtle">{meta}</span>
+            </span>
+          </span>
+        ) : (
+          <>
+            <span className="relative block aspect-square overflow-hidden bg-black">
+              {kind === "video" ? (
+                <video
+                  src={`${src}#t=0.1`}
+                  muted
+                  playsInline
+                  preload="metadata"
+                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={src}
+                  alt=""
+                  loading="lazy"
+                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                />
+              )}
+              <MediaCaption src={src} kind={kind} className="pl-2" />
+            </span>
+            <span className="block bg-surface px-2.5 py-2">
+              <span className="block truncate text-xs text-fg-muted">{label}</span>
+              <span className="block truncate text-[11px] text-fg-subtle">{meta}</span>
+            </span>
+          </>
+        )}
+
+        {chosen && !adding && (
+          <span className="ui-menu absolute left-2 top-2 flex h-6 items-center gap-1 rounded-full bg-accent px-2 text-xs font-medium text-on-accent shadow">
+            <Icon name="check" size={12} />
+            Selected
+          </span>
+        )}
+      </button>
+
+      {adding && (
+        <span className="ui-backdrop absolute inset-0 flex items-center justify-center gap-2 rounded-xl bg-black/55 text-xs font-medium text-white backdrop-blur-sm">
+          <Spinner />
+          Adding…
+        </span>
+      )}
+    </li>
   );
 }

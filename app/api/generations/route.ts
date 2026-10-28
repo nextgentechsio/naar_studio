@@ -11,6 +11,8 @@ import {
 
 export const runtime = "nodejs";
 
+const OUTPUT_KINDS = ["image", "video", "audio"] as const;
+
 // Generation history for the signed-in user, one page
 // at a time. Users get their own records; admins and
 // the super admin get everyone's.
@@ -18,7 +20,9 @@ export const runtime = "nodejs";
 // ?page=1&pageSize=24&project=<id>&user=<id>
 // &model=<owner/name>&status=succeeded|failed|running&q=<text>
 // &from=<ISO>&to=<ISO> (created; to is exclusive)
-// &provider=replicate|higgsfield
+// &provider=replicate|higgsfield|elevenlabs
+// &kind=image|video|audio (finished runs with a saved
+// output of that kind)
 // &options=0 leaves out the filter dropdown values
 // An ISO date from the query; anything else is ignored
 function instant(value: string | null): Date | undefined {
@@ -66,6 +70,7 @@ export async function GET(request: Request) {
           : undefined,
         q: params.get("q") || undefined,
         provider: isProvider(params.get("provider")) ? (params.get("provider") as Provider) : undefined,
+        outputKind: OUTPUT_KINDS.find((kind) => kind === params.get("kind")),
         createdFrom: instant(params.get("from")),
         createdTo: instant(params.get("to")),
         withOptions: params.get("options") !== "0",

@@ -76,3 +76,15 @@ export async function deleteFromLibrary(id: string): Promise<void> {
   await fetchJson(`/api/library/${encodeURIComponent(id)}`, { method: "DELETE" });
   changed();
 }
+
+// A run's output copied into the library (to reuse, or
+// for elements); the same run again gives the same file
+export async function saveRunToLibrary(generationId: string): Promise<LibraryFile> {
+  const { file } = await fetchJson<{ file: LibraryFile }>("/api/library/from-generation", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ generationId }),
+  });
+  changed();
+  return file;
+}

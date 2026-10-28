@@ -179,6 +179,8 @@ export type LibraryFileDoc = {
   kind: "image" | "video" | "audio";
   contentType: string;
   size: number;
+  // Copied from this run's output ("Add to element")
+  fromGenerationId?: string;
   createdAt: Date;
 };
 

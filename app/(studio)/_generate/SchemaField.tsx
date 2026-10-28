@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type HTMLAttributes, type KeyboardEvent, type ReactNode } from "react";
 import { useGenerate } from "@/app/(studio)/_generate/GenerateProvider";
 import { Icon } from "@/app/components/ui/Icon";
 import {
@@ -304,6 +304,80 @@ function FileField({
       : []),
   ];
 
+  // REORDER: drag an uploaded file onto another's place
+  // (or Alt + arrow keys on a focused one). The order is
+  // what the model gets, e.g. "image 1" in a prompt.
+  const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const [dragOver, setDragOver] = useState<number | null>(null);
+  const reorderable = !single && files.length > 1;
+
+  function move(from: number, to: number) {
+    if (from === to || to < 0 || to >= files.length) return;
+    const next = [...files];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    updateInput(key, next);
+  }
+
+  // Props for a tile at this place in the list
+  function reorderProps(index: number | null): HTMLAttributes<HTMLElement> {
+    if (!reorderable || index === null) return {};
+
+    return {
+      draggable: true,
+      title: "Drag to change the order",
+      onDragStart: (event) => {
+        event.dataTransfer.effectAllowed = "move";
+        // Firefox only starts a drag with some data
+        event.dataTransfer.setData("text/plain", String(index));
+        setDragFrom(index);
+      },
+      onDragOver: (event) => {
+        if (dragFrom === null) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        if (dragOver !== index) setDragOver(index);
+      },
+      onDrop: (event) => {
+        if (dragFrom === null) return;
+        event.preventDefault();
+        move(dragFrom, index);
+        setDragFrom(null);
+        setDragOver(null);
+      },
+      onDragEnd: () => {
+        setDragFrom(null);
+        setDragOver(null);
+      },
+    };
+  }
+
+  // Alt + ← / → (↑ / ↓ in the audio list) on a tile's button
+  function onMoveKey(event: KeyboardEvent<HTMLElement>, index: number | null) {
+    if (!reorderable || index === null || !event.altKey) return;
+    const step = event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : 0;
+    if (!step) return;
+    event.preventDefault();
+    move(index, index + step);
+    // Keep focus on the moved file's tile
+    const button = event.currentTarget;
+    requestAnimationFrame(() => button.focus());
+  }
+
+  const dropCue = (index: number | null) =>
+    index !== null && dragFrom !== null && cx(
+      dragFrom === index && "opacity-40",
+      dragOver === index && dragFrom !== index && "ring-2 ring-accent ring-offset-2 ring-offset-surface"
+    );
+
+  // Its place, shown when the order can change
+  const place = (index: number | null) =>
+    reorderable && index !== null ? (
+      <span className="pointer-events-none absolute left-1 top-1 z-10 flex h-4 min-w-4 items-center justify-center rounded bg-black/70 px-1 text-[10px] font-semibold tabular-nums text-white">
+        {index + 1}
+      </span>
+    ) : null;
+
 
   return (
     <Field label={label} info={field.description}>
@@ -380,11 +454,27 @@ function FileField({
                 <PreviewTile
                   key={tile.src}
                   as="li"
-                  className="rounded-lg border border-line bg-sunken p-2 pr-12"
+                  {...reorderProps(tile.index)}
+                  className={cx(
+                    "rounded-lg border border-line bg-sunken p-2 pr-12 transition-opacity",
+                    reorderable && tile.index !== null && "cursor-grab pl-7 active:cursor-grabbing",
+                    dropCue(tile.index)
+                  )}
                   progress={tile.progress}
                 >
                   {(mediaClass) => (
                     <>
+                      {reorderable && tile.index !== null && (
+                        <button
+                          type="button"
+                          aria-label={`${label} ${tile.index + 1}: Alt + arrow keys to move`}
+                          aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+                          onKeyDown={(event) => onMoveKey(event, tile.index)}
+                          className="absolute inset-y-0 left-0 z-10 flex w-6 cursor-grab items-center justify-center text-[11px] font-semibold tabular-nums text-fg-subtle focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+                        >
+                          {tile.index + 1}
+                        </button>
+                      )}
                       <audio src={tile.src} controls className={cx("w-full", mediaClass)} />
 
                       {tile.index !== null && (
@@ -411,9 +501,12 @@ function FileField({
                 <PreviewTile
                   key={tile.src}
                   as="li"
+                  {...reorderProps(tile.index)}
                   className={cx(
-                    "group h-16 rounded-lg border border-line bg-black",
-                    kind === "video" ? "w-28" : "w-16"
+                    "group h-16 rounded-lg border border-line bg-black transition-opacity",
+                    kind === "video" ? "w-28" : "w-16",
+                    reorderable && tile.index !== null && "cursor-grab active:cursor-grabbing",
+                    dropCue(tile.index)
                   )}
                   progress={tile.progress}
                 >
@@ -447,6 +540,8 @@ function FileField({
                               : `${label} ${tile.index + 1}`
                         }`}
                         onClick={(event) => openPreview(event.currentTarget, tile.src, tile.url)}
+                        onKeyDown={(event) => onMoveKey(event, tile.index)}
+                        aria-keyshortcuts={reorderable && tile.index !== null ? "Alt+ArrowLeft Alt+ArrowRight" : undefined}
                         className="absolute inset-0 flex cursor-zoom-in items-center justify-center rounded-lg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
                       >
                         {kind === "video" && tile.progress === undefined && (
@@ -459,6 +554,8 @@ function FileField({
                       {tile.progress === undefined && tile.index !== null && (
                         <MediaCaption src={tile.src} kind={kind} />
                       )}
+
+                      {place(tile.index)}
 
                       {tile.index !== null && (
                         <button
@@ -533,7 +630,8 @@ function PreviewTile({
   className,
   progress,
   children,
-}: {
+  ...rest
+}: Omit<HTMLAttributes<HTMLElement>, "children"> & {
   as?: "div" | "li";
   className?: string;
   // undefined: not uploading; null: uploading, no progress
@@ -559,6 +657,7 @@ function PreviewTile({
 
   return (
     <Tag
+      {...rest}
       ref={tile as never}
       className={cx("relative overflow-hidden", className)}
       aria-busy={uploading || undefined}

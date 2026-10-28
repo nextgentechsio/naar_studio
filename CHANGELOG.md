@@ -30,6 +30,9 @@ The app shows its version and build in the sidebar and on the Account page
   to pick them again as inputs in later runs.
 - An "Outputs" tab in the upload window: pick any of your past results of the field's
   type straight into an input (copied into your library as it's added).
+- Reorder the files in an input that takes several (images, videos, audio): drag one
+  onto another's place, or Alt + arrow keys. Each shows its number, the order the
+  model gets them in.
 - Dashboard: Spend by model, project and person and Cost per model list every item
   (no more "Other" row or 10-model cap), scrolling inside their card.
 

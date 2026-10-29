@@ -38,8 +38,11 @@ import {
   MODEL_CATALOG,
 } from "@/lib/replicate/catalog";
 import {
+  CROP_ASPECT_RATIOS,
+  cropsToAspectRatio,
   higgsfieldPriceHint,
   higgsfieldPriceKind,
+  videoCropField,
   type HiggsfieldModel,
 } from "@/lib/higgsfield/models";
 import {
@@ -193,12 +196,25 @@ export default function GenerateView() {
 
   const hasPrompt = has("prompt");
 
+  // No aspect_ratio input: the start image (image to
+  // video) or the input video (edit/extend) is cropped to
+  // the chosen one before the run (GenerateProvider)
+  const cropsImages = isHiggsfield && cropsToAspectRatio(model, schema);
+  const cropsVideo = isHiggsfield && !cropsImages && videoCropField(model, schema) !== null;
+
   const hasAspectRatio =
-    model === "google/nano-banana-2" || has("aspect_ratio");
+    model === "google/nano-banana-2" || has("aspect_ratio") || cropsImages || cropsVideo;
 
   const hasResolution = model === "google/nano-banana-2" || has("resolution");
 
-  const aspectRatioOptions = schema.aspect_ratio?.enum ?? ASPECT_RATIOS;
+  const aspectRatioOptions = cropsImages
+    ? ["match_input_image", ...CROP_ASPECT_RATIOS]
+    : cropsVideo
+      ? ["match_input_video", ...CROP_ASPECT_RATIOS]
+      : (schema.aspect_ratio?.enum ?? ASPECT_RATIOS);
+  const aspectRatio = aspectRatioOptions.includes(String(inputs.aspect_ratio))
+    ? String(inputs.aspect_ratio)
+    : aspectRatioOptions[0];
 
   const resolutionOptions = schema.resolution?.enum ?? ["1K", "2K", "4K"];
 
@@ -707,13 +723,20 @@ export default function GenerateView() {
                 {(hasAspectRatio || hasResolution || mainFields.length > 0) && (
                   <div className="grid shrink-0 grid-cols-2 gap-3 @md:grid-cols-3">
                     {hasAspectRatio && (
-                      <Field label="Aspect ratio">
+                      <Field
+                        label="Aspect ratio"
+                        info={
+                          cropsImages
+                            ? "The video takes the start image's shape. Pick a ratio to crop the image (from the middle) to it before the run; your original stays as it is."
+                            : cropsVideo
+                              ? "The result keeps the input video's shape. Pick a ratio to crop the video (from the middle) to it before the run; this plays it through once, so it takes about as long as the clip. Your original stays as it is."
+                              : undefined
+                        }
+                      >
                         {(control) => (
                           <select
                             {...control}
-                            value={String(
-                              inputs.aspect_ratio ?? aspectRatioOptions[0],
-                            )}
+                            value={aspectRatio}
                             onChange={(event) =>
                               updateInput("aspect_ratio", event.target.value)
                             }
@@ -723,7 +746,9 @@ export default function GenerateView() {
                               <option key={ratio} value={ratio}>
                                 {ratio === "match_input_image"
                                   ? "Match input image"
-                                  : ratio}
+                                  : ratio === "match_input_video"
+                                    ? "Match input video"
+                                    : ratio}
                               </option>
                             ))}
                           </select>

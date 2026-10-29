@@ -185,6 +185,41 @@ export function fitVideo(width: number, height: number, limits: VideoLimits): Vi
 }
 
 // --------------------------------------------------
+// ASPECT RATIO BY CROPPING
+//
+// Image to video models without an aspect_ratio input
+// (Seedance, Kling, Wan, Hailuo, …) make the video in
+// the start image's shape. The form offers one anyway
+// (as Higgsfield's site does); the browser crops the
+// images to it before the run (lib/client/crop-image.ts).
+// --------------------------------------------------
+
+// Seedance's own ratios (its text to video offers these)
+export const CROP_ASPECT_RATIOS = ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9"];
+// The start and end frames, which set the video's shape
+// (reference images don't, and are left alone)
+export const CROP_IMAGE_FIELDS = ["image_url", "end_image_url", "last_image_url"];
+
+const hasKey = (schema: Record<string, unknown>, key: string) =>
+  Object.prototype.hasOwnProperty.call(schema, key);
+
+// From the model's own settings, so new models are covered
+export function cropsToAspectRatio(model: string, schema: Record<string, unknown>): boolean {
+  return /\/image-to-video$/.test(model) && hasKey(schema, "image_url") && !hasKey(schema, "aspect_ratio");
+}
+
+// Video edit and extend keep the input video's shape;
+// that video is cropped instead (lib/client/resize-video.ts).
+// The field holding it: video_url, or else the first of
+// video_urls (Kling's edits). Null when not cropped.
+export function videoCropField(model: string, schema: Record<string, unknown>): string | null {
+  if (!/\/video-(edit|extend)$/.test(model) || hasKey(schema, "aspect_ratio")) return null;
+  if (hasKey(schema, "video_url")) return "video_url";
+  if (hasKey(schema, "video_urls")) return "video_urls";
+  return null;
+}
+
+// --------------------------------------------------
 // PRICES
 //
 // Higgsfield's API never says what a finished run cost.

@@ -16,8 +16,14 @@ import {
 import { errorMessage, fetchJson, logRequestError } from "@/lib/client/http";
 import { currentElements } from "@/lib/client/elements";
 import { uploadToLibrary } from "@/lib/client/library";
-import { checkVideo, fitVideoAt, resizeVideo } from "@/lib/client/resize-video";
-import { videoLimitsFor } from "@/lib/higgsfield/models";
+import { checkVideo, cropVideoAt, fitVideoAt, resizeVideo } from "@/lib/client/resize-video";
+import { cropImageAt, parseRatio } from "@/lib/client/crop-image";
+import {
+  CROP_IMAGE_FIELDS,
+  cropsToAspectRatio,
+  videoCropField,
+  videoLimitsFor,
+} from "@/lib/higgsfield/models";
 import { expandMentions } from "@/lib/element-mentions";
 import { uploadHiggsfieldInput, uploadInputFile } from "@/lib/client/upload";
 import type { ModelKind } from "@/lib/replicate/catalog";
@@ -260,6 +266,9 @@ export function GenerateProvider({
   // Bumped on every run: an older run's polling stops and
   // can't touch the newer result or error
   const runRef = useRef(0);
+  // Cropped copies already uploaded, by "<image url>|<ratio>",
+  // so running again doesn't upload them again
+  const croppedRef = useRef(new Map<string, string>());
   // Latest model search; older responses are ignored
   const searchSeqRef = useRef(0);
 
@@ -709,10 +718,10 @@ export function GenerateProvider({
       // first (new uploads were resized on the way in)
       let values = inputs;
       const limits = provider === "higgsfield" ? videoLimitsFor(model) : null;
+      const upload = async (file: File) =>
+        (await uploadToLibrary(file)) ?? (await uploadHiggsfieldInput(file));
 
       if (limits) {
-        const upload = async (file: File) =>
-          (await uploadToLibrary(file)) ?? (await uploadHiggsfieldInput(file));
         const notes: Record<string, string> = {};
 
         for (const [key, value] of Object.entries(inputs)) {
@@ -741,6 +750,52 @@ export function GenerateProvider({
         setPreparing("");
       }
 
+      // An aspect ratio for a model that has none: image to
+      // video crops its start and end frames to it, video
+      // edit/extend its input video. Only what's sent
+      // changes; the form keeps the originals, so another
+      // ratio crops from the full picture.
+      let sending = values;
+      const ratio = String(values.aspect_ratio ?? "");
+      const videoField = provider === "higgsfield" ? videoCropField(model, schema) : null;
+      const cropFields =
+        provider !== "higgsfield" || !parseRatio(ratio)
+          ? []
+          : cropsToAspectRatio(model, schema)
+            ? CROP_IMAGE_FIELDS
+            : videoField
+              ? [videoField]
+              : [];
+
+      const crop = async (url: string) => {
+        if (!/^https?:\/\//.test(url)) return url;
+
+        const cacheKey = `${url}|${ratio}`;
+        let cropped = croppedRef.current.get(cacheKey);
+
+        if (cropped === undefined) {
+          const result = videoField
+            ? await cropVideoAt(url, ratio, limits, upload, setPreparing)
+            : await cropImageAt(url, ratio, upload, setPreparing);
+          cropped = result?.url ?? url;
+          croppedRef.current.set(cacheKey, cropped);
+        }
+        return cropped;
+      };
+
+      // A form upload is a list: its first file is the one
+      // that sets the shape (the rest are references)
+      for (const key of cropFields) {
+        const value = values[key];
+
+        if (typeof value === "string" && value) {
+          sending = { ...sending, [key]: await crop(value) };
+        } else if (Array.isArray(value) && typeof value[0] === "string") {
+          sending = { ...sending, [key]: [await crop(value[0]), ...value.slice(1)] };
+        }
+      }
+      setPreparing("");
+
       // The user changed model meanwhile
       if (run !== runRef.current) return;
 
@@ -754,7 +809,7 @@ export function GenerateProvider({
         body: JSON.stringify({
           project,
           model,
-          inputs: buildGenerationInputs(await withElements(values)),
+          inputs: buildGenerationInputs(await withElements(sending)),
         }),
       });
 
@@ -783,7 +838,7 @@ export function GenerateProvider({
       setGenerating(false);
       setPreparing("");
     }
-  }, [project, model, inputs, pollPrediction, endpoints, provider]);
+  }, [project, model, schema, inputs, pollPrediction, endpoints, provider]);
 
   const value: GenerateContextValue = {
     provider,

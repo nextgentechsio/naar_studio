@@ -1,3 +1,4 @@
+import { cropArea, parseRatio, type CropArea } from "@/lib/client/crop-image";
 import { fitVideo, videoLengthProblem, type VideoLimits } from "@/lib/higgsfield/models";
 
 // --------------------------------------------------
@@ -118,12 +119,14 @@ export async function checkVideo(source: File | string, limits: VideoLimits): Pr
 }
 
 // The file redrawn at width × height (MP4). onProgress
-// gets 0–100 as it plays through.
+// gets 0–100 as it plays through. With `area`, only that
+// part of each frame is drawn (a crop).
 export function resizeVideo(
   file: File,
   width: number,
   height: number,
-  onProgress?: (percent: number) => void
+  onProgress?: (percent: number) => void,
+  area?: CropArea
 ): Promise<File> {
   const type = mp4Type();
   if (!type) return Promise.reject(new Error("This browser can't resize videos."));
@@ -135,6 +138,10 @@ export function resizeVideo(
     canvas.width = width;
     canvas.height = height;
     const context = canvas.getContext("2d");
+    const paint = () =>
+      area
+        ? context!.drawImage(video, area.x, area.y, area.width, area.height, 0, 0, width, height)
+        : context!.drawImage(video, 0, 0, width, height);
 
     let audio: AudioContext | null = null;
     let stopped = false;
@@ -221,7 +228,7 @@ export function resizeVideo(
       function draw() {
         scheduled = false;
         if (stopped) return;
-        context!.drawImage(video, 0, 0, width, height);
+        paint();
         if (video.duration) onProgress?.(Math.min(99, Math.round((video.currentTime / video.duration) * 100)));
         schedule();
       }
@@ -242,7 +249,7 @@ export function resizeVideo(
       document.addEventListener("visibilitychange", onVisibility);
 
       video.onended = () => {
-        context.drawImage(video, 0, 0, width, height);
+        paint();
         onProgress?.(100);
         if (recorder.state !== "inactive") recorder.stop();
       };
@@ -251,7 +258,7 @@ export function resizeVideo(
         await audio?.resume();
         // First frame before recording starts, so it
         // doesn't begin on a blank canvas
-        context.drawImage(video, 0, 0, width, height);
+        paint();
         recorder.start(1000);
         await video.play();
         if (document.hidden) onVisibility();
@@ -301,5 +308,75 @@ export async function fitVideoAt(
   return {
     url: await upload(resized),
     note: `Resized from ${check.from.width}×${check.from.height} to ${check.width}×${check.height} so this model accepts it`,
+  };
+}
+
+// A video in the form cropped to `label` (e.g. "9:16")
+// from the middle, for edit models that keep the input
+// video's shape. Within the model's size limits (scaled
+// if needed, same new shape). Plays through once, so it
+// takes about as long as the clip. Null when it already
+// has that shape.
+export async function cropVideoAt(
+  url: string,
+  label: string,
+  limits: VideoLimits | null,
+  upload: (file: File) => Promise<string>,
+  onStatus: (status: string) => void
+): Promise<{ url: string; note: string } | null> {
+  const ratio = parseRatio(label);
+  if (!ratio) return null;
+
+  const size = await readVideoSize(url);
+  if (!size) {
+    throw new Error(`Couldn't read the video to crop it to ${label}. Upload it again, or choose "Match input video".`);
+  }
+
+  const area = cropArea(size.width, size.height, ratio);
+  if (!area) return null;
+
+  if (limits) {
+    const length = videoLengthProblem(size.seconds, limits);
+    if (length) throw new Error(length);
+  }
+
+  // Even sides (H.264), then the model's pixel limits
+  const even = (value: number) => Math.max(2, Math.round(value / 2) * 2);
+  let width = even(area.width);
+  let height = even(area.height);
+
+  if (limits) {
+    const fit = fitVideo(width, height, limits);
+    if (!fit.ok && "error" in fit) throw new Error(fit.error);
+    if (!fit.ok) ({ width, height } = fit.resize);
+  }
+
+  if (!mp4Type()) {
+    throw new Error(`This browser can't crop videos. Use Chrome, Edge or Safari, or choose "Match input video".`);
+  }
+
+  onStatus(`Cropping video to ${label}…`);
+  let original: Blob;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(String(response.status));
+    original = await response.blob();
+  } catch {
+    throw new Error(`Couldn't fetch the video to crop it to ${label}. Upload it again, or choose "Match input video".`);
+  }
+
+  const name = decodeURIComponent(new URL(url).pathname.split("/").pop() || "video.mp4");
+  const cropped = await resizeVideo(
+    new File([original], name, { type: original.type || "video/mp4" }),
+    width,
+    height,
+    (percent) => onStatus(`Cropping video to ${label}… ${percent}%`),
+    area
+  );
+
+  onStatus("Uploading cropped video…");
+  return {
+    url: await upload(cropped),
+    note: `Cropped from ${size.width}×${size.height} to ${width}×${height} (${label})`,
   };
 }

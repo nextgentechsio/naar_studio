@@ -44,6 +44,8 @@ const PATHS = {
   chevronRight: "M9 18l6-6-6-6",
   copy: "M9 9h11v11H9zM5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1",
   play: "M6 4l14 8-14 8V4z",
+  pause: "M7 4h3v16H7zM14 4h3v16h-3z",
+  chevron: "M6 9l6 6 6-6",
   clock: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 6v6l4 2",
   eye: "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
   eyeOff:

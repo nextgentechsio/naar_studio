@@ -16,6 +16,8 @@ import { useSortable } from "@/app/components/ui/useSortable";
 import MediaCaption from "./MediaCaption";
 import MediaLibraryDialog from "./MediaLibraryDialog";
 import MediaPreviewDialog, { type MediaPreview } from "./MediaPreviewDialog";
+import OptionPreview from "./OptionPreview";
+import SamplePicker from "./SamplePicker";
 import {
   fieldLabel,
   fileKind,
@@ -53,22 +55,47 @@ export default function SchemaField({
 
   // ENUM
   if (field.enum?.length) {
+    const select = (control: object) => (
+      <select
+        {...control}
+        value={String(value ?? "")}
+        onChange={(event) => updateInput(key, event.target.value)}
+        className={cx(inputClass, "min-w-0 flex-1")}
+      >
+        {field.enum!.map((option) => (
+          <option key={option} value={option}>
+            {field.enumLabels?.[option] ?? option}
+          </option>
+        ))}
+      </select>
+    );
+
     return (
       <Field label={label} info={field.description}>
-        {(control) => (
-          <select
-            {...control}
-            value={String(value ?? "")}
-            onChange={(event) => updateInput(key, event.target.value)}
-            className={inputClass}
-          >
-            {field.enum!.map((option) => (
-              <option key={option} value={option}>
-                {field.enumLabels?.[option] ?? option}
-              </option>
-            ))}
-          </select>
-        )}
+        {(control) =>
+          // Options with samples (ElevenLabs voices): a list
+          // with a play button per option, and one beside it
+          // for the chosen one
+          field.enumPreviews && Object.keys(field.enumPreviews).length ? (
+            <div className="flex items-center gap-2">
+              <SamplePicker
+                {...control}
+                options={field.enum!}
+                labels={field.enumLabels}
+                previews={field.enumPreviews}
+                value={String(value ?? "")}
+                onChange={(next) => updateInput(key, next)}
+              />
+              <OptionPreview
+                key={String(value ?? "")}
+                src={field.enumPreviews[String(value ?? "")]}
+                name={field.enumLabels?.[String(value ?? "")]?.split(" · ")[0] ?? String(value ?? "")}
+              />
+            </div>
+          ) : (
+            select(control)
+          )
+        }
       </Field>
     );
   }

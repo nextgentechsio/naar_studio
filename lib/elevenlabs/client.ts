@@ -84,7 +84,13 @@ async function fetchVoices(): Promise<Voice[]> {
   if (!response.ok) throw await errorFrom(response);
 
   const data = (await response.json()) as {
-    voices?: { voice_id: string; name: string; category?: string; labels?: Record<string, string> }[];
+    voices?: {
+      voice_id: string;
+      name: string;
+      category?: string;
+      labels?: Record<string, string>;
+      preview_url?: string | null;
+    }[];
   };
 
   return (data.voices ?? [])
@@ -97,6 +103,8 @@ async function fetchVoices(): Promise<Voice[]> {
         voice.category === "cloned" || voice.category === "professional"
           ? "your voice"
           : [voice.labels?.gender, voice.labels?.accent, voice.labels?.age].filter(Boolean).join(", "),
+      // ElevenLabs' sample of the voice, played in the form
+      preview: voice.preview_url?.startsWith("https://") ? voice.preview_url : "",
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }

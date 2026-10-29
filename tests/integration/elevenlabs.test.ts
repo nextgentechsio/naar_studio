@@ -72,6 +72,10 @@ describe("ElevenLabs", () => {
     expect(voice.enum).toEqual(["voice-adam", "voice-mine", "voice-rachel"]);
     expect(voice.enumLabels?.["voice-mine"]).toBe("My voice · your voice");
     expect(voice.default).toBe("voice-adam");
+    // Only voices with a sample can be listened to
+    expect((voice as { enumPreviews?: Record<string, string> }).enumPreviews).toEqual({
+      "voice-rachel": "https://storage.example.com/voices/rachel.mp3",
+    });
 
     const music = await api("/api/elevenlabs/models/schema?model=music/music_v2_5", { session: alice.session });
     expect(Object.keys(music.data.inputSchema as object)).toEqual(["prompt", "duration", "force_instrumental"]);

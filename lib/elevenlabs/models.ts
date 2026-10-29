@@ -92,7 +92,8 @@ export function elevenLabsModelInfo(item: ToolModel): HiggsfieldModel {
 // limit)
 export const MAX_MUSIC_SECONDS = 300;
 
-export type Voice = { id: string; name: string; description: string };
+// `preview`: a short sample of the voice ("" if none)
+export type Voice = { id: string; name: string; description: string; preview?: string };
 
 // The model's form. Voices come from the account (the
 // server lists them); the first is the default.
@@ -104,6 +105,9 @@ export function elevenLabsSchema(item: ToolModel, voices: Voice[]): Schema {
     enum: voices.map((entry) => entry.id),
     enumLabels: Object.fromEntries(
       voices.map((entry) => [entry.id, entry.description ? `${entry.name} · ${entry.description}` : entry.name]),
+    ),
+    enumPreviews: Object.fromEntries(
+      voices.filter((entry) => entry.preview).map((entry) => [entry.id, entry.preview!]),
     ),
     default: voices[0]?.id,
   };

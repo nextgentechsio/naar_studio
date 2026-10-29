@@ -15,6 +15,9 @@ export type SchemaProperty = {
   // Shown instead of the enum values (e.g. voice names
   // for voice IDs)
   enumLabels?: Record<string, string>;
+  // A sample to listen to per value (e.g. each voice's
+  // preview clip), played next to the dropdown
+  enumPreviews?: Record<string, string>;
   // Under "Advanced settings" whatever its name
   "x-advanced"?: boolean;
 };

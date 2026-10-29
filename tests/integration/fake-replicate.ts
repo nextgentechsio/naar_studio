@@ -394,9 +394,15 @@ export async function startFakeReplicate() {
       if (path === "/el/v1/voices" && req.method === "GET") {
         return send(200, {
           voices: [
-            { voice_id: "voice-rachel", name: "Rachel", category: "premade", labels: { gender: "female", accent: "american" } },
+            {
+              voice_id: "voice-rachel",
+              name: "Rachel",
+              category: "premade",
+              labels: { gender: "female", accent: "american" },
+              preview_url: "https://storage.example.com/voices/rachel.mp3",
+            },
             { voice_id: "voice-adam", name: "Adam", category: "premade", labels: { gender: "male", accent: "british" } },
-            { voice_id: "voice-mine", name: "My voice", category: "cloned", labels: {} },
+            { voice_id: "voice-mine", name: "My voice", category: "cloned", labels: {}, preview_url: null },
           ],
         });
       }

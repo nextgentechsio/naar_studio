@@ -445,6 +445,11 @@ export async function startFakeReplicate() {
         return send(200, request);
       }
 
+      // Billed usage: nothing reported (estimates stay)
+      if (path === "/hf/models/usage" && req.method === "GET") {
+        return send(200, { time_series: [], total: 0, page: 1, limit: 100 });
+      }
+
       if (path === "/hf/models" && req.method === "GET") {
         return send(200, { total: HF_MODELS.length, items: HF_MODELS });
       }

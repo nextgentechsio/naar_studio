@@ -32,13 +32,22 @@ describe("Higgsfield metered prices", () => {
     expect(
       meteredCostUsd("bytedance/seedance-2.5/video-edit", usage({ inputVideoSeconds: [3] }))
     ).toBe(Math.round(172.8 * 0.01284 * 10_000) / 10_000);
-    // 1080p rate, no input video
+    // 1080p rate (30% off), no input video
     expect(
       meteredCostUsd(
         "bytedance/seedance-2.5/text-to-video",
         usage({ width: 1920, height: 1080, resolution: "1080p" })
       )
-    ).toBe(Math.round(243 * 0.0234 * 10_000) / 10_000);
+    ).toBe(Math.round(243 * 0.0234 * 0.7 * 10_000) / 10_000);
+  });
+
+  it("matches a real Seedance 2.5 1080p bill ($3.18 for a 1920 × 1080, 4s video)", () => {
+    expect(
+      meteredCostUsd(
+        "bytedance/seedance-2.5/image-to-video",
+        usage({ width: 1920, height: 1080, outputSeconds: 4, resolution: "1080p" })
+      )
+    ).toBeCloseTo(3.18, 2);
   });
 
   it("bills per second where Higgsfield does", () => {

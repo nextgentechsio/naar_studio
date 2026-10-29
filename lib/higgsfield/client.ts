@@ -508,6 +508,94 @@ export async function quoteHiggsfield(
   }
 }
 
+// --------------------------------------------------
+// BILLED USAGE
+//
+// What Higgsfield charged, per model and hour (by when
+// the run started), for our API key only. The API never
+// gives one run's cost; with one run of a model in an
+// hour, this is it. Analytics, not invoices: it can lag.
+// --------------------------------------------------
+
+export type HiggsfieldBilledUsage = {
+  // Start of the hour (UTC)
+  hour: Date;
+  model: string;
+  quantity: number;
+  costUsd: number;
+};
+
+const USAGE_TIMEOUT_MS = 15_000;
+const USAGE_PAGE_LIMIT = 100;
+const USAGE_MAX_PAGES = 20;
+
+// Higgsfield's times have no zone; they're UTC
+function utc(value: unknown): Date | null {
+  if (typeof value !== "string" || !value) return null;
+  const date = new Date(/(Z|[+-]\d\d:?\d\d)$/i.test(value) ? value : `${value}Z`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+// At most 31 days (the API's limit)
+export async function higgsfieldBilledUsage(
+  start: Date,
+  end: Date
+): Promise<HiggsfieldBilledUsage[]> {
+  const keyId = (process.env.HF_CREDENTIALS ?? "").split(":")[0];
+  const usage: HiggsfieldBilledUsage[] = [];
+
+  for (let page = 1; page <= USAGE_MAX_PAGES; page++) {
+    const query = new URLSearchParams({
+      start: start.toISOString(),
+      end: end.toISOString(),
+      timeframe: "hour",
+      page: String(page),
+      limit: String(USAGE_PAGE_LIMIT),
+    });
+    query.append("expand", "time_series");
+    query.append("expand", "auth_method");
+
+    const response = await fetch(`${apiUrl()}/models/usage?${query}`, {
+      headers: authHeaders(),
+      cache: "no-store",
+      signal: AbortSignal.timeout(USAGE_TIMEOUT_MS),
+    });
+
+    if (!response.ok) throw new HiggsfieldRequestError(response.status, "usage");
+
+    const data = (await response.json()) as {
+      time_series?: { bucket?: unknown; results?: Record<string, unknown>[] }[];
+      total?: unknown;
+    };
+    const buckets = Array.isArray(data.time_series) ? data.time_series : [];
+
+    for (const bucket of buckets) {
+      const hour = utc(bucket.bucket);
+      if (!hour) continue;
+
+      for (const row of bucket.results ?? []) {
+        const quantity = Number(row.quantity);
+        const costUsd = Number(row.cost);
+
+        if (
+          row.auth_method !== keyId ||
+          typeof row.model !== "string" ||
+          !Number.isFinite(quantity) ||
+          !Number.isFinite(costUsd)
+        ) {
+          continue;
+        }
+
+        usage.push({ hour, model: row.model, quantity, costUsd });
+      }
+    }
+
+    if (buckets.length < USAGE_PAGE_LIMIT || page * USAGE_PAGE_LIMIT >= Number(data.total)) break;
+  }
+
+  return usage;
+}
+
 // Input files we may read to measure: our own uploads
 // (Vercel Blob) and Higgsfield's outputs. Never an
 // arbitrary host from the form.

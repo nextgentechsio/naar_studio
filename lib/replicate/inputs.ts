@@ -81,6 +81,15 @@ function isEmpty(value: unknown) {
   );
 }
 
+// Required fields that are missing or blank. Replicate
+// doesn't always check these up front (proxied models
+// like openai/* start, then fail upstream), so the
+// route rejects them before starting a prediction.
+export function missingRequired(inputs: Json, schema: InputSchema | null): string[] {
+  if (!schema) return [];
+  return schema.required.filter((key) => isEmpty(inputs[key]));
+}
+
 // Fields that always hold one URL, whatever the schema
 const SINGLE_URL_FIELDS = ["start_image", "end_image", "reference_video"];
 // Fields that always hold a list of URLs

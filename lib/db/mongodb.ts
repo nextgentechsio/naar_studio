@@ -114,6 +114,9 @@ export type GenerationDoc = {
   status: string;
   error: string | null;
   costUsd: number | null;
+  // "billed": costUsd is what Higgsfield charged, not
+  // our estimate (lib/spend/higgsfield-billing.ts)
+  costSource?: "billed";
   // Higgsfield's price for the run, quoted when it
   // started (billed if it succeeds)
   quotedCostUsd?: number | null;
@@ -161,8 +164,10 @@ export type ExpenseDoc = {
   // null = model has no known price (counted, flagged)
   amountUsd: number | null;
   currency: "USD";
-  // From our price table, not a Replicate invoice
-  pricingSource: "estimated";
+  // "estimated": our price table or the provider's quote.
+  // "billed": what Higgsfield's usage says it charged
+  // (lib/spend/higgsfield-billing.ts)
+  pricingSource: "estimated" | "billed";
   incurredAt: Date;
   createdAt: Date;
 };

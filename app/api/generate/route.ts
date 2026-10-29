@@ -9,7 +9,11 @@ import {
   replicateHeaders,
 } from "@/lib/replicate/api";
 import { calculateReplicateCost } from "@/lib/replicate/cost";
-import { inputSchemaFromModel, shapeInputs } from "@/lib/replicate/inputs";
+import {
+  inputSchemaFromModel,
+  missingRequired,
+  shapeInputs,
+} from "@/lib/replicate/inputs";
 import { isValidModelId, modelPath } from "@/lib/replicate/model";
 
 export const runtime = "nodejs";
@@ -106,10 +110,17 @@ export async function POST(request: Request) {
       return badRequest("Selected model does not have a runnable version.");
     }
 
+    const inputSchema = inputSchemaFromModel(modelData);
     const shapedInputs = shapeInputs(
       inputs as Record<string, unknown>,
-      inputSchemaFromModel(modelData)
+      inputSchema
     );
+
+    const missing = missingRequired(shapedInputs, inputSchema);
+
+    if (missing.length) {
+      return badRequest(`Missing required input: ${missing.join(", ")}`, 422);
+    }
 
     // ---------- Start the prediction ----------
 

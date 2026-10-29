@@ -11,6 +11,7 @@ import {
 import { canManageUsers } from "@/lib/auth/roles";
 import { currentNames } from "@/lib/names";
 import type { StoredUser } from "@/lib/auth/users";
+import { ensureHiggsfieldCostsSynced } from "@/lib/spend/higgsfield-billing";
 
 // --------------------------------------------------
 // EXPENSE LEDGER (MongoDB "expenses")
@@ -338,6 +339,8 @@ export async function getExpenseReport(
   filters: ExpenseFilters = {}
 ): Promise<ExpenseReport> {
   await ensureBackfilled();
+  // After the backfill, so every billed run has an entry to correct
+  await ensureHiggsfieldCostsSynced();
 
   const isManager = canManageUsers(actor);
   const scope = dimensionFilter(actor, {});

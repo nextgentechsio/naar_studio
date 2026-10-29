@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inputSchemaFromModel, shapeInputs } from "@/lib/replicate/inputs";
+import { inputSchemaFromModel, missingRequired, shapeInputs } from "@/lib/replicate/inputs";
 
 const model = {
   latest_version: {
@@ -37,6 +37,15 @@ describe("inputSchemaFromModel", () => {
     for (const value of [null, {}, { latest_version: null }, "x", []]) {
       expect(inputSchemaFromModel(value)).toBeNull();
     }
+  });
+});
+
+describe("missingRequired", () => {
+  it("lists required fields that are absent or blank", () => {
+    expect(missingRequired({}, schema)).toEqual(["prompt"]);
+    expect(missingRequired({ prompt: "  " }, schema)).toEqual(["prompt"]);
+    expect(missingRequired({ prompt: "p" }, schema)).toEqual([]);
+    expect(missingRequired({}, null)).toEqual([]);
   });
 });
 

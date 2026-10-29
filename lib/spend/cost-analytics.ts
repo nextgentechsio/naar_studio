@@ -9,6 +9,7 @@ import {
   type SpendGroup,
   type SpendTotal,
 } from "@/lib/spend/expenses";
+import { ensureHiggsfieldCostsSynced } from "@/lib/spend/higgsfield-billing";
 import {
   expensesCollection,
   generationsCollection,
@@ -111,6 +112,8 @@ export async function getCostAnalytics(
   query: AnalyticsQuery
 ): Promise<CostAnalytics> {
   await ensureBackfilled();
+  // After the backfill, so every billed run has an entry to correct
+  await ensureHiggsfieldCostsSynced();
 
   const isManager = canManageUsers(actor);
   const scope = dimensionFilter(actor, { provider: query.provider });

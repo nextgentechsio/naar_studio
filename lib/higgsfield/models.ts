@@ -200,7 +200,9 @@ export function fitVideo(width: number, height: number, limits: VideoLimits): Vi
 // - "unreported": billed by internal AI usage Higgsfield
 //   doesn't report; recorded as unpriced.
 //
-// Metered rates are before any customer discount.
+// Metered rates are before any customer discount; the
+// API never reports ours, so it's set below from our
+// Higgsfield bills.
 // --------------------------------------------------
 
 export type HiggsfieldPriceKind = "quoted" | "metered" | "unreported";
@@ -225,6 +227,9 @@ type MeteredPrice = {
   maxInputSeconds?: number;
   // Per reference image beyond the included ones
   extraImages?: { included: number; each: number };
+  // Our account's discount off the published rate, by
+  // resolution (0.3 = 30% off)
+  discounts?: Partial<Record<Resolution, number>>;
 };
 
 const SEEDANCE_2_5: MeteredPrice = {
@@ -233,6 +238,9 @@ const SEEDANCE_2_5: MeteredPrice = {
   videoInputFactor: 0.6,
   billsOutput: true,
   billsInputVideos: true,
+  // Billed: $3.18 for a $4.55 (list) 1080p run, but
+  // the list $0.84 for a 480p one
+  discounts: { "1080p": 0.3 },
 };
 
 const SEEDANCE_2_0: MeteredPrice = {
@@ -378,7 +386,7 @@ export function meteredCostUsd(model: string, usage: HiggsfieldUsage): number | 
     cost += Math.max(0, usage.imageCount - price.extraImages.included) * price.extraImages.each;
   }
 
-  return round4(cost);
+  return round4(cost * (1 - (price.discounts?.[resolution] ?? 0)));
 }
 
 // A 16:9 video at each resolution (what Higgsfield's

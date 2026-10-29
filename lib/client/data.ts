@@ -91,6 +91,15 @@ export async function deleteGeneration(id: string): Promise<void> {
   await fetchJson(`/api/generations/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
+// Stops a running run on its platform; resolves to what
+// it ended as ("canceled", or a result that came first)
+export async function cancelGeneration(id: string): Promise<string> {
+  const data = await fetchJson<{ status: string }>(`/api/predictions/${encodeURIComponent(id)}/cancel`, {
+    method: "POST",
+  });
+  return data.status;
+}
+
 export async function fetchGeneration(id: string): Promise<GenerationDetail> {
   const data = await fetchJson<{ generation: GenerationDetail }>(
     `/api/generations/${encodeURIComponent(id)}`

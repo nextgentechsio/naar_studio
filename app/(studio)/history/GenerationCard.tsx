@@ -79,11 +79,13 @@ export default function GenerationCard({
     ) : null;
 
   return (
-    <div className="group relative">
+    // Lifts on hover, as Elements cards do (the whole tile,
+    // so the buttons over the image move with it)
+    <div className="group relative transition-transform duration-300 hover:-translate-y-1">
       <button
         type="button"
         onClick={onOpen}
-        className="flex w-full flex-col overflow-hidden rounded-xl border border-line bg-surface text-left shadow-card transition-colors hover:border-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        className="flex w-full flex-col overflow-hidden rounded-xl border border-line bg-surface text-left shadow-card transition-[border-color,box-shadow] duration-300 hover:border-line-strong group-hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       >
         <div className="relative aspect-square overflow-hidden bg-sunken">
           <OutputPreview

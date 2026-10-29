@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Icon } from "@/app/components/ui/Icon";
 import { Spinner, cx } from "@/app/components/ui/primitives";
 import { getOutputType } from "@/lib/client/outputs";
@@ -92,21 +92,19 @@ export default function OutputPreview({
   if (type === "video") {
     return (
       <>
-        <video
-          // #t= shows the first frame instead of black
-          src={thumb ? `${url}#t=0.1` : url}
-          // Whole frame in a card too (on black: a blurred
-          // copy behind would load the video twice)
-          className={cx(
-            "h-full w-full object-contain",
-            thumb ? "bg-black" : "max-h-[60vh]",
-          )}
-          muted
-          playsInline
-          preload="metadata"
-          controls={!thumb}
-          onError={() => setBroken(true)}
-        />
+        {thumb ? (
+          <VideoThumb url={url} onError={() => setBroken(true)} />
+        ) : (
+          <video
+            src={url}
+            className="h-full max-h-[60vh] w-full object-contain"
+            muted
+            playsInline
+            preload="metadata"
+            controls
+            onError={() => setBroken(true)}
+          />
+        )}
 
         {/* Top right: the card's buttons take the bottom
             on hover, the "Hidden" tag the top left */}
@@ -143,7 +141,7 @@ export default function OutputPreview({
       onError={() => setBroken(true)}
       className={cx(
         "h-full w-full object-contain",
-        thumb ? "relative" : "max-h-[60vh]",
+        thumb ? `relative ${ZOOM}` : "max-h-[60vh]",
       )}
     />
   );
@@ -165,6 +163,47 @@ export default function OutputPreview({
     </>
   ) : (
     image
+  );
+}
+
+// Cards zoom their picture a little on hover
+const ZOOM = "transition-transform duration-500 group-hover:scale-[1.03]";
+
+// A video in a card: its whole first frame, on a blurred
+// copy of that frame. The copy is drawn from the video
+// already loading (onto a canvas, which may show another
+// site's frame), so nothing is downloaded twice.
+function VideoThumb({ url, onError }: { url: string; onError: () => void }) {
+  const backdrop = useRef<HTMLCanvasElement>(null);
+
+  function paint(video: HTMLVideoElement) {
+    const canvas = backdrop.current;
+    if (!canvas || !video.videoWidth) return;
+    // Tiny: it's blurred anyway
+    canvas.width = 48;
+    canvas.height = Math.max(1, Math.round((48 * video.videoHeight) / video.videoWidth));
+    canvas.getContext("2d")?.drawImage(video, 0, 0, canvas.width, canvas.height);
+  }
+
+  return (
+    <>
+      <canvas
+        ref={backdrop}
+        aria-hidden
+        className="absolute inset-0 h-full w-full scale-110 object-cover opacity-60 blur-2xl"
+      />
+      <video
+        // #t= shows the first frame instead of black
+        src={`${url}#t=0.1`}
+        className={cx("relative h-full w-full object-contain", ZOOM)}
+        muted
+        playsInline
+        preload="metadata"
+        onLoadedData={(event) => paint(event.currentTarget)}
+        onSeeked={(event) => paint(event.currentTarget)}
+        onError={onError}
+      />
+    </>
   );
 }
 

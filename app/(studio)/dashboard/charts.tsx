@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { cx, formatCost } from "@/app/components/ui/primitives";
 
 // --------------------------------------------------
@@ -288,10 +288,14 @@ export type BarRow = {
 
 // Two lines a row: label, detail and value, then the bar
 // (the detail drops under the bar on phones). Every row
-// is listed; past a card's height the list scrolls inside
-// it, with a count saying how many there are. columns:
-// two columns on wide screens, for full-width cards
-// (ranked top to bottom, then across)
+// is listed. columns: two columns on wide screens, for
+// full-width cards (ranked top to bottom, then across).
+//
+// Height: the list fills whatever room its card has (a
+// card stretched by a taller neighbour shows more rows),
+// but asks for at most LIST_CAP_REM itself, so a long
+// list can't make the whole row grow. It scrolls, and
+// says so, only when rows are actually out of sight.
 export function BarList({
   rows,
   empty,
@@ -308,41 +312,83 @@ export function BarList({
     return <p className="rounded-xl border border-dashed border-line p-8 text-center text-sm text-fg-subtle">{empty}</p>;
   }
 
+  return <Bars rows={rows} noun={noun} columns={columns} />;
+}
+
+function Bars({ rows, noun, columns }: { rows: BarRow[]; noun?: string; columns: boolean }) {
+  const scroller = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLUListElement>(null);
+  // The rows' full height and the cap (px), once
+  // measured, and whether some rows are out of sight
+  const [size, setSize] = useState<{ content: number; cap: number; hidden: boolean } | null>(null);
+
+  useLayoutEffect(() => {
+    const box = scroller.current;
+    const items = list.current;
+    if (!box || !items) return;
+
+    const measure = () => {
+      const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      setSize({
+        content: items.offsetHeight,
+        cap: LIST_CAP_REM * rem,
+        hidden: box.scrollHeight > box.clientHeight + 1,
+      });
+    };
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(box);
+    observer.observe(items);
+    return () => observer.disconnect();
+  }, []);
+
   const max = Math.max(...rows.map((row) => row.value), 0);
-  // Rows that fit before it scrolls (2 columns: twice as many)
-  const scrolls = rows.length > (columns ? 2 * FIT_ROWS : FIT_ROWS);
+  const scrolls = size?.hidden ?? false;
 
   return (
-    <div>
+    <div className="flex min-h-0 flex-1 flex-col">
+      {/* Asks for the rows' height up to the cap; grows
+          with a taller card */}
       <div
-        tabIndex={scrolls ? 0 : undefined}
-        role={scrolls ? "region" : undefined}
-        aria-label={scrolls && noun ? `All ${rows.length} ${noun}` : undefined}
-        className="-mr-2 max-h-[22rem] overflow-y-auto pr-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        className="relative min-h-0 flex-1"
+        style={size ? { minHeight: Math.min(size.content, size.cap) } : undefined}
       >
-        <ul
-          className={cx("grid gap-y-3", columns && "lg:grid-flow-col lg:grid-rows-[repeat(var(--rows),auto)] lg:gap-x-10")}
-          // Column by column: first half left, rest right
-          style={columns ? ({ "--rows": Math.ceil(rows.length / 2) } as CSSProperties) : undefined}
+        <div
+          ref={scroller}
+          tabIndex={scrolls ? 0 : undefined}
+          role={scrolls ? "region" : undefined}
+          aria-label={scrolls && noun ? `All ${rows.length} ${noun}` : undefined}
+          className={cx(
+            "overflow-y-auto pr-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+            // Before measuring: the plain cap
+            size ? "absolute inset-y-0 -right-2 left-0" : "-mr-2 max-h-[22rem]"
+          )}
         >
-          {rows.map((row) => (
-            <li key={row.key} className="min-w-0">
-              <div className="flex items-baseline gap-3 text-sm">
-                <span className="min-w-0 flex-1 truncate text-fg">{row.label}</span>
-                {row.detail && <span className="hidden shrink-0 text-xs text-fg-subtle sm:inline">{row.detail}</span>}
-                <span className="w-16 shrink-0 text-right tabular-nums font-medium text-fg">{formatCost(row.value)}</span>
-              </div>
-              <div className="mt-1.5 h-1.5 overflow-hidden rounded-r-[4px] bg-raised">
-                <div
-                  className="h-full rounded-r-[4px]"
-                  style={{ width: `${max > 0 ? Math.max(1.5, (row.value / max) * 100) : 0}%`, background: row.color }}
-                />
-              </div>
-              {/* Phones: no room beside the label */}
-              {row.detail && <p className="mt-1 text-xs text-fg-subtle sm:hidden">{row.detail}</p>}
-            </li>
-          ))}
-        </ul>
+          <ul
+            ref={list}
+            className={cx("grid gap-y-3", columns && "lg:grid-flow-col lg:grid-rows-[repeat(var(--rows),auto)] lg:gap-x-10")}
+            // Column by column: first half left, rest right
+            style={columns ? ({ "--rows": Math.ceil(rows.length / 2) } as CSSProperties) : undefined}
+          >
+            {rows.map((row) => (
+              <li key={row.key} className="min-w-0">
+                <div className="flex items-baseline gap-3 text-sm">
+                  <span className="min-w-0 flex-1 truncate text-fg">{row.label}</span>
+                  {row.detail && <span className="hidden shrink-0 text-xs text-fg-subtle sm:inline">{row.detail}</span>}
+                  <span className="w-16 shrink-0 text-right tabular-nums font-medium text-fg">{formatCost(row.value)}</span>
+                </div>
+                <div className="mt-1.5 h-1.5 overflow-hidden rounded-r-[4px] bg-raised">
+                  <div
+                    className="h-full rounded-r-[4px]"
+                    style={{ width: `${max > 0 ? Math.max(1.5, (row.value / max) * 100) : 0}%`, background: row.color }}
+                  />
+                </div>
+                {/* Phones: no room beside the label */}
+                {row.detail && <p className="mt-1 text-xs text-fg-subtle sm:hidden">{row.detail}</p>}
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
       {scrolls && noun && (
         <p className="mt-3 text-xs text-fg-subtle">
@@ -353,4 +399,5 @@ export function BarList({
   );
 }
 
-const FIT_ROWS = 8;
+// Most a list asks for itself (22rem: about 8 rows)
+const LIST_CAP_REM = 22;

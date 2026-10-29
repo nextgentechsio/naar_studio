@@ -124,6 +124,8 @@ export default function GenerateView() {
     error,
     setError,
     generate,
+    cancel,
+    canceling,
   } = useGenerate();
 
   const projects = projectList.map((item) => item.name);
@@ -1060,6 +1062,20 @@ export default function GenerateView() {
                     {makingNote}
                   </p>
                 )}
+                {/* Once it has started on the platform: stop it
+                    (and its cost) */}
+                {!landing && !generating && !preparing && result && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    icon="close"
+                    className="mt-4"
+                    disabled={canceling}
+                    onClick={cancel}
+                  >
+                    {canceling ? "Canceling…" : "Cancel run"}
+                  </Button>
+                )}
               </div>
             ) : status === "succeeded" && outputUrls.length > 0 ? (
               <div
@@ -1112,8 +1128,10 @@ export default function GenerateView() {
               <Alert>
                 <p className="font-medium">Generation {status}</p>
                 <p className="mt-0.5 text-xs opacity-90">
-                  {result?.prediction.error ||
-                    "The model couldn't complete this run. Failed runs aren't added to Expenses."}
+                  {status === "canceled"
+                    ? "This run was stopped, so there's no result. Canceled runs aren't added to Expenses."
+                    : result?.prediction.error ||
+                      "The model couldn't complete this run. Failed runs aren't added to Expenses."}
                 </p>
                 {editRefused && referenceVideos.length > 0 && (
                   <div className="mt-3">

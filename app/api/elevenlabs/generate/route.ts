@@ -8,7 +8,7 @@ import {
   runElevenLabs,
 } from "@/lib/elevenlabs/client";
 import { elevenLabsCostUsd, elevenLabsSchema, findElevenLabsModel } from "@/lib/elevenlabs/models";
-import { finishLocalRun, recordGeneration } from "@/lib/generations";
+import { finishLocalRun, getGeneration, recordGeneration } from "@/lib/generations";
 import { findActiveProjectByName } from "@/lib/projects";
 
 export const runtime = "nodejs";
@@ -28,6 +28,8 @@ export const maxDuration = 300;
 // --------------------------------------------------
 
 const MAX_TEXT = 10_000;
+// How often a run checks whether it was canceled
+const CANCEL_CHECK_MS = 2000;
 
 function badRequest(error: string, status = 400) {
   return NextResponse.json({ error }, { status });
@@ -85,8 +87,17 @@ export async function POST(request: Request) {
       const started = Date.now();
       const seconds = () => Math.round((Date.now() - started) / 100) / 10;
 
+      // Canceled from the page (lib/generation-cancel.ts):
+      // stop the request instead of waiting it out
+      const stop = new AbortController();
+      const watch = setInterval(() => {
+        getGeneration(id)
+          .then((current) => current?.status === "canceled" && stop.abort())
+          .catch(() => {});
+      }, CANCEL_CHECK_MS);
+
       try {
-        const audio = await runElevenLabs(item.id, input);
+        const audio = await runElevenLabs(item.id, input, stop.signal);
         await finishLocalRun(id, {
           ok: true,
           ...audio,
@@ -96,12 +107,16 @@ export async function POST(request: Request) {
           seconds: seconds(),
         });
       } catch (error) {
+        // Canceled: the record already says so
+        if (stop.signal.aborted) return;
         console.error("ElevenLabs run failed:", id, error instanceof Error ? error.message : "unknown error");
         await finishLocalRun(id, {
           ok: false,
           error: error instanceof ElevenLabsError ? error.message : "ElevenLabs couldn't make this. Please try again.",
           seconds: seconds(),
         }).catch((finishError) => console.error("Finish ElevenLabs run failed:", id, finishError));
+      } finally {
+        clearInterval(watch);
       }
     });
 

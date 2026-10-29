@@ -126,7 +126,9 @@ function Card({
   className?: string;
 }) {
   return (
-    <section className={cx("rounded-2xl border border-line bg-surface p-5 shadow-card", className)}>
+    // A column, so a list inside can fill the card's
+    // height (BarList)
+    <section className={cx("flex flex-col rounded-2xl border border-line bg-surface p-5 shadow-card", className)}>
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="font-semibold text-fg">{title}</h2>

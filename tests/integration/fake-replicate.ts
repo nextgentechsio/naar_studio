@@ -416,6 +416,8 @@ export async function startFakeReplicate() {
       if (/moderated/i.test(text)) {
         return send(400, { detail: { status: "content_moderated", message: "This request was blocked by moderation." } });
       }
+      // A long run, to cancel while it works
+      if (/\bslow\b/i.test(text)) await new Promise((resolve) => setTimeout(resolve, 6000));
 
       if (path.startsWith("/el/v1/text-to-speech/") && req.method === "POST") return audio(2);
       if (path === "/el/v1/sound-generation" && req.method === "POST") {
@@ -447,7 +449,11 @@ export async function startFakeReplicate() {
         const id = decodeURIComponent(hfStatus[1]);
         const request = hfRequests.get(id);
         if (!request) return send(404, { detail: "Not found" });
-        if (hfStatus[2] === "cancel" && req.method === "POST") request.status = "canceled";
+        if (hfStatus[2] === "cancel" && req.method === "POST") {
+          // Like Higgsfield: only while it waits in the queue
+          if (request.status !== "queued") return send(400, { detail: "Only queued requests can be canceled" });
+          request.status = "canceled";
+        }
         return send(200, request);
       }
 

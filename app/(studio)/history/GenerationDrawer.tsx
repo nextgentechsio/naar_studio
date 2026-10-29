@@ -16,6 +16,7 @@ import {
   deleteGeneration,
   fetchGeneration,
   setGenerationHidden,
+  cancelGeneration,
   type GenerationDetail,
   type PublicGeneration,
 } from "@/lib/client/data";
@@ -73,6 +74,7 @@ export default function GenerationDrawer({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [addingToElement, setAddingToElement] = useState(false);
+  const [canceling, setCanceling] = useState(false);
   // "Run again" goes back to the provider that ran it
   const stores = {
     replicate: useGenerateStore("replicate"),
@@ -180,6 +182,17 @@ export default function GenerationDrawer({
       })
       .catch((err) => setNotice(errorMessage(err, "Couldn't change this run.")))
       .finally(() => setHiding(false));
+  }
+
+  // Stops it on its platform, then shows what it ended as
+  function cancelRun() {
+    setCanceling(true);
+    setNotice("");
+    cancelGeneration(id)
+      .then(() => fetchGeneration(id))
+      .then((detail) => setLoaded({ id, detail }))
+      .catch((err) => setNotice(errorMessage(err, "Couldn't cancel this run.")))
+      .finally(() => setCanceling(false));
   }
 
   function remove() {
@@ -336,6 +349,17 @@ export default function GenerationDrawer({
                 {generation.status === "succeeded" && generation.outputUrl && elementKind && (
                   <Button icon="at" onClick={() => setAddingToElement(true)}>
                     Add to element
+                  </Button>
+                )}
+
+                {isRunningStatus(generation.status) && (
+                  <Button
+                    icon="close"
+                    disabled={canceling}
+                    onClick={cancelRun}
+                    title="Stop it on its platform, so it isn't billed further"
+                  >
+                    {canceling ? "Canceling…" : "Cancel run"}
                   </Button>
                 )}
 

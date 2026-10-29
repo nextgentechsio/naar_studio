@@ -14,6 +14,7 @@ import {
   type Schema,
 } from "@/app/(studio)/_generate/fields";
 import { errorMessage, fetchJson, logRequestError } from "@/lib/client/http";
+import { cancelGeneration } from "@/lib/client/data";
 import { currentElements } from "@/lib/client/elements";
 import { uploadToLibrary } from "@/lib/client/library";
 import { checkVideo, cropVideoAt, fitVideoAt, resizeVideo } from "@/lib/client/resize-video";
@@ -195,6 +196,10 @@ type GenerateContextValue = {
   error: string;
   setError: (message: string) => void;
   generate: () => void;
+  // Stops the running run on its platform (to save its
+  // cost); true while asking
+  cancel: () => void;
+  canceling: boolean;
 };
 
 // The one useGenerate() reads
@@ -256,6 +261,7 @@ export function GenerateProvider({
   const [result, setResult] = useState<GenerationResult | null>(null);
   const [finishedAt, setFinishedAt] = useState<number | null>(null);
   const [error, setError] = useState("");
+  const [canceling, setCanceling] = useState(false);
 
   // Ignore schema responses for a model that is no
   // longer selected (fast clicking between models)
@@ -840,6 +846,38 @@ export function GenerateProvider({
     }
   }, [project, model, schema, inputs, pollPrediction, endpoints, provider]);
 
+  // --------------------------------------------------
+  // CANCEL (lib/generation-cancel.ts)
+  // --------------------------------------------------
+
+  const cancel = useCallback(async () => {
+    const id = result?.prediction.id;
+    if (!id || canceling) return;
+
+    const run = runRef.current;
+    setCanceling(true);
+    setError("");
+
+    try {
+      const status = await cancelGeneration(id);
+
+      if (status === "canceled" && run === runRef.current) {
+        // Polling stops at "canceled"; show it now
+        setResult((previous) =>
+          previous?.prediction.id === id
+            ? { prediction: { ...previous.prediction, status: "canceled", output: null }, costUsd: null }
+            : previous
+        );
+      }
+      // Finished first: polling shows the result
+    } catch (err) {
+      logRequestError(err);
+      if (run === runRef.current) setError(errorMessage(err, "Couldn't cancel this run."));
+    } finally {
+      setCanceling(false);
+    }
+  }, [result, canceling]);
+
   const value: GenerateContextValue = {
     provider,
     project,
@@ -873,6 +911,8 @@ export function GenerateProvider({
     error,
     setError,
     generate,
+    cancel,
+    canceling,
   };
 
   const Store = StoreContexts[provider];

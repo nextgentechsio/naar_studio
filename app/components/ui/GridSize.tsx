@@ -24,7 +24,7 @@ const SIZES: { id: GridSize; label: string; icon: "gridSmall" | "gridMedium" | "
 // Columns for a page-wide grid, and for one in a window
 export const PAGE_GRID: Record<GridSize, string> = {
   s: "grid-cols-3 sm:grid-cols-4 md:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8",
-  m: "grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5",
+  m: "grid-cols-2 md:grid-cols-3 xl:grid-cols-4",
   l: "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3",
 };
 

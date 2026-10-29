@@ -22,6 +22,7 @@ import { useFileDrop } from "@/app/components/ui/useFileDrop";
 import { DIALOG_GRID, GridSizeToggle, useGridSize, type GridSize } from "@/app/components/ui/GridSize";
 import type { FileKind } from "./fields";
 import MediaCaption from "./MediaCaption";
+import MediaPreviewDialog, { type MediaPreview } from "./MediaPreviewDialog";
 
 // --------------------------------------------------
 // ADD FILES TO AN UPLOAD FIELD (window)
@@ -33,6 +34,9 @@ import MediaCaption from "./MediaCaption";
 // user's own past results of this kind, copied into the
 // library when picked (saved outputs are private links
 // models can't fetch, and are deleted after 7 days).
+//
+// Every image or video tile has a preview button: the
+// file full size, grown out of its tile.
 //
 // The super admin can switch the library to everyone's
 // files, each marked with who added it, and delete any
@@ -96,6 +100,8 @@ export default function MediaLibraryDialog({
   const [selected, setSelected] = useState<string[]>([]);
   // The file asking "Delete?", and the one being deleted
   const [confirming, setConfirming] = useState<string | null>(null);
+  // A file open full size
+  const [viewing, setViewing] = useState<MediaPreview | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
 
   const noun = kind === "audio" ? "audio file" : kind;
@@ -305,6 +311,7 @@ export default function MediaLibraryDialog({
                           deleting={deleting === file.id}
                           onToggle={() => toggle(file.url)}
                           onAddNow={() => add([file.url])}
+                          onPreview={setViewing}
                           onAskDelete={() => setConfirming(file.id)}
                           onCancelDelete={() => setConfirming(null)}
                           onDelete={() => void remove(file)}
@@ -339,10 +346,62 @@ export default function MediaLibraryDialog({
                 )}
               </div>
             )}
+            {viewing && <MediaPreviewDialog preview={viewing} onClose={() => setViewing(null)} />}
           </>
         );
       }}
     </Modal>
+  );
+}
+
+// The file in a tile, full size, growing out of the tile
+function previewOf(button: HTMLElement, src: string, kind: FileKind, alt: string, sizeOf: string | null): MediaPreview {
+  const tile = button.closest("li")?.querySelector<HTMLElement>(".aspect-square") ?? button;
+  const media = tile.querySelector<HTMLImageElement | HTMLVideoElement>("img, video");
+
+  return {
+    src,
+    kind: kind === "video" ? "video" : "image",
+    alt,
+    origin: tile.getBoundingClientRect(),
+    width: media instanceof HTMLVideoElement ? media.videoWidth : (media?.naturalWidth ?? 0),
+    height: media instanceof HTMLVideoElement ? media.videoHeight : (media?.naturalHeight ?? 0),
+    sizeOf,
+  };
+}
+
+// The eye on an image or video tile (beside its delete
+// button when it has one)
+function PreviewButton({
+  src,
+  kind,
+  name,
+  sizeOf,
+  besideDelete,
+  onPreview,
+}: {
+  src: string;
+  kind: FileKind;
+  name: string;
+  sizeOf: string | null;
+  besideDelete: boolean;
+  onPreview: (preview: MediaPreview) => void;
+}) {
+  if (kind === "audio" || !src) return null;
+
+  return (
+    <button
+      type="button"
+      aria-label={`Preview ${name}`}
+      title="Preview"
+      onClick={(event) => onPreview(previewOf(event.currentTarget, src, kind, name, sizeOf))}
+      className={cx(
+        "absolute top-2 flex h-7 w-7 items-center justify-center rounded-lg bg-black/65 text-white opacity-0 backdrop-blur transition-all hover:bg-black/85 focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-90",
+        besideDelete ? "right-10" : "right-2"
+      )}
+    >
+      <Icon name="eye" size={14} />
+    </button>
   );
 }
 
@@ -512,6 +571,7 @@ function LibraryTile({
   deleting,
   onToggle,
   onAddNow,
+  onPreview,
   onAskDelete,
   onCancelDelete,
   onDelete,
@@ -528,6 +588,7 @@ function LibraryTile({
   deleting: boolean;
   onToggle: () => void;
   onAddNow: () => void;
+  onPreview: (preview: MediaPreview) => void;
   onAskDelete: () => void;
   onCancelDelete: () => void;
   onDelete: () => void;
@@ -608,6 +669,17 @@ function LibraryTile({
         )}
       </button>
 
+      {!confirming && (
+        <PreviewButton
+          src={file.url}
+          kind={kind}
+          name={file.name}
+          sizeOf={file.url}
+          besideDelete={canDelete}
+          onPreview={onPreview}
+        />
+      )}
+
       {confirming ? (
         <div className="ui-backdrop absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-xl bg-black/75 p-2 text-center backdrop-blur-sm">
           <span className="text-xs font-medium text-white">
@@ -680,6 +752,8 @@ function OutputsPane({
 }) {
   const { currentUser } = useStudio();
   const [gridSize] = useGridSize(GRID_PLACE);
+  // A result open full size
+  const [viewing, setViewing] = useState<MediaPreview | null>(null);
   const [runs, setRuns] = useState<PublicGeneration[] | null>(null);
   const [page, setPage] = useState(1);
   const [more, setMore] = useState(false);
@@ -781,6 +855,7 @@ function OutputsPane({
                   disabled={busy}
                   onToggle={() => toggle(run.id)}
                   onAddNow={() => void add([run.id])}
+                  onPreview={setViewing}
                 />
               ))}
             </ul>
@@ -820,6 +895,8 @@ function OutputsPane({
           </Button>
         </div>
       )}
+
+      {viewing && <MediaPreviewDialog preview={viewing} onClose={() => setViewing(null)} />}
     </div>
   );
 }
@@ -834,6 +911,7 @@ function OutputTile({
   disabled,
   onToggle,
   onAddNow,
+  onPreview,
 }: {
   index: number;
   run: PublicGeneration;
@@ -844,6 +922,7 @@ function OutputTile({
   disabled: boolean;
   onToggle: () => void;
   onAddNow: () => void;
+  onPreview: (preview: MediaPreview) => void;
 }) {
   const src = run.outputUrl ?? "";
   const label = run.prompt || modelLabel(run.model);
@@ -912,6 +991,10 @@ function OutputTile({
           </span>
         )}
       </button>
+
+      {!adding && (
+        <PreviewButton src={src} kind={kind} name={label} sizeOf={null} besideDelete={false} onPreview={onPreview} />
+      )}
 
       {adding && (
         <span className="ui-backdrop absolute inset-0 flex items-center justify-center gap-2 rounded-xl bg-black/55 text-xs font-medium text-white backdrop-blur-sm">

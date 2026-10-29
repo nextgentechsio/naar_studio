@@ -51,9 +51,9 @@ const pageCacheKey = (listKey: string) => `history:page:${listKey}`;
 // "hidden" only does anything for the super admin
 const STATUSES: HistoryStatus[] = ["succeeded", "failed", "running", "hidden"];
 
-// Medium: 4 columns on a laptop, 5 on wide screens,
-// enough to scan, big enough to judge an image. Small
-// and large are a click away (GridSize).
+// Medium: 4 columns on a laptop and wider, enough to
+// scan, big enough to judge an image. Small and large
+// are a click away (GridSize).
 const gridClass = (size: GridSize) => cx("grid", size === "s" ? "gap-3" : "gap-4", PAGE_GRID[size]);
 
 const FILTER_KEYS = ["q", "platform", "project", "model", "user", "status", "range", "from", "to"] as const;

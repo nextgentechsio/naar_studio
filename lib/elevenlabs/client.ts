@@ -170,10 +170,12 @@ async function readInput(value: unknown): Promise<Blob> {
 
 const number = (value: unknown) => (value === "" || value === null || value === undefined ? undefined : Number(value));
 
-// Runs a model and returns the audio it made
+// Runs a model and returns the audio it made. `signal`
+// stops it early (the run was canceled).
 export async function runElevenLabs(
   id: string,
   input: Record<string, unknown>,
+  signal?: AbortSignal,
 ): Promise<{ bytes: Buffer; contentType: string }> {
   const item = findElevenLabsModel(id);
   if (!item) throw new ElevenLabsError(400, "Unknown ElevenLabs model");
@@ -227,7 +229,12 @@ export async function runElevenLabs(
     init = { method: "POST", headers: headers(), body: form };
   }
 
-  const response = await fetch(url, { ...init, cache: "no-store", signal: AbortSignal.timeout(RUN_TIMEOUT_MS) });
+  const timeout = AbortSignal.timeout(RUN_TIMEOUT_MS);
+  const response = await fetch(url, {
+    ...init,
+    cache: "no-store",
+    signal: signal ? AbortSignal.any([timeout, signal]) : timeout,
+  });
   if (!response.ok) throw await errorFrom(response);
 
   return {

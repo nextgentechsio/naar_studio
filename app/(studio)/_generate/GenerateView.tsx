@@ -669,7 +669,7 @@ export default function GenerateView() {
                   <Field
                     label="Prompt"
                     required
-                    info="Type @ to add one of your elements"
+                    info="Type @ to add one of your elements, or / to name an uploaded file (image 1, video 2…)"
                     className="relative flex min-h-28 flex-1 flex-col"
                   >
                     {(control) => (

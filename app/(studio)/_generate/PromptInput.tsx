@@ -10,6 +10,7 @@ import { ELEMENT_MEDIA, elementSummary, mentionedElements } from "@/lib/element-
 import { Icon } from "@/app/components/ui/Icon";
 import { cx } from "@/app/components/ui/primitives";
 import { fileKind, StableTextArea, type SchemaProperty } from "./fields";
+import { filesPattern, matchFiles, promptFiles, type PromptFile } from "./promptFiles";
 
 // --------------------------------------------------
 // PROMPT WITH @ELEMENTS
@@ -24,6 +25,10 @@ import { fileKind, StableTextArea, type SchemaProperty } from "./fields";
 // too). When the run is sent, @name
 // becomes the name and description
 // (lib/element-mentions.ts).
+//
+// Typing / lists the files uploaded for the model
+// ("image 1", "video 2"); picking one writes its name
+// (promptFiles.ts).
 // --------------------------------------------------
 
 const MAX_SHOWN = 8;
@@ -31,6 +36,10 @@ const MENU_WIDTH = 304;
 
 // "@ma" just before the caret → query "ma"
 const TYPING = /(^|[^\p{L}\p{N}_@-])@([\p{L}\p{N}_-]{0,40})$/u;
+
+// "/im" just before the caret, at the start of a word
+// (not "and/or" or a link) → query "im"
+const SLASH = /(^|\s)\/([\p{L}\p{N}_-]{0,40})$/u;
 
 // Splits text into plain runs and @mentions
 const MENTION_SPLIT = /((?:^|(?<=[^\p{L}\p{N}_@-]))@[\p{L}\p{N}_-]{1,40})/u;
@@ -96,6 +105,28 @@ function highlight(text: string, query: string): ReactNode {
   );
 }
 
+// A file's small preview in the / list
+function FileThumb({ file, src }: { file: PromptFile; src: string }) {
+  if (file.kind === "audio") {
+    return (
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-raised text-fg-muted">
+        <Icon name="audio" size={16} />
+      </span>
+    );
+  }
+
+  return (
+    <span className="relative h-9 w-9 shrink-0 overflow-hidden rounded-lg bg-black">
+      {file.kind === "video" ? (
+        <video src={src} muted playsInline preload="metadata" className="h-full w-full object-cover" />
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={src} alt="" className="h-full w-full object-cover" />
+      )}
+    </span>
+  );
+}
+
 export default function PromptInput({
   value,
   onChange,
@@ -111,12 +142,14 @@ export default function PromptInput({
   rows?: number;
   className?: string;
 }) {
-  const { schema, inputs, updateInput } = useGenerate();
+  const { schema, inputs, updateInput, model, filePreviews } = useGenerate();
   const { elements } = useElements();
 
   const area = useRef<HTMLTextAreaElement>(null);
   const backdrop = useRef<HTMLDivElement>(null);
   const [mention, setMention] = useState<Mention | null>(null);
+  // The / list of uploaded files, when open
+  const [slash, setSlash] = useState<Mention | null>(null);
   const [active, setActive] = useState(0);
   const [note, setNote] = useState("");
   // Creating an element from the list: where it goes
@@ -141,28 +174,63 @@ export default function PromptInput({
 
   const listId = `${props.id}-elements`;
 
+  const files = promptFiles(schema, inputs, model);
+  const takesFiles = Object.entries(schema).some(([key, field]) => fileKind(key, field));
+  const fileMatches = slash ? matchFiles(files, slash.query) : [];
+  const filesId = `${props.id}-files`;
+  const filesAt = filesPattern(files);
+
   // Opens, moves or closes the list for the text before
   // the caret
   function track() {
     const node = area.current;
-    if (!node || node.selectionStart !== node.selectionEnd) return setMention(null);
+    if (!node || node.selectionStart !== node.selectionEnd) {
+      setSlash(null);
+      return setMention(null);
+    }
 
     const caret = node.selectionStart;
-    const typed = node.value.slice(0, caret).match(TYPING);
+    const before = node.value.slice(0, caret);
+
+    // Uploaded files, for a model that takes any
+    const slashed = takesFiles ? before.match(SLASH) : null;
+    if (slashed) {
+      setMention(null);
+      const start = caret - slashed[2].length - 1;
+      if (slash?.start !== start || slash.query !== slashed[2]) setActive(0);
+      return setSlash({ start, end: caret, query: slashed[2], ...menuPoint(node, start) });
+    }
+    setSlash(null);
+
+    const typed = before.match(TYPING);
     if (!typed) return setMention(null);
 
     const start = caret - typed[2].length - 1;
     if (mention?.start !== start || mention.query !== typed[2]) setActive(0);
 
+    setMention({ start, end: caret, query: typed[2], ...menuPoint(node, start) });
+  }
+
+  // Where a list opens: under the character at `start`
+  function menuPoint(node: HTMLTextAreaElement, start: number) {
     const point = caretPoint(node, start);
     const wrapper = node.parentElement!;
-    setMention({
-      start,
-      end: caret,
-      query: typed[2],
+    return {
       top: wrapper.offsetTop + point.top + 6,
       left: wrapper.offsetLeft + Math.max(0, Math.min(point.left, node.clientWidth - MENU_WIDTH)),
-    });
+    };
+  }
+
+  // Writes the file's name ("image 2") over what was typed
+  function pickFile(file: PromptFile) {
+    const node = area.current;
+    if (!node || !slash) return;
+
+    const text = `${file.token} `;
+    const next = node.value.slice(0, slash.start) + text + node.value.slice(slash.end).replace(/^ /, "");
+
+    setText(next, slash.start + text.length);
+    setSlash(null);
   }
 
   function setText(next: string, caret: number) {
@@ -271,6 +339,7 @@ export default function PromptInput({
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (slash) return onFileKey(event);
     if (!mention) return;
 
     if (event.key === "Escape") {
@@ -294,7 +363,49 @@ export default function PromptInput({
     }
   }
 
+  // Keys while the / list is open
+  function onFileKey(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      event.nativeEvent.stopImmediatePropagation();
+      setSlash(null);
+      return;
+    }
+
+    if (!fileMatches.length) return;
+
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const step = event.key === "ArrowDown" ? 1 : -1;
+      setActive((index) => (index + step + fileMatches.length) % fileMatches.length);
+    } else if (event.key === "Enter" || event.key === "Tab") {
+      event.preventDefault();
+      pickFile(fileMatches[Math.min(active, fileMatches.length - 1)]);
+    }
+  }
+
+  // Plain text with the files' names marked
+  function withFiles(text: string, key: number): ReactNode {
+    if (!filesAt) return <Fragment key={key}>{text}</Fragment>;
+
+    return (
+      <Fragment key={key}>
+        {text.split(filesAt).map((part, index) =>
+          index % 2 ? (
+            <mark key={index} className="rounded-[4px] bg-raised text-transparent shadow-[0_0_0_2px_var(--line-strong)]">
+              {part}
+            </mark>
+          ) : (
+            part
+          )
+        )}
+      </Fragment>
+    );
+  }
+
   const open = mention !== null;
+  const listOpen = open || slash !== null;
 
   return (
     <>
@@ -315,7 +426,7 @@ export default function PromptInput({
                 {part}
               </mark>
             ) : (
-              <Fragment key={index}>{part}</Fragment>
+              withFiles(part, index)
             )
           )}
           {/* A trailing line break needs something after it */}
@@ -329,9 +440,17 @@ export default function PromptInput({
           className={cx(className, "relative bg-transparent!")}
           role="combobox"
           aria-autocomplete="list"
-          aria-expanded={open}
-          aria-controls={open ? listId : undefined}
-          aria-activedescendant={open && optionCount ? `${listId}-${active}` : undefined}
+          aria-expanded={listOpen}
+          aria-controls={slash ? filesId : open ? listId : undefined}
+          aria-activedescendant={
+            slash
+              ? fileMatches.length
+                ? `${filesId}-${active}`
+                : undefined
+              : open && optionCount
+                ? `${listId}-${active}`
+                : undefined
+          }
           onChange={(next) => {
             onChange(next);
             track();
@@ -344,8 +463,12 @@ export default function PromptInput({
           onScroll={(event) => {
             if (backdrop.current) backdrop.current.scrollTop = event.currentTarget.scrollTop;
             setMention(null);
+            setSlash(null);
           }}
-          onBlur={() => setMention(null)}
+          onBlur={() => {
+            setMention(null);
+            setSlash(null);
+          }}
         />
       </div>
 
@@ -459,6 +582,61 @@ export default function PromptInput({
                 </li>
               )}
             </ul>
+          )}
+
+          <p className="flex gap-3 border-t border-line px-3 py-1.5 text-[11px] text-fg-subtle">
+            <span>↑↓ move</span>
+            <span>↵ add</span>
+            <span>esc close</span>
+          </p>
+        </div>
+      )}
+
+      {slash && (
+        <div
+          className="ui-menu glass-menu absolute z-30 overflow-hidden rounded-xl border"
+          style={{ top: slash.top, left: slash.left, width: MENU_WIDTH }}
+          // Keep focus (and the caret) in the text area
+          onMouseDown={(event) => event.preventDefault()}
+        >
+          <p className="px-3 pb-1 pt-2.5 text-[11px] font-medium uppercase tracking-[0.14em] text-fg-subtle">
+            Uploaded files
+          </p>
+
+          {fileMatches.length ? (
+            <ul id={filesId} role="listbox" aria-label="Uploaded files" className="max-h-72 overflow-y-auto px-1.5 pb-1.5">
+              {fileMatches.map((file, index) => (
+                <li
+                  key={`${file.token}-${file.url}`}
+                  id={`${filesId}-${index}`}
+                  role="option"
+                  aria-selected={index === active}
+                  onMouseEnter={() => setActive(index)}
+                  onClick={() => pickFile(file)}
+                  className={cx(
+                    "flex cursor-pointer items-center gap-2.5 rounded-lg px-1.5 py-1.5 transition-colors",
+                    index === active && "bg-raised"
+                  )}
+                >
+                  <FileThumb file={file} src={filePreviews[file.url] ?? file.url} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-fg">
+                      {file.token.charAt(0).toUpperCase() + file.token.slice(1)}
+                    </span>
+                    <span className="block truncate text-xs text-fg-subtle">{file.field}</span>
+                  </span>
+                  {index === active && (
+                    <kbd className="rounded border border-line px-1 text-[10px] text-fg-subtle">↵</kbd>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="px-3 pb-2.5 text-xs text-fg-subtle">
+              {files.length
+                ? `No uploaded file matches “${slash.query}”.`
+                : "Upload images, videos or audio below, then type / to name them here."}
+            </p>
           )}
 
           <p className="flex gap-3 border-t border-line px-3 py-1.5 text-[11px] text-fg-subtle">

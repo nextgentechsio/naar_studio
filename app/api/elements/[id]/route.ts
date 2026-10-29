@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/auth";
+import { canDeleteAllMedia } from "@/lib/auth/roles";
 import { deleteElement, updateElement } from "@/lib/elements";
 
 export const runtime = "nodejs";
@@ -33,7 +34,8 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 }
 
-// The element only: its images stay in the library
+// The element only: its images stay in the library. The
+// super admin can delete anyone's.
 export async function DELETE(_request: Request, context: RouteContext) {
   const auth = await requireUser();
   if (auth.response) return auth.response;
@@ -41,7 +43,7 @@ export async function DELETE(_request: Request, context: RouteContext) {
   const { id } = await context.params;
 
   try {
-    if (!(await deleteElement(auth.user.id, id))) {
+    if (!(await deleteElement(auth.user.id, id, { anyOwner: canDeleteAllMedia(auth.user) }))) {
       return NextResponse.json({ error: "Element not found" }, { status: 404 });
     }
 

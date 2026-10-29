@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/auth";
+import { canViewAllMedia } from "@/lib/auth/roles";
 import {
   addLibraryFile,
   LIBRARY_KINDS,
   libraryEnabled,
   libraryFolder,
+  listAllLibrary,
   listLibrary,
   type LibraryKind,
 } from "@/lib/storage/media-library";
@@ -16,6 +18,8 @@ export const runtime = "nodejs";
 //
 // GET  ?kind=image|video|audio → { enabled, folder, files }
 //      (no kind: files is empty)
+//      &scope=all (super admin): everyone's files, each
+//      with addedBy
 // POST { url, name }           → { file }, after uploading
 //      to `folder` through /api/library/upload
 // --------------------------------------------------
@@ -28,15 +32,23 @@ export async function GET(request: Request) {
     return NextResponse.json({ enabled: false, folder: null, files: [] });
   }
 
-  const kind = new URL(request.url).searchParams.get("kind");
+  const params = new URL(request.url).searchParams;
+  const kind = params.get("kind");
+  const everyone = params.get("scope") === "all";
+
+  if (everyone && !canViewAllMedia(auth.user)) {
+    return NextResponse.json({ error: "Only the super admin can see everyone's files" }, { status: 403 });
+  }
 
   try {
     return NextResponse.json({
       enabled: true,
       folder: libraryFolder(auth.user.id),
-      files: LIBRARY_KINDS.includes(kind as LibraryKind)
-        ? await listLibrary(auth.user.id, kind as LibraryKind)
-        : [],
+      files: !LIBRARY_KINDS.includes(kind as LibraryKind)
+        ? []
+        : everyone
+          ? await listAllLibrary(kind as LibraryKind)
+          : await listLibrary(auth.user.id, kind as LibraryKind),
     });
   } catch (error) {
     console.error("List library error:", error);

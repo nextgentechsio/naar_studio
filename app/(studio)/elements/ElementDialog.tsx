@@ -28,6 +28,7 @@ import {
 } from "@/app/components/ui/primitives";
 import { useFileDrop } from "@/app/components/ui/useFileDrop";
 import ElementCover from "./ElementCover";
+import ElementGallery from "./ElementGallery";
 
 // --------------------------------------------------
 // CREATE OR EDIT AN ELEMENT (window)
@@ -89,6 +90,8 @@ export default function ElementDialog({
   const [pending, setPending] = useState<Pending[]>([]);
   // The kind being picked from the library
   const [picking, setPicking] = useState<ElementMediaKind | null>(null);
+  // An image open full size (its place in the list)
+  const [viewing, setViewing] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState("");
@@ -259,8 +262,21 @@ export default function ElementDialog({
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={url} alt={`Reference ${index + 1}`} className="h-full w-full object-cover" />
 
+              {/* The tile opens it full size; its own buttons
+                  sit above */}
+              <button
+                type="button"
+                aria-label={`Preview image ${index + 1}`}
+                onClick={() => setViewing(index)}
+                className="absolute inset-0 flex cursor-zoom-in items-center justify-center bg-black/0 text-white transition-colors hover:bg-black/25 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+              >
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-black/60 opacity-0 backdrop-blur transition-opacity group-hover:opacity-100">
+                  <Icon name="eye" size={15} />
+                </span>
+              </button>
+
               {index === 0 ? (
-                <span className="absolute bottom-1.5 left-1.5 rounded-full bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white backdrop-blur">
+                <span className="pointer-events-none absolute bottom-1.5 left-1.5 rounded-full bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white backdrop-blur">
                   Cover
                 </span>
               ) : (
@@ -527,6 +543,14 @@ export default function ElementDialog({
           </form>
         )}
       </Modal>
+
+      {viewing !== null && (
+        <ElementGallery
+          element={{ name: trimmed || (creating ? "new element" : element?.name ?? ""), images: lists.images, videos: lists.videos }}
+          start={viewing}
+          onClose={() => setViewing(null)}
+        />
+      )}
 
       {picking && (
         <MediaLibraryDialog

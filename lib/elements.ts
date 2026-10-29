@@ -6,6 +6,7 @@ import {
   MAX_ELEMENT_DESCRIPTION,
   type Element,
 } from "@/lib/element-mentions";
+import { currentNames } from "@/lib/names";
 import {
   elementsCollection,
   isDuplicateKeyError,
@@ -133,6 +134,18 @@ export async function listElements(userId: string): Promise<Element[]> {
   return docs.map(toElement);
 }
 
+// Every user's elements, newest first, each with who
+// made it (the super admin's view; the route checks)
+export async function listAllElements(): Promise<Element[]> {
+  const docs = await (await elementsCollection()).find({}).sort({ createdAt: -1, _id: -1 }).toArray();
+  const { users } = await currentNames([], docs.map((doc) => doc.userId));
+
+  return docs.map((doc) => ({
+    ...toElement(doc),
+    addedBy: { id: doc.userId, name: users.get(doc.userId) ?? "Deleted user" },
+  }));
+}
+
 export async function createElement(userId: string, fields: Fields): Promise<ElementResult> {
   const checked = await check(userId, fields, null);
   if (!checked.ok) return checked;
@@ -185,9 +198,13 @@ export async function updateElement(
   }
 }
 
-export async function deleteElement(userId: string, id: string): Promise<boolean> {
+// anyOwner: the super admin's delete of another user's
+// element (the route checks)
+export async function deleteElement(userId: string, id: string, { anyOwner = false } = {}): Promise<boolean> {
   if (!ObjectId.isValid(id)) return false;
 
-  const result = await (await elementsCollection()).deleteOne({ _id: new ObjectId(id), userId });
+  const result = await (await elementsCollection()).deleteOne(
+    anyOwner ? { _id: new ObjectId(id) } : { _id: new ObjectId(id), userId }
+  );
   return result.deletedCount === 1;
 }

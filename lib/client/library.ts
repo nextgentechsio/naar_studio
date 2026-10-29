@@ -38,8 +38,10 @@ export function onLibraryChange(listener: () => void): () => void {
 
 const changed = () => listeners.forEach((listener) => listener());
 
-export async function fetchLibrary(kind: LibraryKind): Promise<LibraryInfo> {
-  return fetchJson<LibraryInfo>(`/api/library?kind=${kind}`);
+// "all": every user's files, each with who added it
+// (the super admin only)
+export async function fetchLibrary(kind: LibraryKind, scope: "mine" | "all" = "mine"): Promise<LibraryInfo> {
+  return fetchJson<LibraryInfo>(`/api/library?kind=${kind}${scope === "all" ? "&scope=all" : ""}`);
 }
 
 // Saves a file to the library and returns its URL, or

@@ -106,3 +106,10 @@ export async function removeElement(id: string): Promise<void> {
   await fetchJson(`/api/elements/${encodeURIComponent(id)}`, { method: "DELETE" });
   await reloadElements();
 }
+
+// Every user's elements, each with who made it (the
+// super admin only; not shared with the @ list)
+export async function fetchAllElements(): Promise<Element[]> {
+  const data = await fetchJson<{ elements: Element[] }>("/api/elements?scope=all");
+  return data.elements;
+}

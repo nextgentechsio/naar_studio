@@ -161,7 +161,7 @@ export default function SamplePicker({ options, labels = {}, previews, value, on
           {current.name}
           {current.details && <span className="text-fg-subtle"> · {current.details}</span>}
         </span>
-        <Icon name="chevron" size={14} className="shrink-0 text-fg-subtle" />
+        <Icon name="chevronDown" size={14} className="shrink-0 text-fg-subtle" />
       </button>
 
       {open && (

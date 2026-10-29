@@ -13,11 +13,13 @@ import {
   type LibraryFile,
 } from "@/lib/client/library";
 import type { PublicGeneration } from "@/lib/generations";
+import { canDeleteAllMedia, canViewAllMedia } from "@/lib/auth/roles";
 import { modelLabel } from "@/lib/replicate/catalog";
 import { Icon } from "@/app/components/ui/Icon";
 import { Modal } from "@/app/components/ui/Modal";
 import { Button, cx, EmptyState, inputClass, Spinner } from "@/app/components/ui/primitives";
 import { useFileDrop } from "@/app/components/ui/useFileDrop";
+import { DIALOG_GRID, GridSizeToggle, useGridSize, type GridSize } from "@/app/components/ui/GridSize";
 import type { FileKind } from "./fields";
 import MediaCaption from "./MediaCaption";
 
@@ -31,6 +33,10 @@ import MediaCaption from "./MediaCaption";
 // user's own past results of this kind, copied into the
 // library when picked (saved outputs are private links
 // models can't fetch, and are deleted after 7 days).
+//
+// The super admin can switch the library to everyone's
+// files, each marked with who added it, and delete any
+// of them.
 // --------------------------------------------------
 
 type Tab = "upload" | "library" | "outputs";
@@ -46,6 +52,12 @@ const UPLOAD_HINTS: Record<FileKind, string> = {
   video: "MP4, MOV or WEBM · up to 100 MB",
   audio: "MP3, WAV or M4A · up to 100 MB",
 };
+
+// The window's library and outputs share one card size;
+// audio is always a list
+const GRID_PLACE = "media-window";
+const tileGrid = (kind: FileKind, size: GridSize) =>
+  cx("grid gap-3", kind === "audio" ? "grid-cols-1" : DIALOG_GRID[size]);
 
 function formatSize(bytes: number) {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
@@ -70,7 +82,13 @@ export default function MediaLibraryDialog({
   onPick: (urls: string[]) => void;
   onClose: () => void;
 }) {
+  const { currentUser } = useStudio();
+  const seesAll = canViewAllMedia(currentUser);
+  const deletesAll = canDeleteAllMedia(currentUser);
   const [tab, setTab] = useState<Tab>("upload");
+  const [gridSize, setGridSize] = useGridSize(GRID_PLACE);
+  // Whose files the library shows
+  const [scope, setScope] = useState<"mine" | "all">("mine");
   const [files, setFiles] = useState<LibraryFile[] | null>(null);
   const [enabled, setEnabled] = useState(true);
   const [error, setError] = useState("");
@@ -85,7 +103,7 @@ export default function MediaLibraryDialog({
 
   const load = useCallback(async () => {
     try {
-      const data = await fetchLibrary(kind);
+      const data = await fetchLibrary(kind, scope);
       setEnabled(data.enabled);
       setFiles(data.files);
     } catch (err) {
@@ -93,13 +111,18 @@ export default function MediaLibraryDialog({
       setError("Couldn't load your library.");
       setFiles((previous) => previous ?? []);
     }
-  }, [kind]);
+  }, [kind, scope]);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- loads on open
   useEffect(() => void load(), [load]);
   useEffect(() => onLibraryChange(() => void load()), [load]);
 
-  const shown = (files ?? []).filter((file) => file.name.toLowerCase().includes(query.trim().toLowerCase()));
+  const needle = query.trim().toLowerCase();
+  // Name, or who added it in everyone's files
+  const shown = (files ?? []).filter(
+    (file) => file.name.toLowerCase().includes(needle) || Boolean(file.addedBy?.name.toLowerCase().includes(needle))
+  );
+  const isMine = (file: LibraryFile) => !file.addedBy || file.addedBy.id === currentUser.id;
 
   async function remove(file: LibraryFile) {
     setConfirming(null);
@@ -125,6 +148,11 @@ export default function MediaLibraryDialog({
           tab={tab}
           onChange={setTab}
           count={files?.length ?? 0}
+          aside={
+            kind !== "audio" && tab !== "upload" ? (
+              <GridSizeToggle size={gridSize} onChange={setGridSize} />
+            ) : null
+          }
         />
       )}
     >
@@ -181,6 +209,42 @@ export default function MediaLibraryDialog({
               />
             ) : (
               <div key="library" className="ui-step-forward flex min-h-0 flex-1 flex-col">
+                {seesAll && (
+                  <div className="flex items-center justify-between gap-3 px-5 pt-4">
+                    <div role="group" aria-label="Whose files" className="flex gap-1.5">
+                      {(
+                        [
+                          ["mine", "My files"],
+                          ["all", "Everyone's"],
+                        ] as const
+                      ).map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          aria-pressed={scope === value}
+                          onClick={() => {
+                            if (scope === value) return;
+                            setScope(value);
+                            setFiles(null);
+                            setSelected([]);
+                          }}
+                          className={cx(
+                            "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                            scope === value
+                              ? "border-accent bg-accent-soft text-accent"
+                              : "border-line text-fg-muted hover:border-line-strong hover:text-fg"
+                          )}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    {scope === "all" && (
+                      <span className="text-xs text-fg-subtle">Every user&apos;s {nouns}, with who added them</span>
+                    )}
+                  </div>
+                )}
+
                 {files && files.length > 6 && (
                   <div className="px-5 pt-4">
                     <div className="relative">
@@ -189,7 +253,7 @@ export default function MediaLibraryDialog({
                         type="search"
                         value={query}
                         onChange={(event) => setQuery(event.target.value)}
-                        placeholder={`Search ${files.length} ${nouns}`}
+                        placeholder={scope === "all" ? `Search ${files.length} ${nouns} or who added them` : `Search ${files.length} ${nouns}`}
                         aria-label={`Search your ${nouns}`}
                         className={cx(inputClass, "h-9 pl-9")}
                       />
@@ -224,18 +288,16 @@ export default function MediaLibraryDialog({
                       Nothing matches &ldquo;{query}&rdquo;
                     </p>
                   ) : (
-                    <ul
-                      className={cx(
-                        "grid gap-3",
-                        kind === "audio" ? "grid-cols-1" : "grid-cols-2 sm:grid-cols-4"
-                      )}
-                    >
+                    <ul className={tileGrid(kind, gridSize)}>
                       {shown.map((file, index) => (
                         <LibraryTile
                           key={file.id}
                           index={index}
                           file={file}
                           kind={kind}
+                          // Who added it, in everyone's files
+                          owner={file.addedBy ? (isMine(file) ? "You" : file.addedBy.name) : null}
+                          canDelete={isMine(file) || deletesAll}
                           added={inField.includes(file.url)}
                           chosen={selected.includes(file.url)}
                           multiple={multiple}
@@ -288,7 +350,18 @@ export default function MediaLibraryDialog({
 // TABS with a sliding underline; ← → move between them
 // --------------------------------------------------
 
-function Tabs({ tab, onChange, count }: { tab: Tab; onChange: (tab: Tab) => void; count: number }) {
+function Tabs({
+  tab,
+  onChange,
+  count,
+  aside,
+}: {
+  tab: Tab;
+  onChange: (tab: Tab) => void;
+  count: number;
+  // At the row's right end (the card size)
+  aside?: React.ReactNode;
+}) {
   const list = useRef<HTMLDivElement>(null);
   const [bar, setBar] = useState({ left: 0, width: 0 });
 
@@ -306,34 +379,38 @@ function Tabs({ tab, onChange, count }: { tab: Tab; onChange: (tab: Tab) => void
   }
 
   return (
-    <div ref={list} role="tablist" onKeyDown={onKeyDown} className="relative flex gap-6 border-b border-line px-5">
-      {TABS.map((item) => (
-        <button
-          key={item.id}
-          type="button"
-          role="tab"
-          data-tab={item.id}
-          aria-selected={tab === item.id}
-          tabIndex={tab === item.id ? 0 : -1}
-          onClick={() => onChange(item.id)}
-          className={cx(
-            "flex items-center gap-1.5 pb-2.5 pt-1 text-sm font-medium transition-colors",
-            tab === item.id ? "text-fg" : "text-fg-muted hover:text-fg"
-          )}
-        >
-          <Icon name={item.icon} size={14} />
-          {item.label}
-          {item.id === "library" && count > 0 && (
-            <span className="rounded-full bg-raised px-1.5 text-xs tabular-nums text-fg-muted">{count}</span>
-          )}
-        </button>
-      ))}
+    <div className="relative">
+      <div ref={list} role="tablist" onKeyDown={onKeyDown} className="relative flex gap-6 border-b border-line px-5">
+        {TABS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            role="tab"
+            data-tab={item.id}
+            aria-selected={tab === item.id}
+            tabIndex={tab === item.id ? 0 : -1}
+            onClick={() => onChange(item.id)}
+            className={cx(
+              "flex items-center gap-1.5 pb-2.5 pt-1 text-sm font-medium transition-colors",
+              tab === item.id ? "text-fg" : "text-fg-muted hover:text-fg"
+            )}
+          >
+            <Icon name={item.icon} size={14} />
+            {item.label}
+            {item.id === "library" && count > 0 && (
+              <span className="rounded-full bg-raised px-1.5 text-xs tabular-nums text-fg-muted">{count}</span>
+            )}
+          </button>
+        ))}
 
-      <span
-        aria-hidden
-        className="absolute -bottom-px h-0.5 rounded-full bg-accent transition-[left,width] duration-300 ease-[cubic-bezier(0.2,0.9,0.3,1)]"
-        style={bar}
-      />
+        <span
+          aria-hidden
+          className="absolute -bottom-px h-0.5 rounded-full bg-accent transition-[left,width] duration-300 ease-[cubic-bezier(0.2,0.9,0.3,1)]"
+          style={bar}
+        />
+      </div>
+      {/* No room beside the tabs on a phone */}
+      {aside && <div className="absolute right-5 top-0 max-sm:hidden">{aside}</div>}
     </div>
   );
 }
@@ -426,6 +503,8 @@ function LibraryTile({
   index,
   file,
   kind,
+  owner,
+  canDelete,
   added,
   chosen,
   multiple,
@@ -440,6 +519,8 @@ function LibraryTile({
   index: number;
   file: LibraryFile;
   kind: FileKind;
+  owner: string | null;
+  canDelete: boolean;
   added: boolean;
   chosen: boolean;
   multiple: boolean;
@@ -478,7 +559,10 @@ function LibraryTile({
             </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm text-fg">{file.name}</span>
-              <span className="block text-xs text-fg-subtle">{formatSize(file.size)}</span>
+              <span className="block truncate text-xs text-fg-subtle">
+                {formatSize(file.size)}
+                {owner && <> · by {owner}</>}
+              </span>
             </span>
           </span>
         ) : (
@@ -506,6 +590,12 @@ function LibraryTile({
             <span className="block truncate bg-surface px-2.5 py-2 text-xs text-fg-muted" title={file.name}>
               {file.name}
               <span className="text-fg-subtle"> · {formatSize(file.size)}</span>
+              {owner && (
+                <span className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-fg-subtle" title={`Added by ${owner}`}>
+                  <Icon name="users" size={10} className="shrink-0" />
+                  {owner}
+                </span>
+              )}
             </span>
           </>
         )}
@@ -520,7 +610,9 @@ function LibraryTile({
 
       {confirming ? (
         <div className="ui-backdrop absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-xl bg-black/75 p-2 text-center backdrop-blur-sm">
-          <span className="text-xs font-medium text-white">Delete from library?</span>
+          <span className="text-xs font-medium text-white">
+            {owner && owner !== "You" ? `Delete ${owner}'s file?` : "Delete from library?"}
+          </span>
           <span className="flex gap-1.5">
             <button
               type="button"
@@ -539,7 +631,7 @@ function LibraryTile({
             </button>
           </span>
         </div>
-      ) : (
+      ) : canDelete && (
         <button
           type="button"
           aria-label={`Delete ${file.name}`}
@@ -556,8 +648,10 @@ function LibraryTile({
 }
 
 function Skeletons({ kind }: { kind: FileKind }) {
+  const [size] = useGridSize(GRID_PLACE);
+
   return (
-    <ul aria-label="Loading your library" className={cx("grid gap-3", kind === "audio" ? "grid-cols-1" : "grid-cols-2 sm:grid-cols-4")}>
+    <ul aria-label="Loading your library" className={tileGrid(kind, size)}>
       {Array.from({ length: kind === "audio" ? 3 : 8 }, (_, index) => (
         <li key={index} className={cx("ui-skeleton rounded-xl", kind === "audio" ? "h-14" : "aspect-[4/5]")} />
       ))}
@@ -585,6 +679,7 @@ function OutputsPane({
   onAdd: (urls: string[]) => void;
 }) {
   const { currentUser } = useStudio();
+  const [gridSize] = useGridSize(GRID_PLACE);
   const [runs, setRuns] = useState<PublicGeneration[] | null>(null);
   const [page, setPage] = useState(1);
   const [more, setMore] = useState(false);
@@ -673,7 +768,7 @@ function OutputsPane({
           />
         ) : (
           <>
-            <ul className={cx("grid gap-3", kind === "audio" ? "grid-cols-1" : "grid-cols-2 sm:grid-cols-4")}>
+            <ul className={tileGrid(kind, gridSize)}>
               {runs.map((run, index) => (
                 <OutputTile
                   key={run.id}

@@ -95,9 +95,11 @@ export default function OutputPreview({
         <video
           // #t= shows the first frame instead of black
           src={thumb ? `${url}#t=0.1` : url}
+          // Whole frame in a card too (on black: a blurred
+          // copy behind would load the video twice)
           className={cx(
-            "h-full w-full",
-            thumb ? "object-cover" : "max-h-[60vh] object-contain",
+            "h-full w-full object-contain",
+            thumb ? "bg-black" : "max-h-[60vh]",
           )}
           muted
           playsInline
@@ -106,8 +108,10 @@ export default function OutputPreview({
           onError={() => setBroken(true)}
         />
 
+        {/* Top right: the card's buttons take the bottom
+            on hover, the "Hidden" tag the top left */}
         {thumb && (
-          <span className="absolute bottom-2 left-2 flex items-center gap-1 rounded-md bg-black/70 px-1.5 py-1 text-[10px] font-medium text-white">
+          <span className="absolute right-2 top-2 flex items-center gap-1 rounded-md bg-black/70 px-1.5 py-1 text-[10px] font-medium text-white">
             <Icon name="play" size={10} />
             Video
           </span>
@@ -129,7 +133,7 @@ export default function OutputPreview({
     );
   }
 
-  return (
+  const image = (
     // eslint-disable-next-line @next/next/no-img-element
     <img
       src={url}
@@ -138,10 +142,29 @@ export default function OutputPreview({
       decoding="async"
       onError={() => setBroken(true)}
       className={cx(
-        "h-full w-full",
-        thumb ? "object-cover" : "max-h-[60vh] object-contain",
+        "h-full w-full object-contain",
+        thumb ? "relative" : "max-h-[60vh]",
       )}
     />
+  );
+
+  // A card shows the whole picture (never cropped) on a
+  // blurred copy of itself, as Elements does
+  return thumb ? (
+    <>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={url}
+        alt=""
+        aria-hidden
+        loading="lazy"
+        decoding="async"
+        className="absolute inset-0 h-full w-full scale-110 object-cover opacity-60 blur-2xl"
+      />
+      {image}
+    </>
+  ) : (
+    image
   );
 }
 

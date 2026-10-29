@@ -115,6 +115,18 @@ export function canHideGenerations(actor: Actor): boolean {
   return !actor.disabled && actor.role === "super_admin";
 }
 
+// Seeing every user's library files and elements (read
+// only), with who added each
+export function canViewAllMedia(actor: Actor): boolean {
+  return !actor.disabled && actor.role === "super_admin";
+}
+
+// Deleting any user's library files and elements (only
+// their owner can edit them)
+export function canDeleteAllMedia(actor: Actor): boolean {
+  return !actor.disabled && actor.role === "super_admin";
+}
+
 export type PublicProject = {
   id: string;
   name: string;

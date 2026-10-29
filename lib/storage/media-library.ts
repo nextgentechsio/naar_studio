@@ -10,6 +10,7 @@ import {
 } from "@/lib/db/mongodb";
 import type { StoredUser } from "@/lib/auth/users";
 import { canViewGeneration, getGeneration } from "@/lib/generations";
+import { currentNames } from "@/lib/names";
 import { openOutput } from "@/lib/storage/generation-outputs";
 
 // --------------------------------------------------
@@ -43,6 +44,9 @@ export type LibraryFile = {
   contentType: string;
   size: number;
   createdAt: string;
+  // Who added it: only in the super admin's list of
+  // everyone's files
+  addedBy?: { id: string; name: string };
 };
 
 // Newest first; enough for a picker
@@ -86,6 +90,22 @@ export async function listLibrary(
     .toArray();
 
   return docs.map(toFile);
+}
+
+// Every user's files of a kind, newest first, each with
+// who added it (the super admin's view; the route checks)
+export async function listAllLibrary(kind: LibraryKind): Promise<LibraryFile[]> {
+  const docs = await (await libraryFilesCollection())
+    .find({ kind })
+    .sort({ createdAt: -1, _id: -1 })
+    .limit(LIST_LIMIT)
+    .toArray();
+  const { users } = await currentNames([], docs.map((doc) => doc.userId));
+
+  return docs.map((doc) => ({
+    ...toFile(doc),
+    addedBy: { id: doc.userId, name: users.get(doc.userId) ?? "Deleted user" },
+  }));
 }
 
 export type LibraryResult =
@@ -147,18 +167,20 @@ export async function addLibraryFile(
 
 // Removes the entry and its file. Runs that used it keep
 // their record, but the link stops working.
+// anyOwner: the super admin's delete of another user's
+// file (the route checks)
 export async function deleteLibraryFile(
   userId: string,
-  id: string
+  id: string,
+  { anyOwner = false } = {}
 ): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
   if (!ObjectId.isValid(id)) {
     return { ok: false, status: 404, error: "File not found" };
   }
 
-  const doc = await (await libraryFilesCollection()).findOneAndDelete({
-    _id: new ObjectId(id),
-    userId,
-  });
+  const doc = await (await libraryFilesCollection()).findOneAndDelete(
+    anyOwner ? { _id: new ObjectId(id) } : { _id: new ObjectId(id), userId }
+  );
 
   if (!doc) return { ok: false, status: 404, error: "File not found" };
 

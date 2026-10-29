@@ -19,6 +19,9 @@ export type Element = {
   audios: string[];
   createdAt: string;
   updatedAt: string;
+  // Who made it: only in the super admin's list of
+  // everyone's elements
+  addedBy?: { id: string; name: string };
 };
 
 // Letters, digits, "_" and "-": a mention ends at the

@@ -63,6 +63,7 @@ import AddToElementDialog from "@/app/(studio)/elements/AddToElementDialog";
 import SaveToLibraryButton from "./SaveToLibraryButton";
 import ModelBrowserDialog from "./ModelBrowserDialog";
 import { MediaDetails } from "./MediaCaption";
+import PastAudio from "./PastAudio";
 import PromptInput from "./PromptInput";
 import SchemaField from "./SchemaField";
 
@@ -856,6 +857,12 @@ export default function GenerateView() {
                       ))}
                     </div>
                   </details>
+                )}
+
+                {/* Music and sound effects: past results to
+                    listen to and reuse */}
+                {isElevenLabs && (model.startsWith("music/") || model.startsWith("sound/")) && (
+                  <PastAudio tool={model.startsWith("music/") ? "music" : "sound"} />
                 )}
 
                 {!hasPrompt &&

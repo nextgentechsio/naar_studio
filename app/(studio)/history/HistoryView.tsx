@@ -16,6 +16,7 @@ import {
 import {
   deleteGeneration,
   fetchHistoryPage,
+  readPlatform,
   setGenerationHidden,
   type HistoryPage,
   type HistoryStatus,
@@ -28,6 +29,7 @@ import {
   canHideGenerations,
   canManageUsers,
 } from "@/lib/auth/roles";
+import { GridSizeToggle, PAGE_GRID, useGridSize, type GridSize } from "@/app/components/ui/GridSize";
 import GenerationCard, { GenerationCardSkeleton } from "./GenerationCard";
 import GenerationDrawer from "./GenerationDrawer";
 import HistoryFilters, { type FilterValues } from "./HistoryFilters";
@@ -49,18 +51,19 @@ const pageCacheKey = (listKey: string) => `history:page:${listKey}`;
 // "hidden" only does anything for the super admin
 const STATUSES: HistoryStatus[] = ["succeeded", "failed", "running", "hidden"];
 
-// 4 columns on a laptop, 5 on wide screens: enough to
-// scan, big enough to judge an image
-const GRID_CLASS =
-  "grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5";
+// Medium: 4 columns on a laptop, 5 on wide screens,
+// enough to scan, big enough to judge an image. Small
+// and large are a click away (GridSize).
+const gridClass = (size: GridSize) => cx("grid", size === "s" ? "gap-3" : "gap-4", PAGE_GRID[size]);
 
-const FILTER_KEYS = ["q", "project", "model", "user", "status", "range", "from", "to"] as const;
+const FILTER_KEYS = ["q", "platform", "project", "model", "user", "status", "range", "from", "to"] as const;
 
 function readFilters(params: URLSearchParams): FilterValues {
   const status = params.get("status") as HistoryStatus | null;
 
   return {
     q: params.get("q") ?? "",
+    platform: readPlatform(params.get("platform")),
     project: params.get("project") ?? "",
     model: params.get("model") ?? "",
     user: params.get("user") ?? "",
@@ -74,6 +77,7 @@ function readFilters(params: URLSearchParams): FilterValues {
 export default function HistoryView() {
   const { currentUser } = useStudio();
   const isManager = canManageUsers(currentUser);
+  const [gridSize, setGridSize] = useGridSize("history");
 
   const router = useRouter();
   const pathname = usePathname();
@@ -135,6 +139,7 @@ export default function HistoryView() {
     updateUrl(
       {
         q: null,
+        platform: null,
         project: null,
         model: null,
         user: null,
@@ -199,6 +204,7 @@ export default function HistoryView() {
       page: Number(params.get("page")) || 1,
       pageSize: PAGE_SIZE,
       q: params.get("q") ?? undefined,
+      provider: readPlatform(params.get("platform")) || undefined,
       project: params.get("project") ?? undefined,
       model: params.get("model") ?? undefined,
       user: params.get("user") ?? undefined,
@@ -352,21 +358,24 @@ export default function HistoryView() {
       {result.error && result.key === listKey && <Alert>{result.error}</Alert>}
       {actionError && <Alert>{actionError}</Alert>}
 
-      {/* Count + pagination summary */}
+      {/* Count + pagination summary, and card size */}
       {data && generations.length > 0 && (
-        <p className="text-sm text-fg-muted" aria-live="polite">
-          Showing{" "}
-          <span className="font-medium text-fg">
-            {first}–{last}
-          </span>{" "}
-          of <span className="font-medium text-fg">{total}</span>
-          {filtered ? " matching" : ""} generation{total === 1 ? "" : "s"}
-        </p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm text-fg-muted" aria-live="polite">
+            Showing{" "}
+            <span className="font-medium text-fg">
+              {first}–{last}
+            </span>{" "}
+            of <span className="font-medium text-fg">{total}</span>
+            {filtered ? " matching" : ""} generation{total === 1 ? "" : "s"}
+          </p>
+          <GridSizeToggle size={gridSize} onChange={setGridSize} />
+        </div>
       )}
 
       {!data ? (
         loading ? (
-          <div className={GRID_CLASS}>
+          <div className={gridClass(gridSize)}>
             {Array.from({ length: 8 }, (_, index) => (
               <GenerationCardSkeleton key={index} />
             ))}
@@ -411,7 +420,7 @@ export default function HistoryView() {
       ) : (
         <div
           className={cx(
-            GRID_CLASS,
+            gridClass(gridSize),
             "transition-opacity",
             loading && "opacity-60",
           )}

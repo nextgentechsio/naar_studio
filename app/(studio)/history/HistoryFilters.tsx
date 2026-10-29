@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Icon } from "@/app/components/ui/Icon";
 import { Button, cx, inputClass } from "@/app/components/ui/primitives";
-import type { HistoryPage, HistoryStatus } from "@/lib/client/data";
+import { PLATFORMS, type HistoryPage, type HistoryStatus, type Platform } from "@/lib/client/data";
 import { DATE_RANGES, type DateRange } from "@/lib/client/date-range";
 import { modelLabel } from "@/lib/replicate/catalog";
 
@@ -16,6 +16,8 @@ import { modelLabel } from "@/lib/replicate/catalog";
 
 export type FilterValues = {
   q: string;
+  // Replicate, Higgsfield or ElevenLabs ("" for all)
+  platform: Platform;
   project: string;
   model: string;
   user: string;
@@ -93,7 +95,7 @@ export default function HistoryFilters({
   }, [draft, values.q, onChange]);
 
   const active =
-    values.q || values.project || values.model || values.user || values.status || values.range;
+    values.q || values.platform || values.project || values.model || values.user || values.status || values.range;
 
   return (
     <div className="space-y-3 rounded-xl border border-line bg-surface p-3 shadow-card">
@@ -114,6 +116,20 @@ export default function HistoryFilters({
             className={cx(inputClass, "pl-9")}
           />
         </div>
+
+        <select
+          aria-label="Platform"
+          value={values.platform}
+          // A model from another platform would match nothing
+          onChange={(event) => onChange({ platform: event.target.value as Platform, model: "" })}
+          className={selectClass}
+        >
+          {PLATFORMS.map(([value, label]) => (
+            <option key={value || "all"} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
 
         <select
           aria-label="Project"

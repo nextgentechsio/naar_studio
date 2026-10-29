@@ -530,6 +530,9 @@ export async function startFakeReplicate() {
 
     if (path === "/__control/blobs") {
       if (req.method === "POST") blobs = body as typeof blobs;
+      // Forget the requests seen so far (a test that lists
+      // its own folders clears up after itself)
+      if (req.method === "DELETE") blobRequests.length = 0;
       return send(200, { blobs, requests: blobRequests });
     }
 

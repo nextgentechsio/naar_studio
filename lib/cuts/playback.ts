@@ -12,7 +12,10 @@ import { clipEnd, projectDuration, sourceTime, type Clip, type Project } from "@
 // gain (volume, fades, keyframes, mute/solo) is set every
 // frame from the same mix the export uses. Clips about to
 // start are loaded and parked at their first frame
-// ahead of time, so cuts don't stall.
+// ahead of time, so cuts don't stall. When a file still
+// loading holds a clip up, the playhead waits for it
+// (onLoadingChange), rather than running on without
+// its picture or sound.
 // --------------------------------------------------
 
 export type PlayerAsset = { url: string; kind: "video" | "image" | "audio" | "export" };
@@ -31,6 +34,22 @@ const DRIFT_SECONDS = 0.15;
 const PRELOAD_SECONDS = 2.5;
 // Let go of elements unused for this long (ms)
 const RELEASE_MS = 8000;
+// Loaded ahead of the playhead before it moves on
+const READY_AHEAD_SECONDS = 1;
+
+// Enough of the file loaded to show `time` (and, while
+// playing, to carry on from it)
+function hasData(element: HTMLMediaElement, time: number, playing: boolean) {
+  if (element.error) return true;
+  if (element.seeking || element.readyState < 2) return false;
+  if (!playing || element.readyState >= 3) return true;
+  const end = Number.isFinite(element.duration) ? element.duration : Infinity;
+  const until = Math.min(end - 0.05, time + READY_AHEAD_SECONDS);
+  for (let index = 0; index < element.buffered.length; index++) {
+    if (element.buffered.start(index) <= time + 0.05 && element.buffered.end(index) >= until) return true;
+  }
+  return false;
+}
 
 export class Player {
   private compositor: Compositor;
@@ -45,6 +64,10 @@ export class Player {
   private analysers: [AnalyserNode, AnalyserNode] | null = null;
 
   private playing = false;
+  // Playing, but held until files load
+  private waiting = false;
+  private loading = false;
+  private failed = new Set<string>();
   private rate = 1;
   // Where playback started, on the timeline and the clock
   private startFrame = 0;
@@ -55,6 +78,10 @@ export class Player {
 
   onFrame: (frame: number) => void = () => {};
   onPlayingChange: (playing: boolean) => void = () => {};
+  // A file for the current frame is still loading
+  onLoadingChange: (loading: boolean) => void = () => {};
+  // A file the browser can't play (once per file)
+  onMediaError: (url: string) => void = () => {};
 
   constructor(canvas: HTMLCanvasElement, project: Project) {
     this.project = project;
@@ -163,6 +190,12 @@ export class Player {
       element.src = asset.url;
       element.addEventListener("seeked", () => this.requestRender());
       element.addEventListener("loadeddata", () => this.requestRender());
+      element.addEventListener("error", () => {
+        this.requestRender();
+        if (this.failed.has(asset.url)) return;
+        this.failed.add(asset.url);
+        this.onMediaError(asset.url);
+      });
       this.parking.appendChild(element);
       media = { element, url: asset.url, gain: null, usedAt: performance.now() };
       this.media.set(clip.id, media);
@@ -182,6 +215,12 @@ export class Player {
     media.element.load();
     media.element.remove();
     this.media.delete(clipId);
+  }
+
+  private setLoading(loading: boolean) {
+    if (loading === this.loading) return;
+    this.loading = loading;
+    this.onLoadingChange(loading);
   }
 
   private imageFor(assetId: string | null): ImageBitmap | null {
@@ -204,7 +243,8 @@ export class Player {
     return null;
   }
 
-  // Every element where it should be for `frame`
+  // Every element where it should be for `frame`; says
+  // whether one of them is still loading
   private sync(frame: number) {
     const { project } = this;
     const fps = project.fps;
@@ -215,6 +255,8 @@ export class Player {
 
     for (const layer of layers) if (layer.kind === "video") needed.set(layer.clip.id, layer.sourceTime);
     for (const voice of voices) needed.set(voice.clip.id, voice.sourceTime);
+    const running = this.playing && this.rate > 0 && !this.waiting;
+    let loading = false;
 
     for (const [clipId, target] of needed) {
       const clip = project.clips.find((item) => item.id === clipId)!;
@@ -222,11 +264,20 @@ export class Player {
       if (!media) continue;
       const { element } = media;
 
-      if (this.playing && this.rate > 0) {
+      if (!hasData(element, target, this.playing)) loading = true;
+
+      if (running) {
         element.playbackRate = Math.min(16, Math.max(0.0625, clip.speed * this.rate));
         if (element.paused) {
           element.currentTime = target;
-          void element.play().catch(() => {});
+          void element.play().catch((error: unknown) => {
+            // Sound not allowed yet (Safari): the picture
+            // still plays, silently
+            if (error instanceof DOMException && error.name === "NotAllowedError" && !element.muted) {
+              element.muted = true;
+              void element.play().catch(() => {});
+            }
+          });
         } else if (Math.abs(element.currentTime - target) > DRIFT_SECONDS * Math.max(1, this.rate)) {
           element.currentTime = target;
         }
@@ -236,7 +287,7 @@ export class Player {
       }
 
       if (media.gain && this.context) {
-        const gain = this.playing ? (gains.get(clipId) ?? 0) : 0;
+        const gain = running ? (gains.get(clipId) ?? 0) : 0;
         media.gain.gain.setTargetAtTime(gain, this.context.currentTime, 0.015);
       }
     }
@@ -263,11 +314,13 @@ export class Player {
       if (!clip || now - media.usedAt > RELEASE_MS) this.release(clipId);
     }
 
-    return layers;
+    return { layers, loading };
   }
 
+  // Draws `frame`; true while a file for it is loading
   private draw(frame: number) {
-    const layers = this.sync(frame);
+    const { layers, loading: mediaLoading } = this.sync(frame);
+    let loading = mediaLoading;
     const items: RenderItem[] = layers.map((layer) => {
       if (layer.kind === "video") {
         const element = this.media.get(layer.clip.id)?.element as HTMLVideoElement | undefined;
@@ -281,12 +334,14 @@ export class Player {
       }
       if (layer.kind === "image") {
         const bitmap = this.imageFor(layer.clip.assetId);
+        if (!bitmap && this.images.get(layer.clip.assetId ?? "") === "loading") loading = true;
         return { layer, source: bitmap, sourceWidth: bitmap?.width ?? 0, sourceHeight: bitmap?.height ?? 0 };
       }
       return { layer, source: null, sourceWidth: 0, sourceHeight: 0 };
     });
 
     this.compositor.render(items, this.project.background);
+    return loading;
   }
 
   // Redraw once on the next animation frame (paused)
@@ -295,7 +350,7 @@ export class Player {
     this.renderQueued = true;
     requestAnimationFrame(() => {
       this.renderQueued = false;
-      if (!this.playing) this.draw(Math.floor(this.frameValue));
+      if (!this.playing) this.setLoading(this.draw(Math.floor(this.frameValue)));
     });
   }
 
@@ -334,11 +389,16 @@ export class Player {
 
     if (!this.playing) {
       this.playing = true;
+      this.waiting = false;
       this.onPlayingChange(true);
+      // Starts the files inside the click (Safari only
+      // lets sound start there)
+      this.hold(this.draw(Math.floor(this.frameValue)));
       const tick = () => {
         if (!this.playing) return;
         const elapsed = this.clock() - this.startClock;
-        const frame = this.startFrame + elapsed * this.project.fps * this.rate;
+        // Stays put while files load
+        const frame = this.waiting ? this.frameValue : this.startFrame + elapsed * this.project.fps * this.rate;
         const last = projectDuration(this.project) - 1;
 
         if (frame >= last) {
@@ -349,7 +409,7 @@ export class Player {
         }
 
         this.frameValue = frame;
-        this.draw(Math.floor(frame));
+        this.hold(this.draw(Math.floor(frame)));
         this.onFrame(frame);
         this.raf = requestAnimationFrame(tick);
       };
@@ -357,9 +417,21 @@ export class Player {
     }
   }
 
+  // Holds the playhead while a file loads; it carries
+  // on from the same frame once it has
+  private hold(loading: boolean) {
+    if (loading !== this.waiting) {
+      this.waiting = loading;
+      this.startFrame = this.frameValue;
+      this.startClock = this.clock();
+    }
+    this.setLoading(loading);
+  }
+
   pause() {
     if (!this.playing) return;
     this.playing = false;
+    this.waiting = false;
     cancelAnimationFrame(this.raf);
     this.frameValue = Math.floor(this.frameValue);
     for (const media of this.media.values()) {

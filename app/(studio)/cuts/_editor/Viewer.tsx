@@ -18,6 +18,7 @@ export default function Viewer() {
   const stageRef = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState({ width: 0, height: 0 });
   const [safe, setSafe] = useState(false);
+  const [loading, setLoading] = useState(false);
   const frame = usePlayhead(bus);
   const total = projectDuration(project);
 
@@ -27,6 +28,9 @@ export default function Viewer() {
     let created: Player | null = null;
     try {
       created = new Player(canvasRef.current, project);
+      created.onLoadingChange = setLoading;
+      created.onMediaError = () =>
+        editor.setNotice("A file in this cut can't be played in this browser, so it's left out of the preview.");
       setPlayer(created);
     } catch (error) {
       editor.setNotice(error instanceof Error ? error.message : "The preview couldn't start.");
@@ -74,6 +78,14 @@ export default function Viewer() {
         <div className="nc-viewer-frame" style={{ width: box.width, height: box.height }}>
           <canvas ref={canvasRef} onDoubleClick={() => player?.toggle()} />
           {safe && <div className="nc-safe" />}
+          {loading && project.clips.length > 0 && (
+            <div className="nc-viewer-loading" role="status">
+              <span>
+                <span className="nc-spinner" aria-hidden />
+                Loading video…
+              </span>
+            </div>
+          )}
           {!project.clips.length && (
             <div className="absolute inset-0 grid place-items-center p-6 text-center text-sm text-white/60">
               <div>

@@ -78,7 +78,9 @@ async function waveform(url: string): Promise<number[] | null> {
   }
 }
 
-export async function measureAsset(asset: CutAsset): Promise<Measured> {
+// `waveform: false` reads just the length and size (from
+// the start of the file), not the whole file
+export async function measureAsset(asset: CutAsset, options: { waveform?: boolean } = {}): Promise<Measured> {
   if (asset.kind === "image") {
     try {
       const bitmap = await createImageBitmap(await (await fetch(asset.url)).blob());
@@ -93,7 +95,7 @@ export async function measureAsset(asset: CutAsset): Promise<Measured> {
   const kind = asset.kind === "audio" ? "audio" : "video";
   const [info, peaks] = await Promise.all([
     asset.durationMs ? Promise.resolve(null) : metadata(asset.url, kind),
-    asset.peaks || asset.size > PEAKS_MAX_BYTES ? Promise.resolve(null) : waveform(asset.url),
+    asset.peaks || asset.size > PEAKS_MAX_BYTES || options.waveform === false ? Promise.resolve(null) : waveform(asset.url),
   ]);
 
   const measured: Measured = {};

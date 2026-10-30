@@ -26,6 +26,7 @@ import type { CutAsset } from "@/lib/cuts/types";
 import { CutIcon } from "./CutIcon";
 import { DRAG_TYPE, shortTime, useEditor, type DragPayload } from "./context";
 import { useApplyPayload } from "./actions";
+import type { PendingClip } from "./useCutEditor";
 
 // --------------------------------------------------
 // The timeline: tracks, clips and the playhead. Moving
@@ -375,6 +376,11 @@ export default function Timeline() {
                       onDown={onClipDown}
                     />
                   ))}
+                {editor.pending
+                  .filter((item) => item.trackId === track.id)
+                  .map((item) => (
+                    <PendingClipView key={item.id} item={item} zoom={zoom} />
+                  ))}
               </div>
             </div>
           ))}
@@ -596,6 +602,31 @@ const ClipView = memo(function ClipView({
     </div>
   );
 });
+
+// A file still being copied in or measured, where it
+// will land
+function PendingClipView({ item, zoom }: { item: PendingClip; zoom: number }) {
+  // Uploaded: its length is being read
+  const preparing = item.progress !== null && item.progress >= 100;
+  return (
+    <div
+      className="nc-clip nc-clip-pending"
+      data-kind={item.kind}
+      style={{ left: item.start * zoom, width: Math.max(48, item.duration * zoom) }}
+      role="status"
+      title={`Adding ${item.label}…`}
+    >
+      <span className="nc-clip-label flex items-center gap-1.5">
+        <span className="nc-spinner" aria-hidden />
+        <span className="truncate">
+          {preparing ? "Preparing" : "Adding"} {item.label}
+        </span>
+        {item.progress !== null && !preparing && <span className="nc-timecode opacity-80">{Math.round(item.progress)}%</span>}
+      </span>
+      {item.progress !== null && <span className="nc-clip-pending-bar" style={{ width: `${item.progress}%` }} />}
+    </div>
+  );
+}
 
 // Pictures along a video clip, from the stretch of the
 // file it shows

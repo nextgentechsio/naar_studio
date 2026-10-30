@@ -54,14 +54,15 @@ export const LOOKS: { look: ColorLook; swatch: string }[] = [
 
 export const SOLID_COLORS = ["#000000", "#ffffff", "#101014", "#2fd6c8", "#7c5cff", "#ff4d6d"];
 
-// Frame sizes offered in project settings
-export const FORMATS: { name: string; width: number; height: number }[] = [
-  { name: "16:9 · 1080p", width: 1920, height: 1080 },
-  { name: "9:16 · Vertical", width: 1080, height: 1920 },
-  { name: "1:1 · Square", width: 1080, height: 1080 },
-  { name: "4:5 · Portrait", width: 1080, height: 1350 },
-  { name: "21:9 · Cinema", width: 2560, height: 1080 },
-  { name: "16:9 · 4K", width: 3840, height: 2160 },
+// Frame shapes offered in project settings, and where
+// each is used. Resolution (720p to 4K) is picked when
+// exporting, so the project only sets the shape.
+export const ASPECTS: { name: string; use: string; width: number; height: number }[] = [
+  { name: "16:9", use: "YouTube, TV", width: 1920, height: 1080 },
+  { name: "9:16", use: "Reels, TikTok, Shorts", width: 1080, height: 1920 },
+  { name: "1:1", use: "Square post", width: 1080, height: 1080 },
+  { name: "4:5", use: "Instagram feed", width: 1080, height: 1350 },
+  { name: "21:9", use: "Cinematic", width: 2560, height: 1080 },
 ];
 
 export const FRAME_RATES = [24, 25, 30, 50, 60];

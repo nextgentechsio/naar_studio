@@ -319,9 +319,16 @@ export class Compositor {
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
 
+  // Frees what this compositor made. An on-page canvas
+  // keeps its context: a lost one can never draw again,
+  // and the preview reuses its canvas (a new frame size,
+  // or React mounting it twice in development).
   dispose() {
     this.sweep(new Set());
-    this.gl.getExtension("WEBGL_lose_context")?.loseContext();
+    this.gl.deleteProgram(this.program);
+    if (typeof OffscreenCanvas !== "undefined" && this.canvas instanceof OffscreenCanvas) {
+      this.gl.getExtension("WEBGL_lose_context")?.loseContext();
+    }
   }
 }
 

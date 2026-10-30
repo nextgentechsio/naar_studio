@@ -21,7 +21,7 @@ import {
 } from "@/lib/cuts/timeline";
 import { CutIcon } from "./CutIcon";
 import { shortTime, useEditor, usePlayhead } from "./context";
-import { FORMATS, FRAME_RATES, TRANSITIONS } from "./presets";
+import { ASPECTS, FRAME_RATES, TRANSITIONS } from "./presets";
 
 // --------------------------------------------------
 // The inspector: settings of the selected clip, or of
@@ -494,38 +494,58 @@ function Many({ count }: { count: number }) {
 function ProjectInspector() {
   const { editor } = useEditor();
   const { project } = editor;
-  const format = FORMATS.find((item) => item.width === project.width && item.height === project.height);
+  // Same shape, at any size (an older 4K project too)
+  const aspect = ASPECTS.find((item) => Math.abs(item.width / item.height - project.width / project.height) < 0.01);
 
   const set = (change: (project: Project) => Project) => editor.edit(change);
 
   return (
     <div>
       <Section title="Format">
-        <Row label="Frame">
-          <select
-            className="nc-input"
-            value={format ? `${format.width}x${format.height}` : "custom"}
-            onChange={(event) => {
-              const [width, height] = event.target.value.split("x").map(Number);
-              if (width && height) set((current) => ({ ...current, width, height }));
-            }}
-          >
-            {!format && <option value="custom">{`${project.width}×${project.height}`}</option>}
-            {FORMATS.map((item) => (
-              <option key={item.name} value={`${item.width}x${item.height}`}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </Row>
+        <div className="space-y-2">
+          <div className="nc-aspects" role="radiogroup" aria-label="Frame shape">
+            {ASPECTS.map((item) => {
+              // The shape, fitted in a 26px box
+              const scale = 26 / Math.max(item.width, item.height);
+              return (
+                <button
+                  key={item.name}
+                  role="radio"
+                  aria-checked={item === aspect}
+                  aria-label={`${item.name}, ${item.use}`}
+                  title={item.use}
+                  className="nc-aspect"
+                  onClick={() => {
+                    if (item !== aspect) set((current) => ({ ...current, width: item.width, height: item.height }));
+                  }}
+                >
+                  <span className="nc-aspect-shape" style={{ width: item.width * scale, height: item.height * scale }} />
+                  <span>{item.name}</span>
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-[11px] text-fg-muted">
+            {aspect ? `${aspect.use} · ` : "Custom · "}
+            {project.width}×{project.height}. Pick the resolution when you export.
+          </p>
+        </div>
         <Row label="Frame rate">
-          <select className="nc-input" value={project.fps} onChange={(event) => set((current) => withFrameRate(current, Number(event.target.value)))}>
+          <div className="nc-segmented" role="radiogroup" aria-label="Frame rate">
             {FRAME_RATES.map((fps) => (
-              <option key={fps} value={fps}>
-                {fps} fps
-              </option>
+              <button
+                key={fps}
+                role="radio"
+                aria-checked={project.fps === fps}
+                title={`${fps} frames per second`}
+                onClick={() => {
+                  if (project.fps !== fps) set((current) => withFrameRate(current, fps));
+                }}
+              >
+                {fps}
+              </button>
             ))}
-          </select>
+          </div>
         </Row>
         <Row label="Background">
           <input type="color" value={project.background} onChange={(event) => set((current) => ({ ...current, background: event.target.value }))} className="h-7 w-10 rounded" />

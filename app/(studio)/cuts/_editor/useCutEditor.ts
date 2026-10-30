@@ -41,6 +41,18 @@ export type SaveState = "saved" | "pending" | "saving" | "error" | "conflict";
 
 export type Busy = { id: string; label: string; progress: number | null };
 
+// A file on its way to the timeline: shown where it
+// will land until it's ready
+export type PendingClip = {
+  id: string;
+  trackId: string;
+  kind: "video" | "image" | "audio";
+  start: number;
+  duration: number;
+  label: string;
+  progress: number | null;
+};
+
 // What can be dropped on the timeline from the media pool
 export type MediaSource =
   | { type: "generation"; id: string; kind: "video" | "image" | "audio"; name: string }
@@ -49,6 +61,8 @@ export type MediaSource =
   | { type: "file"; file: File };
 
 const SAVE_DELAY_MS = 1200;
+// Placeholder length for a video or sound not yet measured
+const PENDING_SECONDS = 5;
 
 export function useCutEditor(cutId: string, userId: string) {
   const [loading, setLoading] = useState(true);
@@ -59,6 +73,7 @@ export function useCutEditor(cutId: string, userId: string) {
   const [save, setSave] = useState<SaveState>("saved");
   const [saveError, setSaveError] = useState("");
   const [busy, setBusy] = useState<Busy[]>([]);
+  const [pending, setPending] = useState<PendingClip[]>([]);
   const [notice, setNotice] = useState("");
 
   const project = history.present;
@@ -229,7 +244,7 @@ export function useCutEditor(cutId: string, userId: string) {
 
   // The project's own copy of a file from the media pool
   const resolveAsset = useCallback(
-    async (source: MediaSource): Promise<CutAsset> => {
+    async (source: MediaSource, onProgress?: (percent: number | null) => void): Promise<CutAsset> => {
       if (source.type === "asset") {
         const asset = assetsRef.current.find((item) => item.id === source.assetId);
         if (!asset) throw new Error("That file is no longer in this cut.");
@@ -243,11 +258,16 @@ export function useCutEditor(cutId: string, userId: string) {
         let asset: CutAsset;
         if (source.type === "generation") asset = await addGenerationAsset(cutId, source.id);
         else if (source.type === "element") asset = await addElementAsset(cutId, source.url);
-        else asset = await uploadCutFile(userId, cutId, source.file, "upload", (percent) => job.progress(percent));
+        else
+          asset = await uploadCutFile(userId, cutId, source.file, "upload", (percent) => {
+            job.progress(percent);
+            onProgress?.(percent);
+          });
 
-        // Its length before it goes on the timeline
+        // Its length before it goes on the timeline (the
+        // waveform, which reads the whole file, comes after)
         if (!asset.durationMs && (asset.kind === "video" || asset.kind === "audio")) {
-          const measured = await measureAsset(asset);
+          const measured = await measureAsset(asset, { waveform: false });
           if (measured.durationMs || measured.width) asset = await updateAsset(cutId, asset.id, measured);
         }
         upsertAsset(asset);
@@ -263,8 +283,13 @@ export function useCutEditor(cutId: string, userId: string) {
   // if it fits there, else the first free matching track
   const place = useCallback(
     async (source: MediaSource, frame: number, trackId?: string) => {
+      const ghost = pendingFor(projectRef.current, source, frame, trackId);
+      if (ghost) setPending((current) => [...current, ghost]);
+      const progress = (percent: number | null) =>
+        setPending((current) => current.map((item) => (item.id === ghost?.id ? { ...item, progress: percent } : item)));
+
       try {
-        const asset = await resolveAsset(source);
+        const asset = await resolveAsset(source, ghost ? progress : undefined);
         if (asset.kind === "export") {
           setNotice("Exports can't go back on the timeline; download them instead.");
           return null;
@@ -288,6 +313,8 @@ export function useCutEditor(cutId: string, userId: string) {
         logRequestError(error);
         setNotice(errorMessage(error, "Couldn't add that file."));
         return null;
+      } finally {
+        if (ghost) setPending((current) => current.filter((item) => item.id !== ghost.id));
       }
     },
     [resolveAsset, edit]
@@ -335,6 +362,7 @@ export function useCutEditor(cutId: string, userId: string) {
     saveError,
     flush,
     busy,
+    pending,
     track,
     notice,
     setNotice,
@@ -342,3 +370,40 @@ export function useCutEditor(cutId: string, userId: string) {
 }
 
 export type CutEditor = ReturnType<typeof useCutEditor>;
+
+// Where a file being added will land, at a guessed
+// length (images: their usual length; others: until
+// measured). Files already in the cut need none.
+function pendingFor(project: Project, source: MediaSource, frame: number, trackId?: string): PendingClip | null {
+  if (source.type === "asset") return null;
+  const kind =
+    source.type === "file"
+      ? source.file.type.startsWith("image/")
+        ? "image"
+        : source.file.type.startsWith("audio/")
+          ? "audio"
+          : "video"
+      : source.kind;
+  const trackKind = trackKindFor(kind);
+  const start = Math.max(0, Math.round(frame));
+  const duration = Math.round((kind === "image" ? IMAGE_DEFAULT_SECONDS : PENDING_SECONDS) * project.fps);
+  const dropped = project.tracks.find((track) => track.id === trackId && track.kind === trackKind && !track.locked);
+  const free = dropped?.id ?? freeTrack(project, trackKind, start, start + duration).trackId;
+  // A new track would be made: shown on the outermost
+  // one, where it will appear
+  const ofKind = project.tracks.filter((track) => track.kind === trackKind);
+  const shown = project.tracks.some((track) => track.id === free)
+    ? free
+    : (trackKind === "video" ? ofKind[0] : ofKind.at(-1))?.id;
+  if (!shown) return null;
+
+  return {
+    id: `${Date.now()}${Math.random()}`,
+    trackId: shown,
+    kind,
+    start,
+    duration,
+    label: source.type === "file" ? source.file.name : source.name || "file",
+    progress: null,
+  };
+}

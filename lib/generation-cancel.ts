@@ -55,7 +55,8 @@ export async function cancelGeneration(generation: GenerationDoc): Promise<Cance
 
     if (!response?.ok) {
       const body = await response?.text().catch(() => "");
-      console.error("Higgsfield cancel refused:", generation._id, response?.status ?? "no response", body?.slice(0, 200));
+      // Expected once a run has started: a warning, not an error
+      console.warn("Higgsfield cancel refused:", generation._id, response?.status ?? "no response", body?.slice(0, 200));
       return {
         ok: false,
         status: 409,

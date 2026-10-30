@@ -1063,8 +1063,14 @@ export default function GenerateView() {
                   </p>
                 )}
                 {/* Once it has started on the platform: stop it
-                    (and its cost) */}
-                {!landing && !generating && !preparing && result && (
+                    (and its cost). Higgsfield only cancels a run
+                    still queued ("starting"); after that, say so */}
+                {!landing && !generating && !preparing && result && isHiggsfield && status !== "starting" ? (
+                  <p className="mt-4 max-w-xs text-xs text-fg-subtle">
+                    Higgsfield has started this run, so it can&apos;t be canceled now. It will finish and appear in
+                    History.
+                  </p>
+                ) : !landing && !generating && !preparing && result && (
                   <Button
                     size="sm"
                     variant="secondary"

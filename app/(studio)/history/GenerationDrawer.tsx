@@ -352,15 +352,23 @@ export default function GenerationDrawer({
                   </Button>
                 )}
 
+                {/* Higgsfield cancels only while queued ("starting") */}
                 {isRunningStatus(generation.status) && (
-                  <Button
-                    icon="close"
-                    disabled={canceling}
-                    onClick={cancelRun}
-                    title="Stop it on its platform, so it isn't billed further"
-                  >
-                    {canceling ? "Canceling…" : "Cancel run"}
-                  </Button>
+                  generation.provider === "higgsfield" && generation.status !== "starting" ? (
+                    <p className="flex w-full items-center gap-1.5 text-xs text-fg-subtle">
+                      <Icon name="info" size={12} />
+                      Higgsfield has started this run, so it can&apos;t be canceled. It will finish on its own.
+                    </p>
+                  ) : (
+                    <Button
+                      icon="close"
+                      disabled={canceling}
+                      onClick={cancelRun}
+                      title="Stop it on its platform, so it isn't billed further"
+                    >
+                      {canceling ? "Canceling…" : "Cancel run"}
+                    </Button>
+                  )
                 )}
 
                 {generation.prompt && (

@@ -97,6 +97,9 @@ export type Prediction = {
 export type GenerationResult = {
   prediction: Prediction;
   costUsd: number | null;
+  // What the run was started with (the form may change
+  // after)
+  inputs?: Record<string, unknown>;
 };
 
 function validCost(value: unknown): number | null {
@@ -832,6 +835,7 @@ export function GenerateProvider({
       setResult({
         prediction: { ...data.prediction, id: predictionId },
         costUsd: predictionCost(data.prediction, data.costUsd),
+        inputs: sending,
       });
 
       pollPrediction(predictionId, run);

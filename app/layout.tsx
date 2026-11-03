@@ -36,6 +36,16 @@ export const metadata: Metadata = {
 // paint (no flash). No saved theme = follow the OS.
 const THEME_SCRIPT = `(function(){try{var d=document.documentElement,t=localStorage.getItem("theme");if(t==="light"||t==="dark")d.setAttribute("data-theme",t);if(localStorage.getItem("sidebar")==="collapsed")d.setAttribute("data-sidebar","collapsed")}catch(e){}})()`;
 
+// Some browser extensions stamp attributes such as
+// bis_skin_checked on the page before React loads, which
+// React reports as a hydration mismatch. Removed as they
+// appear, until the page has loaded and hydrated. Part of
+// the one head script: such an extension also inserts its
+// own <script> into the head, and a second script of ours
+// would be compared against that one.
+const EXTENSION_ATTRIBUTES = ["bis_skin_checked", "bis_register"];
+const CLEAN_SCRIPT = `(function(){try{var a=${JSON.stringify(EXTENSION_ATTRIBUTES)};function c(n){for(var i=0;i<a.length;i++)if(n.hasAttribute&&n.hasAttribute(a[i]))n.removeAttribute(a[i])}var o=new MutationObserver(function(m){for(var i=0;i<m.length;i++)c(m[i].target)});o.observe(document.documentElement,{attributes:true,subtree:true,attributeFilter:a});addEventListener("load",function(){setTimeout(function(){o.disconnect()},3000)})}catch(e){}})()`;
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
@@ -45,7 +55,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <head>
         <script
-          dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }}
+          dangerouslySetInnerHTML={{ __html: THEME_SCRIPT + ";" + CLEAN_SCRIPT }}
         />
       </head>
       <body className="min-h-full flex flex-col">{children}</body>

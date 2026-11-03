@@ -64,11 +64,10 @@ import SaveToLibraryButton from "./SaveToLibraryButton";
 import ModelBrowserDialog from "./ModelBrowserDialog";
 import { MediaDetails } from "./MediaCaption";
 import PastAudio from "./PastAudio";
+import UpscaleDraft, { DRAFT_RESOLUTION, isUpscalableDraft } from "./UpscaleDraft";
 import PromptInput from "./PromptInput";
 import SchemaField from "./SchemaField";
 
-// Resolution of a Draft run (see draftAvailable)
-const DRAFT_RESOLUTION = "480p";
 
 // Seedance's mode for changing an existing video
 const SEEDANCE_VIDEO_EDIT = "bytedance/seedance-2.5/video-edit";
@@ -1156,6 +1155,18 @@ export default function GenerateView() {
               />
             )}
           </div>
+
+          {status === "succeeded" &&
+            outputUrls.length > 0 &&
+            isUpscalableDraft({ provider, inputs: result?.inputs, outputType: readyType }) && (
+              <UpscaleDraft
+                key={result!.prediction.id}
+                generationId={result!.prediction.id}
+                project={project}
+                seconds={Number(result!.inputs?.duration) || null}
+                className="mx-4 mb-3"
+              />
+            )}
 
           {status === "succeeded" && outputUrls.length > 0 && (
             <dl className="flex flex-wrap gap-x-6 gap-y-1 border-t border-line px-4 py-2.5 text-xs">

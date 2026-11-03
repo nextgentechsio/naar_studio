@@ -26,6 +26,23 @@ const PNG = Buffer.from(
   "hex"
 );
 
+// Topaz Video Upscale's real inputs (upscaling a draft)
+const TOPAZ_VIDEO_SCHEMA = {
+  components: {
+    schemas: {
+      Input: {
+        required: ["video"],
+        properties: {
+          video: { type: "string", format: "uri", "x-order": 0 },
+          target_resolution: { allOf: [{ $ref: "#/components/schemas/target_resolution" }], default: "1080p", "x-order": 1 },
+          target_fps: { type: "integer", default: 30, minimum: 15, maximum: 60, "x-order": 2 },
+        },
+      },
+      target_resolution: { type: "string", enum: ["720p", "1080p", "4k"] },
+    },
+  },
+};
+
 const SCHEMA = {
   components: {
     schemas: {
@@ -601,7 +618,7 @@ export async function startFakeReplicate() {
         owner: model[1],
         name,
         description: "fake",
-        latest_version: { id: "version-1", openapi_schema: SCHEMA },
+        latest_version: { id: "version-1", openapi_schema: name === "video-upscale" ? TOPAZ_VIDEO_SCHEMA : SCHEMA },
       });
     }
 

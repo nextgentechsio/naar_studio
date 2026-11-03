@@ -29,6 +29,7 @@ import { canDeleteGenerations, canHideGenerations } from "@/lib/auth/roles";
 import { useDialog } from "@/app/(studio)/_components/useDialog";
 import AddToElementDialog from "@/app/(studio)/elements/AddToElementDialog";
 import SaveToLibraryButton from "@/app/(studio)/_generate/SaveToLibraryButton";
+import UpscaleDraft, { isUpscalableDraft } from "@/app/(studio)/_generate/UpscaleDraft";
 import OutputPreview, { isRunningStatus } from "./OutputPreview";
 
 // --------------------------------------------------
@@ -320,6 +321,19 @@ export default function GenerationDrawer({
                   Hidden: only you can see this run. Its cost still counts in Expenses.
                 </p>
               )}
+
+              {current?.detail &&
+                generation.status === "succeeded" &&
+                generation.outputUrl &&
+                !generation.outputExpired &&
+                isUpscalableDraft({ provider: current.detail.provider, inputs: current.detail.inputs, outputType }) && (
+                  <UpscaleDraft
+                    key={id}
+                    generationId={id}
+                    project={projects.some((item) => item.name === current.detail!.project) ? current.detail.project : ""}
+                    seconds={Number(current.detail.inputs?.duration) || null}
+                  />
+                )}
 
               <div className="flex flex-wrap gap-2">
                 <Button

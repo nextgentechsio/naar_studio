@@ -27,7 +27,8 @@ import {
   replicateErrorMessage,
   replicateHeaders,
 } from "@/lib/replicate/api";
-import { calculateReplicateCost } from "@/lib/replicate/cost";
+import { calculateReplicateCost, MODEL_IDS } from "@/lib/replicate/cost";
+import { videoInfo } from "@/lib/storage/video-info";
 import { canHideGenerations, canManageUsers } from "@/lib/auth/roles";
 import type { StoredUser } from "@/lib/auth/users";
 
@@ -596,6 +597,36 @@ const SAVE_CLAIM_MS = 15 * 60 * 1000;
 // history reconcile can race): a finished record is
 // never overwritten, and the expense write is
 // idempotent.
+// This app's own storage (Vercel Blob; the stand-in in
+// tests)
+function isStoredFile(url: URL): boolean {
+  if (url.protocol === "https:" && url.hostname.endsWith(".blob.vercel-storage.com")) return true;
+  const base = process.env.VERCEL_BLOB_API_URL;
+  if (!base) return false;
+  try {
+    return url.origin === new URL(base).origin;
+  } catch {
+    return false;
+  }
+}
+
+// Topaz Video Upscale is priced by the video's length,
+// which neither its inputs nor Replicate report: read it
+// from the input file (ours, in Blob storage)
+async function withVideoLength(model: string, input: Record<string, unknown>) {
+  if (model !== MODEL_IDS.TOPAZ_VIDEO || Number(input.duration) > 0 || typeof input.video !== "string") {
+    return input;
+  }
+
+  try {
+    const info = await videoInfo(new URL(input.video), isStoredFile);
+    return info?.seconds ? { ...input, duration: info.seconds } : input;
+  } catch {
+    // Unreadable: no price rather than a guessed one
+    return input;
+  }
+}
+
 export async function applyPrediction(
   generation: GenerationDoc,
   prediction: Record<string, unknown>
@@ -639,10 +670,11 @@ export async function applyPrediction(
       // we stored: Replicate drops inputs after a while,
       // and the tiers (resolution, duration) must survive.
       const echoed = prediction.input as Record<string, unknown> | undefined;
+      const input = { ...(generation.inputs ?? {}), ...(echoed ?? {}) };
 
       costUsd = calculateReplicateCost(generation.model, {
         ...prediction,
-        input: { ...(generation.inputs ?? {}), ...(echoed ?? {}) },
+        input: status === "succeeded" ? await withVideoLength(generation.model, input) : input,
       });
     } catch (costError) {
       console.error("Cost calculation error:", costError);

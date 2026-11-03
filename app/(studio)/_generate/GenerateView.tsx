@@ -1161,9 +1161,9 @@ export default function GenerateView() {
             isUpscalableDraft({ provider, inputs: result?.inputs, outputType: readyType }) && (
               <UpscaleDraft
                 key={result!.prediction.id}
-                generationId={result!.prediction.id}
+                model={model}
                 project={project}
-                seconds={Number(result!.inputs?.duration) || null}
+                inputs={result!.inputs ?? {}}
                 className="mx-4 mb-3"
               />
             )}

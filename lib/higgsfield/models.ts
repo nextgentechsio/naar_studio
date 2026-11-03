@@ -464,6 +464,15 @@ export function approxMeteredCostUsd(
   });
 }
 
+// Resolutions a metered model is priced at above
+// `from` (e.g. what a 480p draft can be made at again)
+export function higherResolutions(model: string, from: string): string[] {
+  const order: Resolution[] = ["480p", "720p", "1080p", "2k", "4k"];
+  const start = order.indexOf(from.toLowerCase() as Resolution);
+  const rates = METERED[model]?.rates ?? {};
+  return order.filter((resolution, index) => index > start && resolution in rates);
+}
+
 // "$0.21–$1.14 / sec" (16:9), for metered models
 export function higgsfieldPriceHint(model: string): string | null {
   const price = METERED[model];

@@ -329,9 +329,9 @@ export default function GenerationDrawer({
                 isUpscalableDraft({ provider: current.detail.provider, inputs: current.detail.inputs, outputType }) && (
                   <UpscaleDraft
                     key={id}
-                    generationId={id}
+                    model={current.detail.model}
                     project={projects.some((item) => item.name === current.detail!.project) ? current.detail.project : ""}
-                    seconds={Number(current.detail.inputs?.duration) || null}
+                    inputs={current.detail.inputs ?? {}}
                   />
                 )}
 

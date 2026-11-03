@@ -163,4 +163,11 @@ describe("schema-driven pricing details", () => {
     expect(cost(MODEL_IDS.KLING_V3_OMNI, { duration: 5 })).toBeCloseTo(1.12);
     expect(cost(MODEL_IDS.KLING_V3_OMNI, { duration: 5, mode: "standard" })).toBeCloseTo(0.84);
   });
+
+  it("Seedream 5 Pro is $0.09 per returned image", () => {
+    expect(cost(MODEL_IDS.SEEDREAM_5_PRO, { max_images: 4 })).toBeCloseTo(0.09);
+    expect(
+      calculateReplicateCost(MODEL_IDS.SEEDREAM_5_PRO, ok({ max_images: 4 }, { output: ["a", "b", "c"] }))
+    ).toBeCloseTo(0.27);
+  });
 });

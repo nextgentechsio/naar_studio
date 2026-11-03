@@ -51,6 +51,9 @@ export const MODEL_IDS = {
 
   GPT_IMAGE_25_SUNBURST:
     "openai/gpt-image-2.5-sunburst",
+
+  SEEDREAM_5_PRO:
+    "bytedance/seedream-5-pro",
 } as const;
 
 
@@ -1126,6 +1129,29 @@ function computeReplicateCost(
         : Math.max(1, Math.floor(numberValue(input.number_of_images, 1)));
 
     return images * gptImagePrice(quality);
+  }
+
+
+/* =========================================================
+   11. SEEDREAM 5 PRO
+========================================================= */
+
+  if (
+    normalizedModel ===
+    MODEL_IDS.SEEDREAM_5_PRO
+  ) {
+
+    /*
+      $0.09 / output image. A run can return several
+      (max_images is only an upper limit), so count what
+      came back; one when that's unknown.
+    */
+
+    const returned = Array.isArray(prediction.output)
+      ? prediction.output.length
+      : 0;
+
+    return Math.max(1, returned) * 0.09;
   }
 
 

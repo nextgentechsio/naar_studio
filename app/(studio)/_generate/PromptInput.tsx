@@ -41,6 +41,11 @@ const TYPING = /(^|[^\p{L}\p{N}_@-])@([\p{L}\p{N}_-]{0,40})$/u;
 // (not "and/or" or a link) → query "im"
 const SLASH = /(^|\s)\/([\p{L}\p{N}_-]{0,40})$/u;
 
+// Bold without wider letters: a real bold font would
+// move the marked words out from under the text area's
+// own (transparent) letters, and the caret with them
+const BOLD = "[-webkit-text-stroke:0.5px_currentColor]";
+
 // Splits text into plain runs and @mentions
 const MENTION_SPLIT = /((?:^|(?<=[^\p{L}\p{N}_@-]))@[\p{L}\p{N}_-]{1,40})/u;
 
@@ -393,7 +398,7 @@ export default function PromptInput({
       <Fragment key={key}>
         {text.split(filesAt).map((part, index) =>
           index % 2 ? (
-            <mark key={index} className="rounded-[4px] bg-raised text-transparent shadow-[0_0_0_2px_var(--line-strong)]">
+            <mark key={index} className={cx("rounded-[4px] bg-raised text-fg shadow-[0_0_0_2px_var(--line-strong)]", BOLD)}>
               {part}
             </mark>
           ) : (
@@ -409,20 +414,22 @@ export default function PromptInput({
 
   return (
     <>
-      {/* Mentions are drawn behind the (transparent) text
-          area, in the same place as its text */}
+      {/* The text is drawn behind the text area (whose own
+          letters are transparent; its caret and selection
+          show), in the same place, so mentions and files
+          can be marked and emboldened */}
       <div className="relative flex min-h-0 flex-1 flex-col rounded-lg bg-sunken">
         <div
           ref={backdrop}
           aria-hidden
           className={cx(
             className,
-            "pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words border-transparent! bg-transparent! text-transparent"
+            "pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words border-transparent! bg-transparent!"
           )}
         >
           {value.split(MENTION_SPLIT).map((part, index) =>
             part.startsWith("@") && known.has(part.slice(1).toLowerCase()) ? (
-              <mark key={index} className="rounded-[4px] bg-accent-soft text-transparent shadow-[0_0_0_2px_var(--accent-soft)]">
+              <mark key={index} className={cx("rounded-[4px] bg-accent-soft text-accent shadow-[0_0_0_2px_var(--accent-soft)]", BOLD)}>
                 {part}
               </mark>
             ) : (
@@ -437,7 +444,7 @@ export default function PromptInput({
           {...props}
           ref={area}
           value={value}
-          className={cx(className, "relative bg-transparent!")}
+          className={cx(className, "relative bg-transparent! text-transparent! caret-fg")}
           role="combobox"
           aria-autocomplete="list"
           aria-expanded={listOpen}

@@ -173,6 +173,15 @@ describe("ElevenLabs", () => {
     expect(await (await db()).collection("expenses").findOne({ _id: id as never })).toBeNull();
   });
 
+  it("says when ElevenLabs credits are used up, not that the key is bad", async () => {
+    const { id, done } = await run("tts/eleven_flash_v2_5", { prompt: "outofcredits", voice_id: "voice-adam" });
+    expect(done.data.status).toBe("failed");
+    expect(done.data.error).toContain("ElevenLabs credits are used up");
+    expect(done.data.error).toContain("21 credits remaining");
+    expect(done.data.error).not.toContain("API key");
+    expect(await (await db()).collection("expenses").findOne({ _id: id as never })).toBeNull();
+  });
+
   it("refuses bad requests before calling ElevenLabs", async () => {
     const before = (await replicateRequests()).filter((request) => request.path.startsWith("/el/") && request.method === "POST").length;
 

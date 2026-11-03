@@ -48,6 +48,13 @@ const THEME_SCRIPT = `(function(){try{var d=document.documentElement,t=localStor
 const EXTENSION_ATTRIBUTES = ["bis_skin_checked"];
 const CLEAN_SCRIPT = `(function(){try{var a=${JSON.stringify(EXTENSION_ATTRIBUTES)};function c(n){for(var i=0;i<a.length;i++)if(n.hasAttribute&&n.hasAttribute(a[i]))n.removeAttribute(a[i])}var o=new MutationObserver(function(m){for(var i=0;i<m.length;i++)c(m[i].target)});o.observe(document.documentElement,{attributes:true,subtree:true,attributeFilter:a});addEventListener("load",function(){setTimeout(function(){o.disconnect()},3000)})}catch(e){}})()`;
 
+// Errors thrown inside a browser extension's own code
+// (e.g. "reading 'M_ID'" from one that inspects pages)
+// aren't ours: kept out of Next's error overlay and log.
+// Registered before Next's listener, so stopping it here
+// means Next never sees it. Errors from our code pass.
+const EXTENSION_ERRORS_SCRIPT = `(function(){function x(r){try{var s=String(r&&r.stack||"");return /(chrome|moz|safari-web)-extension:\\/\\//.test(s)}catch(e){return false}}addEventListener("unhandledrejection",function(e){if(x(e.reason)){e.preventDefault();e.stopImmediatePropagation()}},true);addEventListener("error",function(e){if(x(e.error)||/(chrome|moz|safari-web)-extension:\\/\\//.test(e.filename||"")){e.preventDefault();e.stopImmediatePropagation()}},true)})()`;
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
@@ -57,7 +64,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <head>
         <script
-          dangerouslySetInnerHTML={{ __html: THEME_SCRIPT + ";" + CLEAN_SCRIPT }}
+          dangerouslySetInnerHTML={{ __html: THEME_SCRIPT + ";" + CLEAN_SCRIPT + ";" + EXTENSION_ERRORS_SCRIPT }}
         />
       </head>
       <body className="min-h-full flex flex-col" suppressHydrationWarning>

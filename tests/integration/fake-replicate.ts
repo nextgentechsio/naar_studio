@@ -430,6 +430,12 @@ export async function startFakeReplicate() {
         res.end(bytes);
       };
       const text = String((body as { text?: unknown; prompt?: unknown })?.text ?? (body as { prompt?: unknown })?.prompt ?? "");
+      // Out of credits: ElevenLabs answers 401 with a reason
+      if (/outofcredits/i.test(text)) {
+        return send(401, {
+          detail: { status: "quota_exceeded", message: "You have 21 credits remaining, while 40 credits are required for this request." },
+        });
+      }
       if (/moderated/i.test(text)) {
         return send(400, { detail: { status: "content_moderated", message: "This request was blocked by moderation." } });
       }

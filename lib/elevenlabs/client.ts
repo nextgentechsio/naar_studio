@@ -43,10 +43,24 @@ export class ElevenLabsError extends Error {
     super(message);
   }
 
+  // The key itself is bad (not, say, out of credits,
+  // which ElevenLabs also answers with 401)
   get keyRejected() {
-    return this.status === 401 || this.status === 403;
+    return (this.status === 401 || this.status === 403) && !this.notKeyProblem;
   }
+
+  notKeyProblem = false;
 }
+
+// 401/403 reasons that aren't a bad key: shown as
+// ElevenLabs words them
+const ACCOUNT_LIMITS = new Set([
+  "quota_exceeded",
+  "missing_permissions",
+  "detected_unusual_activity",
+  "too_many_concurrent_requests",
+  "payment_required",
+]);
 
 async function errorFrom(response: Response): Promise<ElevenLabsError> {
   const body = (await response.json().catch(() => null)) as {
@@ -61,7 +75,22 @@ async function errorFrom(response: Response): Promise<ElevenLabsError> {
         ? detail.map((item) => item.msg).filter(Boolean).join("; ")
         : detail?.message || detail?.status || "";
 
+  const reason = detail && typeof detail === "object" && !Array.isArray(detail) ? detail.status ?? "" : "";
+
   if (response.status === 401 || response.status === 403) {
+    if (reason === "quota_exceeded") {
+      const error = new ElevenLabsError(
+        response.status,
+        `ElevenLabs credits are used up for this month${message ? ` (${message})` : ""}. They reset on the plan's renewal date, or an admin can top up the ElevenLabs plan.`,
+      );
+      error.notKeyProblem = true;
+      return error;
+    }
+    if (ACCOUNT_LIMITS.has(reason)) {
+      const error = new ElevenLabsError(response.status, message || `ElevenLabs refused this (${reason}).`);
+      error.notKeyProblem = true;
+      return error;
+    }
     return new ElevenLabsError(
       response.status,
       "ElevenLabs rejected the server's API key. An admin needs to update ELEVENLABS_API_KEY.",

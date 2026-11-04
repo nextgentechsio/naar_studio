@@ -20,6 +20,7 @@ import AppFooter from "@/app/components/AppFooter";
 import { APP_NAME } from "@/lib/app-info";
 import { signOut, useStudio } from "./StudioProvider";
 import Greeting from "./Greeting";
+import Messenger from "../_messenger/Messenger";
 import Notifications from "./Notifications";
 import SessionTimer from "./SessionTimer";
 import SidebarToggle from "./SidebarToggle";
@@ -296,6 +297,9 @@ export default function StudioShell({
 
         <AppFooter />
       </div>
+
+      {/* Floating chat (bottom right) */}
+      <Messenger />
     </div>
   );
 }

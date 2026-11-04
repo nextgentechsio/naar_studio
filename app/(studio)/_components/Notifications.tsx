@@ -385,7 +385,7 @@ export default function Notifications() {
           role="region"
           aria-label="New notifications"
           aria-live="polite"
-          className="fixed bottom-4 right-4 z-50 flex w-[min(92vw,360px)] flex-col gap-2"
+          className="fixed bottom-24 right-5 z-50 flex w-[min(92vw,360px)] flex-col gap-2"
         >
           {toasts.map((item) => (
             <div key={item.id} className="ui-menu glass flex gap-3 rounded-2xl border px-4 py-3">

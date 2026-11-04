@@ -46,6 +46,13 @@ const SLASH = /(^|\s)\/([\p{L}\p{N}_-]{0,40})$/u;
 // own (transparent) letters, and the caret with them
 const BOLD = "[-webkit-text-stroke:0.5px_currentColor]";
 
+// The text area grows a scrollbar once the prompt is
+// long; the text drawn behind it never does. Both keep
+// the scrollbar's room at all times, so they're the same
+// width and their lines wrap at the same words (else the
+// selection lands on other lines than the visible text).
+const GUTTER = "[scrollbar-gutter:stable]";
+
 // Splits text into plain runs and @mentions
 const MENTION_SPLIT = /((?:^|(?<=[^\p{L}\p{N}_@-]))@[\p{L}\p{N}_-]{1,40})/u;
 
@@ -424,7 +431,8 @@ export default function PromptInput({
           aria-hidden
           className={cx(
             className,
-            "pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words border-transparent! bg-transparent!"
+            "pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words border-transparent! bg-transparent!",
+            GUTTER
           )}
         >
           {value.split(MENTION_SPLIT).map((part, index) =>
@@ -444,7 +452,7 @@ export default function PromptInput({
           {...props}
           ref={area}
           value={value}
-          className={cx(className, "relative bg-transparent! text-transparent! caret-fg")}
+          className={cx(className, "relative bg-transparent! text-transparent! caret-fg", GUTTER)}
           role="combobox"
           aria-autocomplete="list"
           aria-expanded={listOpen}
@@ -468,7 +476,10 @@ export default function PromptInput({
           }}
           onClick={track}
           onScroll={(event) => {
-            if (backdrop.current) backdrop.current.scrollTop = event.currentTarget.scrollTop;
+            if (backdrop.current) {
+              backdrop.current.scrollTop = event.currentTarget.scrollTop;
+              backdrop.current.scrollLeft = event.currentTarget.scrollLeft;
+            }
             setMention(null);
             setSlash(null);
           }}

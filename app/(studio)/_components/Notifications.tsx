@@ -7,7 +7,6 @@ import { Alert, Button, cx, inputClass, textareaClass } from "@/app/components/u
 import { canSendNotifications } from "@/lib/auth/roles";
 import { errorMessage, fetchJson, logRequestError } from "@/lib/client/http";
 import { BODY_MAX, TITLE_MAX, type PublicNotification } from "@/lib/notifications-shared";
-import NotificationThread from "./NotificationThread";
 import RecipientPicker, { type Audience } from "./RecipientPicker";
 import { useStudio } from "./StudioProvider";
 
@@ -54,19 +53,16 @@ export default function Notifications() {
   const [list, setList] = useState<List | null>(null);
   const [open, setOpen] = useState(false);
   const [toasts, setToasts] = useState<PublicNotification[]>([]);
-  // The message whose replies are open
-  const [expanded, setExpanded] = useState<string | null>(null);
   // Super admin: the send form is showing
   const [composing, setComposing] = useState(false);
   // `open`, for the poll (outside React's render)
   const openRef = useRef(false);
 
   // Closing, however it happens: messages count as read
-  // (their dots go), open replies fold away
+  // (their dots go), the send form folds away
   const close = useCallback(() => {
     openRef.current = false;
     setOpen(false);
-    setExpanded(null);
     setComposing(false);
     setList((current) =>
       current ? { ...current, notifications: current.notifications.map((item) => ({ ...item, read: true })) } : current,
@@ -104,10 +100,6 @@ export default function Notifications() {
       logRequestError(error, "Load notifications");
     }
   }, []);
-
-  const refresh = useCallback(() => {
-    void load();
-  }, [load]);
 
   useEffect(() => {
     const check = () => {
@@ -163,10 +155,9 @@ export default function Notifications() {
     setToasts([]);
     const unreadIds = list?.notifications.filter((item) => !item.read).map((item) => item.id) ?? [];
     if (list && unreadIds.length) {
-      // Read on the server; the dots stay while it's open.
-      // New replies stay counted until their thread opens.
+      // Read on the server; the dots stay while it's open
       void markRead(unreadIds);
-      setList({ ...list, unread: list.notifications.reduce((total, item) => total + item.unreadReplies, 0) });
+      setList({ ...list, unread: 0 });
     }
   }
 
@@ -274,8 +265,8 @@ export default function Notifications() {
               )}
             </div>
 
-            {/* Folded away until wanted, so messages and their
-                replies get the room */}
+            {/* Folded away until wanted, so the messages get
+                the room */}
             {canSend && composing && (
               <Compose
                 selfId={currentUser.id}
@@ -323,28 +314,6 @@ export default function Notifications() {
                       )}
                       {!item.read && <span className="sr-only"> · unread</span>}
                     </p>
-                    {(canSend ? item.replies > 0 : !item.recalled) && (
-                      <button
-                        type="button"
-                        aria-expanded={expanded === item.id}
-                        onClick={() => setExpanded((current) => (current === item.id ? null : item.id))}
-                        className="mt-1.5 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 -ml-2 text-xs font-medium text-accent transition-colors hover:bg-accent-soft"
-                      >
-                        {expanded === item.id
-                          ? "Hide replies"
-                          : item.replies
-                            ? `${item.replies} ${item.replies === 1 ? "reply" : "replies"}`
-                            : "Reply"}
-                        {item.unreadReplies > 0 && expanded !== item.id && (
-                          <span className="rounded-full bg-danger px-1.5 text-[10px] font-semibold leading-4 text-white">
-                            {item.unreadReplies} new
-                          </span>
-                        )}
-                      </button>
-                    )}
-                    {expanded === item.id && (
-                      <NotificationThread item={item} isAdmin={canSend} onChanged={refresh} />
-                    )}
                   </div>
                   {canSend && (
                     <span className="flex shrink-0 flex-col gap-0.5 self-start">

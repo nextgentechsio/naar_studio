@@ -5,8 +5,6 @@
 
 export const TITLE_MAX = 120;
 export const BODY_MAX = 2000;
-// A reply's length
-export const REPLY_MAX = 1000;
 // Chosen users per message (more: send to everyone)
 export const MAX_RECIPIENTS = 200;
 
@@ -27,29 +25,4 @@ export type PublicNotification = {
   to?: string[] | null;
   // Super admin only: taken back from its recipients
   recalled?: boolean;
-  // Replies the viewer can see (theirs, or all for the
-  // super admin), and how many of those are new to them
-  replies: number;
-  unreadReplies: number;
-};
-
-// A reply in the private thread between one recipient
-// and the super admin, under a message
-export type PublicReply = {
-  id: string;
-  body: string;
-  author: string;
-  // Written by the super admin (else by the recipient)
-  fromAdmin: boolean;
-  mine: boolean;
-  createdAt: string;
-};
-
-export type PublicThread = {
-  // The recipient this thread is with
-  userId: string;
-  userName: string;
-  replies: PublicReply[];
-  // New to the viewer
-  unread: number;
 };

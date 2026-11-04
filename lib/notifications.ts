@@ -5,12 +5,9 @@ import {
   BODY_MAX,
   MAX_RECIPIENTS,
   NOTIFICATION_LEVELS,
-  REPLY_MAX,
   TITLE_MAX,
   type NotificationLevel,
   type PublicNotification,
-  type PublicReply,
-  type PublicThread,
 } from "@/lib/notifications-shared";
 
 export type { PublicNotification } from "@/lib/notifications-shared";
@@ -55,22 +52,6 @@ type ReadDoc = {
   readAt: Date;
 };
 
-// A reply under a message: in the private thread between
-// one recipient (threadUserId) and the super admin
-type ReplyDoc = {
-  _id: ObjectId;
-  notificationId: string;
-  threadUserId: string;
-  threadUserName: string;
-  authorId: string;
-  authorName: string;
-  fromAdmin: boolean;
-  body: string;
-  createdAt: Date;
-  // Seen by the other side of the thread
-  seen: boolean;
-};
-
 const globalForNotifications = globalThis as unknown as {
   notificationIndexes?: Promise<unknown>;
 };
@@ -78,12 +59,10 @@ const globalForNotifications = globalThis as unknown as {
 async function collections(): Promise<{
   notifications: Collection<NotificationDoc>;
   reads: Collection<ReadDoc>;
-  replies: Collection<ReplyDoc>;
 }> {
   const db = await getDb();
   const notifications = db.collection<NotificationDoc>("notifications");
   const reads = db.collection<ReadDoc>("notificationReads");
-  const replies = db.collection<ReplyDoc>("notificationReplies");
 
   if (!globalForNotifications.notificationIndexes) {
     globalForNotifications.notificationIndexes = Promise.all([
@@ -91,7 +70,6 @@ async function collections(): Promise<{
       notifications.createIndex({ recipients: 1, createdAt: -1 }),
       reads.createIndex({ userId: 1, notificationId: 1 }),
       reads.createIndex({ notificationId: 1 }),
-      replies.createIndex({ notificationId: 1, threadUserId: 1, createdAt: 1 }),
     ]).catch((error) => {
       globalForNotifications.notificationIndexes = undefined;
       throw error;
@@ -99,7 +77,7 @@ async function collections(): Promise<{
   }
   await globalForNotifications.notificationIndexes;
 
-  return { notifications, reads, replies };
+  return { notifications, reads };
 }
 
 export class NotificationInputError extends Error {}
@@ -150,14 +128,7 @@ function visibleTo(viewer: Viewer) {
     : { recalledAt: null, $or: [{ recipients: null }, { recipients: viewer.id }] };
 }
 
-type ReplyCounts = { replies: number; unreadReplies: number };
-
-function toPublic(
-  doc: NotificationDoc,
-  read: boolean,
-  viewer: Viewer,
-  counts: ReplyCounts = { replies: 0, unreadReplies: 0 },
-): PublicNotification {
+function toPublic(doc: NotificationDoc, read: boolean, viewer: Viewer): PublicNotification {
   return {
     // Who it went to: only the super admin is told
     ...(viewer.role === "super_admin"
@@ -170,36 +141,7 @@ function toPublic(
     from: doc.createdByName,
     createdAt: doc.createdAt.toISOString(),
     read,
-    ...counts,
   };
-}
-
-const isAdmin = (viewer: Viewer) => viewer.role === "super_admin";
-
-// Replies the viewer may see: their own thread, or every
-// thread for the super admin
-const ownThreads = (viewer: Viewer) => (isAdmin(viewer) ? {} : { threadUserId: viewer.id });
-
-// New to the viewer: written by the other side, not seen
-const unreadFor = (viewer: Viewer) => ({ seen: false, fromAdmin: !isAdmin(viewer) });
-
-async function replyCounts(viewer: Viewer, ids: string[]): Promise<Map<string, ReplyCounts>> {
-  const { replies } = await collections();
-  const rows = await replies
-    .aggregate<{ _id: string; replies: number; unreadReplies: number }>([
-      { $match: { notificationId: { $in: ids }, ...ownThreads(viewer) } },
-      {
-        $group: {
-          _id: "$notificationId",
-          replies: { $sum: 1 },
-          unreadReplies: {
-            $sum: { $cond: [{ $and: [{ $eq: ["$seen", false] }, { $eq: ["$fromAdmin", !isAdmin(viewer)] }] }, 1, 0] },
-          },
-        },
-      },
-    ])
-    .toArray();
-  return new Map(rows.map((row) => [row._id, { replies: row.replies, unreadReplies: row.unreadReplies }]));
 }
 
 // Recent messages, each marked read or not for this user
@@ -218,16 +160,8 @@ export async function listNotifications(viewer: Viewer): Promise<{
     ),
   );
 
-  const counts = await replyCounts(viewer, ids);
-  const list = docs.map((doc) => {
-    const id = doc._id.toHexString();
-    return toPublic(doc, readIds.has(id), viewer, counts.get(id));
-  });
-  return {
-    notifications: list,
-    // Unread messages, plus new replies
-    unread: list.reduce((total, item) => total + (item.read ? 0 : 1) + item.unreadReplies, 0),
-  };
+  const list = docs.map((doc) => toPublic(doc, readIds.has(doc._id.toHexString()), viewer));
+  return { notifications: list, unread: list.filter((item) => !item.read).length };
 }
 
 export async function sendNotification(
@@ -321,125 +255,11 @@ export async function recallNotification(id: string): Promise<boolean> {
 // Removes a message for everyone it went to. False when there was none.
 export async function deleteNotification(id: string): Promise<boolean> {
   if (!ObjectId.isValid(id)) return false;
-  const { notifications, reads, replies } = await collections();
+  const { notifications, reads } = await collections();
 
   const result = await notifications.deleteOne({ _id: new ObjectId(id) });
   if (!result.deletedCount) return false;
 
-  await Promise.all([reads.deleteMany({ notificationId: id }), replies.deleteMany({ notificationId: id })]);
-  return true;
-}
-
-// --------------------------------------------------
-// REPLIES
-//
-// A recipient replies to a message: only the super admin
-// sees it. The super admin answers inside that person's
-// thread (only that person sees it). Recalled messages
-// take no replies.
-// --------------------------------------------------
-
-export class NotificationAccessError extends Error {}
-
-// The message, if this viewer may see it
-async function visibleMessage(viewer: Viewer, id: string): Promise<NotificationDoc | null> {
-  if (!ObjectId.isValid(id)) return null;
-  const { notifications } = await collections();
-  return notifications.findOne({ ...visibleTo(viewer), _id: new ObjectId(id) });
-}
-
-function toPublicReply(doc: ReplyDoc, viewer: Viewer): PublicReply {
-  return {
-    id: doc._id.toHexString(),
-    body: doc.body,
-    author: doc.authorName,
-    fromAdmin: doc.fromAdmin,
-    mine: doc.authorId === viewer.id,
-    createdAt: doc.createdAt.toISOString(),
-  };
-}
-
-// The viewer's threads under a message (null: no such
-// message for them), oldest reply first; newest thread first
-export async function listReplies(viewer: Viewer, id: string): Promise<PublicThread[] | null> {
-  const message = await visibleMessage(viewer, id);
-  if (!message) return null;
-
-  const { replies } = await collections();
-  const docs = await replies.find({ notificationId: id, ...ownThreads(viewer) }).sort({ createdAt: 1 }).toArray();
-
-  const threads = new Map<string, PublicThread>();
-  for (const doc of docs) {
-    const thread = threads.get(doc.threadUserId) ?? {
-      userId: doc.threadUserId,
-      userName: doc.threadUserName,
-      replies: [],
-      unread: 0,
-    };
-    thread.replies.push(toPublicReply(doc, viewer));
-    if (!doc.seen && doc.fromAdmin !== isAdmin(viewer)) thread.unread += 1;
-    threads.set(doc.threadUserId, thread);
-  }
-
-  const latest = (thread: PublicThread) => thread.replies[thread.replies.length - 1]?.createdAt ?? "";
-  return [...threads.values()].sort((a, b) => latest(b).localeCompare(latest(a)));
-}
-
-// A reply. Recipients write in their own thread; the super
-// admin answers in an existing thread (`to`: its user).
-export async function addReply(
-  viewer: Pick<StoredUser, "id" | "role" | "name">,
-  id: string,
-  input: unknown,
-): Promise<PublicReply> {
-  const body = typeof (input as { body?: unknown })?.body === "string" ? (input as { body: string }).body.trim() : "";
-  if (!body) throw new NotificationInputError("Write a reply");
-  if (body.length > REPLY_MAX) throw new NotificationInputError(`Keep replies under ${REPLY_MAX} characters`);
-
-  const message = await visibleMessage(viewer, id);
-  if (!message) throw new NotificationAccessError("Notification not found");
-  if (message.recalledAt) throw new NotificationInputError("This message was recalled, so it takes no replies");
-
-  const { replies } = await collections();
-  let threadUserId = viewer.id;
-  let threadUserName = viewer.name;
-
-  if (isAdmin(viewer)) {
-    const to = (input as { to?: unknown })?.to;
-    const thread = typeof to === "string" ? await replies.findOne({ notificationId: id, threadUserId: to }) : null;
-    if (!thread) throw new NotificationInputError("Answer someone who replied to this message");
-    threadUserId = thread.threadUserId;
-    threadUserName = thread.threadUserName;
-  }
-
-  const doc: ReplyDoc = {
-    _id: new ObjectId(),
-    notificationId: id,
-    threadUserId,
-    threadUserName,
-    authorId: viewer.id,
-    authorName: viewer.name,
-    fromAdmin: isAdmin(viewer),
-    body,
-    createdAt: new Date(),
-    seen: false,
-  };
-  await replies.insertOne(doc);
-  return toPublicReply(doc, viewer);
-}
-
-// The viewer has seen the other side's replies (in one
-// thread, for the super admin; else in their own)
-export async function markRepliesSeen(viewer: Viewer, id: string, threadUserId?: string): Promise<boolean> {
-  if (!(await visibleMessage(viewer, id))) return false;
-  const { replies } = await collections();
-  await replies.updateMany(
-    {
-      notificationId: id,
-      ...(isAdmin(viewer) ? (threadUserId ? { threadUserId } : {}) : { threadUserId: viewer.id }),
-      ...unreadFor(viewer),
-    },
-    { $set: { seen: true } },
-  );
+  await reads.deleteMany({ notificationId: id });
   return true;
 }

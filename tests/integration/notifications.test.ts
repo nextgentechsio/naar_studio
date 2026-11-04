@@ -8,8 +8,7 @@ import { api, closeDb, createUser, db, loginRoot } from "./helpers";
 // --------------------------------------------------
 
 type Session = Awaited<ReturnType<typeof loginRoot>>;
-type Item = { id: string; title: string; body: string; level: string; from: string; read: boolean; to?: string[] | null; recalled?: boolean; replies: number; unreadReplies: number };
-type Thread = { userId: string; userName: string; unread: number; replies: { body: string; mine: boolean; fromAdmin: boolean; author: string }[] };
+type Item = { id: string; title: string; body: string; level: string; from: string; read: boolean; to?: string[] | null; recalled?: boolean };
 
 const ALICE = `Alice ${Date.now()}`;
 let root: Session;
@@ -153,75 +152,5 @@ describe("notifications", () => {
     // A recalled message can still be deleted for good
     expect((await api(`/api/notifications/${id}`, { session: root, method: "DELETE" })).status).toBe(204);
     expect((await inbox(root)).notifications.some((item) => item.id === id)).toBe(false);
-  });
-
-  describe("replies", () => {
-    const threads = async (session: Session, id: string) => {
-      const { status, data } = await api(`/api/notifications/${id}/replies`, { session });
-      expect(status).toBe(200);
-      return data.threads as Thread[];
-    };
-    const reply = (session: Session, id: string, json: Record<string, unknown>) =>
-      api(`/api/notifications/${id}/replies`, { session, json });
-    const item = async (session: Session, id: string) =>
-      (await inbox(session)).notifications.find((other) => other.id === id) as Item;
-
-    it("a recipient's reply reaches only the super admin; the answer only that recipient", async () => {
-      const { data } = await send(root, { title: `Feedback? ${Date.now()}` });
-      const id = (data.notification as Item).id;
-
-      expect((await reply(alice.session, id, { body: "   " })).status).toBe(400);
-      expect((await reply(alice.session, id, { body: "x".repeat(1001) })).status).toBe(400);
-      expect((await reply(alice.session, id, { body: "Looks good to me" })).status).toBe(201);
-      expect((await reply(bob.session, id, { body: "Can we move it to 5?" })).status).toBe(201);
-
-      // Each sees only their own thread
-      expect((await threads(alice.session, id)).map((thread) => thread.replies.map((r) => r.body))).toEqual([["Looks good to me"]]);
-      expect((await threads(bob.session, id)).map((thread) => thread.replies.map((r) => r.body))).toEqual([["Can we move it to 5?"]]);
-      expect((await item(admin.session, id)).replies).toBe(0);
-
-      // The super admin: both threads, both new
-      expect(await item(root, id)).toMatchObject({ replies: 2, unreadReplies: 2 });
-      const before = (await inbox(root)).unread;
-      const all = await threads(root, id);
-      expect(all.map((thread) => thread.userId).sort()).toEqual([alice.id, bob.id].sort());
-      expect(all.every((thread) => thread.unread === 1)).toBe(true);
-
-      // Seen: the counts drop
-      expect((await api(`/api/notifications/${id}/replies`, { session: root, method: "PATCH", json: { seen: true } })).status).toBe(204);
-      expect(await item(root, id)).toMatchObject({ replies: 2, unreadReplies: 0 });
-      expect((await inbox(root)).unread).toBe(before - 2);
-
-      // Answering: only in an existing thread
-      expect((await reply(root, id, { body: "Sure" })).status).toBe(400);
-      expect((await reply(root, id, { body: "Sure", to: admin.id })).status).toBe(400);
-      expect((await reply(root, id, { body: "Yes, 5 works", to: bob.id })).status).toBe(201);
-
-      // Bob gets it (new to him); Alice doesn't
-      expect(await item(bob.session, id)).toMatchObject({ replies: 2, unreadReplies: 1 });
-      expect((await threads(bob.session, id))[0].replies).toMatchObject([
-        { body: "Can we move it to 5?", mine: true, fromAdmin: false },
-        { body: "Yes, 5 works", mine: false, fromAdmin: true },
-      ]);
-      expect(await item(alice.session, id)).toMatchObject({ replies: 1, unreadReplies: 0 });
-    });
-
-    it("no replies to messages someone can't see or that were recalled; delete removes them", async () => {
-      const { data } = await send(root, { title: `Alice only ${Date.now()}`, to: [alice.id] });
-      const id = (data.notification as Item).id;
-
-      expect((await reply(bob.session, id, { body: "Me too?" })).status).toBe(404);
-      expect((await api(`/api/notifications/${id}/replies`, { session: bob.session })).status).toBe(404);
-      expect((await reply(alice.session, id, { body: "Got it" })).status).toBe(201);
-
-      await api(`/api/notifications/${id}`, { session: root, method: "PATCH", json: { recall: true } });
-      expect((await reply(alice.session, id, { body: "Still there?" })).status).toBe(404);
-      expect((await reply(root, id, { body: "Never mind", to: alice.id })).status).toBe(400);
-      // The super admin still reads the thread
-      expect((await threads(root, id))[0].replies.map((r) => r.body)).toEqual(["Got it"]);
-
-      await api(`/api/notifications/${id}`, { session: root, method: "DELETE" });
-      expect(await (await db()).collection("notificationReplies").countDocuments({ notificationId: id })).toBe(0);
-    });
   });
 });

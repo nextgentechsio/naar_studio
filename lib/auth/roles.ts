@@ -105,6 +105,11 @@ export function canDeleteProjects(actor: Actor): boolean {
   return !actor.disabled && actor.role === "super_admin";
 }
 
+// Sending (and deleting) notifications to everyone
+export function canSendNotifications(actor: Actor): boolean {
+  return !actor.disabled && actor.role === "super_admin";
+}
+
 // Removing a run everywhere, its expense included
 export function canDeleteGenerations(actor: Actor): boolean {
   return !actor.disabled && actor.role === "super_admin";

@@ -20,6 +20,7 @@ import AppFooter from "@/app/components/AppFooter";
 import { APP_NAME } from "@/lib/app-info";
 import { signOut, useStudio } from "./StudioProvider";
 import Greeting from "./Greeting";
+import Notifications from "./Notifications";
 import SessionTimer from "./SessionTimer";
 import SidebarToggle from "./SidebarToggle";
 import { useDialog } from "./useDialog";
@@ -280,7 +281,10 @@ export default function StudioShell({
             </div>
           </div>
 
-          <SessionTimer startedAt={sessionStartedAt} />
+          <div className="flex shrink-0 items-center gap-2">
+            <Notifications />
+            <SessionTimer startedAt={sessionStartedAt} />
+          </div>
         </header>
 
         <main

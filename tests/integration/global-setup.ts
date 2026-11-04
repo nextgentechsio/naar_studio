@@ -4,13 +4,16 @@ import net from "net";
 import path from "path";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import type { TestProject } from "vitest/node";
+import { FAKE_ANTHROPIC_KEY } from "./fake-anthropic";
 import { FAKE_BLOB_TOKEN, FAKE_ELEVENLABS_KEY, FAKE_HF_CREDENTIALS, startFakeReplicate } from "./fake-replicate";
 
 // --------------------------------------------------
 // INTEGRATION SETUP
 //
 // 1. In-memory MongoDB (nothing touches the real one)
-// 2. Fake Replicate API (no real runs, no cost)
+// 2. Fake Replicate API (no real runs, no cost), also
+//    standing in for Higgsfield, ElevenLabs, Blob and
+//    Claude (fake-anthropic.ts)
 // 3. `next build` + `next start` with env pointing at both
 //    (process env wins over .env.local, so the real
 //    database URI and token are never used)
@@ -107,6 +110,9 @@ async function start(
     // Never the real (billable) ElevenLabs API
     ELEVENLABS_API_KEY: FAKE_ELEVENLABS_KEY,
     ELEVENLABS_API_URL: `${replicate.url}/el`,
+    // Never the real (billable) Claude API
+    ANTHROPIC_API_KEY: FAKE_ANTHROPIC_KEY,
+    ANTHROPIC_BASE_URL: `${replicate.url}/anthropic`,
     BLOB_READ_WRITE_TOKEN: FAKE_BLOB_TOKEN,
     VERCEL_BLOB_API_URL: `${replicate.url}/blob`,
     // Browser side (inlined into the test build only)

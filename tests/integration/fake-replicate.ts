@@ -1,3 +1,4 @@
+import { handleFakeAnthropic, type AnthropicRequest } from "./fake-anthropic";
 import http from "http";
 import type { AddressInfo } from "net";
 
@@ -238,6 +239,8 @@ export async function startFakeReplicate() {
   let counter = 0;
   let blobs: { url: string; pathname: string; size: number; uploadedAt: string; contentType?: string }[] = [];
   const blobRequests: { method: string; path: string; body: unknown }[] = [];
+  // What the app sent to the fake Claude API
+  const anthropicRequests: AnthropicRequest[] = [];
   // Stored bytes, served at /blobfiles/<pathname>
   const blobBytes = new Map<string, Buffer>();
   // Multipart upload id → parts received so far
@@ -263,6 +266,12 @@ export async function startFakeReplicate() {
       res.writeHead(status, { "content-type": "application/json" });
       res.end(JSON.stringify(data));
     };
+
+    // ---------- fake Anthropic Messages API (/anthropic) ----------
+
+    if (path.startsWith("/anthropic/")) {
+      return handleFakeAnthropic(req, res, path, body, anthropicRequests);
+    }
 
     // ---------- fake Vercel Blob API (/blob) ----------
 
@@ -597,6 +606,10 @@ export async function startFakeReplicate() {
 
     if (path === "/__control/requests") {
       return send(200, requests);
+    }
+
+    if (path === "/__control/anthropic") {
+      return send(200, anthropicRequests);
     }
 
     const control = path.match(/^\/__control\/predictions\/([^/]+)$/);

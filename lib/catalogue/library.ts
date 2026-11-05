@@ -3,6 +3,7 @@ import { ObjectId } from "mongodb";
 import type { StoredUser } from "@/lib/auth/users";
 import { canManageProjects } from "@/lib/auth/roles";
 import { catalogueCollections, libraryFolder, type AssetDoc, type TemplateDoc } from "./db";
+import { tidyLibrary } from "./files";
 import { PRESET_ASSETS, PRESET_TEMPLATES } from "./presets";
 import {
   ASSET_KINDS,
@@ -252,6 +253,10 @@ export async function updateAsset(actor: Actor, id: string, input: AssetInput): 
     { $set: { ...fields, updatedAt: new Date() } },
     { returnDocument: "after" },
   );
+  // A replaced photo leaves the library folder
+  if (existing.imageUrl && fields.imageUrl !== undefined && fields.imageUrl !== existing.imageUrl) {
+    await tidyLibrary([existing.imageUrl]);
+  }
   return toAsset(updated!);
 }
 
@@ -263,12 +268,16 @@ export async function deleteAsset(actor: Actor, id: string): Promise<void> {
   // A built-in is kept as a marker, so the preset isn't
   // inserted again on the next start
   const result = await assets.findOneAndDelete({ _id: objectId(id), deleted: { $ne: true }, presetKey: { $exists: false } });
-  if (result) return;
-  const marked = await assets.updateOne(
+  if (result) {
+    if (result.imageUrl) await tidyLibrary([result.imageUrl]);
+    return;
+  }
+  const marked = await assets.findOneAndUpdate(
     { _id: objectId(id), deleted: { $ne: true } },
-    { $set: { deleted: true, status: "archived", updatedAt: new Date() } },
+    { $set: { deleted: true, status: "archived", imageUrl: null, updatedAt: new Date() } },
   );
-  if (!marked.matchedCount) throw new CatalogueError(404, "Not found");
+  if (!marked) throw new CatalogueError(404, "Not found");
+  if (marked.imageUrl) await tidyLibrary([marked.imageUrl]);
 }
 
 export async function assetsByIds(ids: (string | null | undefined)[]): Promise<Map<string, PublicAsset>> {

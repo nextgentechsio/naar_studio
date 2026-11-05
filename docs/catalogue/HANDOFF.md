@@ -17,6 +17,19 @@
     - GET syncs pending runs (`fetchGenerationStatus` → `applyPrediction`) and copies each finished image to `catalogue/…/shots/`.
     - Delete removes the product's files; its generations and expenses stay.
   - `http.ts`: the route wrapper.
+  - `files.ts`: keeps Catalogue's own Blob folder tidy (see "Blob folder" below).
+- **Blob folder:** everything Catalogue stores is under `catalogue/`, apart from the rest of the studio, and output retention never touches it:
+  - `catalogue/library/…`: library photos (models, poses, backgrounds, accessories).
+  - `catalogue/<userId>/products/<id>/inputs/`: garment photos.
+  - `catalogue/<userId>/products/<id>/shots/`: the finished images (permanent copies).
+
+  Catalogue cleans it up itself (`lib/catalogue/files.ts`, `tidyFolder`, which only lists and deletes inside the folder it's given):
+  - a replaced or deleted library photo is removed right away;
+  - a replaced or removed garment photo is removed right away, unless a shot of that product is running;
+  - abandoned uploads go after a grace period: a day for the library (swept at most hourly from the library GET), an hour for a product's `inputs/` (whenever its photos change);
+  - deleting a product removes its whole folder.
+
+  Each image also has its normal History copy in `outputs/`, which expires with retention like any other generation's.
 - **API:** `app/api/catalogue/`
   - `library` (GET, POST asset)
   - `assets/[id]`, `templates`, `templates/[id]`
@@ -28,7 +41,7 @@
   - Client helpers: `lib/client/catalogue.ts`.
   - Outside edits: one nav item in StudioShell, and the `shirt` icon in Icon.tsx.
 - **Tests:**
-  - `tests/integration/catalogue.test.ts` (16) `tests/unit/catalogue-prompt.test.ts` (18), and `tests/unit/catalogue-direct.test.ts` (4). The full suite passes (314 tests).
+  - `tests/integration/catalogue.test.ts` (18), `tests/unit/catalogue-prompt.test.ts` (18), and `tests/unit/catalogue-direct.test.ts` (4). The full suite passes (316 tests).
   - `blob-uploads.test.ts` now only checks its own Blob listings, because the fake's request log is shared across test files.
 - **Browser check:** create, upload, template, initial look, approve, 6/6 shots, spend $0.606; dark, light and phone views all render.
 
@@ -43,14 +56,14 @@
 - **Where:** `lib/catalogue/direct.ts`.
 - **Image models:** `google:gemini-nano-banana-2.1` (generateContent, 3:4, 1K/2K) and `openai:gpt-image-2.5-sunburst` (images/edits with the reference photos; 1104x1472 or 1536x2048, medium quality).
 - **How each run works:**
-  - It is a `generations` record with provider `google` or `openai`, model `google-api/…` or `openai-api/…`.
+  - It is a `generations` record with provider **`catalogue`** (one platform for both engines, since only Catalogue uses them; decided 2026-11-05). The model says which engine made it: `google-api/…` or `openai-api/…`, and the id starts with `google-` or `openai-`.
   - It runs on our server inside `after()`, like ElevenLabs.
   - It finishes through `finishLocalRun`, which saves the image and records the expense.
 - **Pricing:** from the tokens each provider reports, using the list prices in `DIRECT_PRICES` (the original's `insightsCost.js`, 23 Oct 2026). If usage is missing, it falls back to an estimate.
-- **Shared code changes** (Google and OpenAI added as platforms):
+- **Shared code changes** ("Catalogue" added as a platform):
   - `lib/db/mongodb.ts`: `Provider`, `providerName`, `isLocalProvider`.
   - `generations.ts` and `generation-cancel.ts`: these runs count as local.
-  - `cost-analytics.ts`, `lib/client/data.ts` (PLATFORMS) and Dashboard: series, plus `--viz-4` / `--viz-5` in `globals.css`.
+  - `cost-analytics.ts`, `lib/client/data.ts` (PLATFORMS) and Dashboard: a Catalogue series, plus `--viz-4` in `globals.css`.
   - History drawer: no "Run again" for these runs.
 - **Tests:**
   - Fakes at `/google` and `/openai` in `fake-replicate.ts`.
@@ -210,7 +223,7 @@ Reuse the existing routes and helpers. **Do not write a new provider client.**
 
 ### Cost features we don't have
 - There are **no per-user or per-project spend limits** anywhere.
-- Expense filters cover project, user, model, provider and date only. They **can't show "Catalogue" spend on its own**. If the user wants that, keep a `catalogueShots` collection mapping generation ids to batches and products, rather than adding fields to `generations` / `expenses`.
+- Expense filters cover project, user, model, provider and date only. The **Catalogue** platform holds the direct Google / OpenAI runs. Catalogue shots made with a Replicate model are filed under Replicate; the Catalogue page's own totals (from `catalogueRuns`) include both.
 
 ### Models available now
 - **Image editing with reference images:**

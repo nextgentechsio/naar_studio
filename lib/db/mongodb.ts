@@ -76,21 +76,21 @@ export type ProjectDoc = {
 // One document per Replicate prediction; _id is the
 // Replicate prediction id.
 // Who ran a generation (and bills it)
-// google / openai: called directly (Catalogue), run on
-// this server like ElevenLabs
-export type Provider = "replicate" | "higgsfield" | "elevenlabs" | "google" | "openai";
+// catalogue: Catalogue's own images, made directly with
+// Google (Nano Banana) or OpenAI (GPT Image) on this
+// server like ElevenLabs; the model says which
+export type Provider = "replicate" | "higgsfield" | "elevenlabs" | "catalogue";
 
-const PROVIDERS: Provider[] = ["replicate", "higgsfield", "elevenlabs", "google", "openai"];
+const PROVIDERS: Provider[] = ["replicate", "higgsfield", "elevenlabs", "catalogue"];
 
 const PROVIDER_NAMES: Record<Provider, string> = {
   replicate: "Replicate",
   higgsfield: "Higgsfield",
   elevenlabs: "ElevenLabs",
-  google: "Google",
-  openai: "OpenAI",
+  catalogue: "Catalogue",
 };
 
-// "Replicate", "Higgsfield", "ElevenLabs", "Google", "OpenAI"
+// "Replicate", "Higgsfield", "ElevenLabs", "Catalogue"
 export function providerName(provider: Provider | undefined): string {
   return PROVIDER_NAMES[provider ?? "replicate"] ?? "Replicate";
 }
@@ -98,7 +98,7 @@ export function providerName(provider: Provider | undefined): string {
 // Runs this server does itself (no provider-side record
 // to poll): their record is the status
 export function isLocalProvider(provider: Provider | undefined): boolean {
-  return provider === "elevenlabs" || provider === "google" || provider === "openai";
+  return provider === "elevenlabs" || provider === "catalogue";
 }
 
 export function isProvider(value: unknown): value is Provider {

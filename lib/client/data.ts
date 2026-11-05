@@ -146,15 +146,14 @@ export async function fetchCostAnalytics(options: {
 }
 
 // Where a run was made (the Generate pages)
-export type Platform = "" | "replicate" | "higgsfield" | "elevenlabs" | "google" | "openai";
+export type Platform = "" | "replicate" | "higgsfield" | "elevenlabs" | "catalogue";
 
 export const PLATFORMS: [Platform, string][] = [
   ["", "All platforms"],
   ["replicate", "Replicate"],
   ["higgsfield", "Higgsfield"],
   ["elevenlabs", "ElevenLabs"],
-  ["google", "Google"],
-  ["openai", "OpenAI"],
+  ["catalogue", "Catalogue"],
 ];
 
 export function readPlatform(value: string | null): Platform {

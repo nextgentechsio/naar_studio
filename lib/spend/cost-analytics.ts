@@ -45,8 +45,7 @@ export type DaySpend = {
   replicate: number;
   higgsfield: number;
   elevenlabs: number;
-  google: number;
-  openai: number;
+  catalogue: number;
   runs: number;
 };
 
@@ -202,7 +201,7 @@ export async function getCostAnalytics(
     amountUsd: number;
     runs: number;
   }[]) {
-    const day = dayMap.get(row._id.day) ?? { day: row._id.day, replicate: 0, higgsfield: 0, elevenlabs: 0, google: 0, openai: 0, runs: 0 };
+    const day = dayMap.get(row._id.day) ?? { day: row._id.day, replicate: 0, higgsfield: 0, elevenlabs: 0, catalogue: 0, runs: 0 };
     const provider = row._id.provider in day ? row._id.provider : "replicate";
     day[provider] += row.amountUsd;
     day.runs += row.runs;
@@ -240,8 +239,7 @@ export async function getCostAnalytics(
       replicate: providerTotal("replicate"),
       higgsfield: providerTotal("higgsfield"),
       elevenlabs: providerTotal("elevenlabs"),
-      google: providerTotal("google"),
-      openai: providerTotal("openai"),
+      catalogue: providerTotal("catalogue"),
     },
     byModel: ((result?.byModel ?? []) as {
       _id: string;

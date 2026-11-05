@@ -132,7 +132,7 @@ export default function GenerationDrawer({
     if (!detail) return;
 
     const provider = detail.provider ?? "replicate";
-    // Catalogue's direct runs (google / openai) have no Generate page
+    // Catalogue's own runs have no Generate page
     if (!(provider in stores)) return;
     const { loadDraft, setError: setGenerateError } = stores[provider as keyof typeof stores];
 

@@ -15,6 +15,7 @@ import { findActiveProjectByName } from "@/lib/projects";
 import { openOutput } from "@/lib/storage/generation-outputs";
 import { blobUploadsEnabled } from "@/lib/storage/input-uploads";
 import { catalogueCollections, productFolder, type ProductDoc, type RunDoc } from "./db";
+import { INPUT_GRACE_MS, tidyFolder } from "./files";
 import { assetsByIds, CatalogueError, getTemplate, objectId } from "./library";
 import { buildShotRequest, type Reference, type RefRole } from "./prompt";
 import { startDirectRun } from "./direct";
@@ -459,7 +460,22 @@ export async function updateProduct(actor: Actor, id: string, body: Record<strin
     { _id: doc._id },
     { $set: { ...set, updatedAt: new Date() }, ...(Object.keys(unset).length ? { $unset: unset } : {}) },
   );
+  if (body.inputs !== undefined) await tidyInputs(doc._id, Object.values(doc.inputs));
   return getProduct(actor, id);
+}
+
+// Replaced or removed garment photos, and abandoned
+// uploads, leave the product's inputs/ folder. Not while a
+// shot is running (it may still be reading one); the next
+// change catches them.
+async function tidyInputs(productId: ObjectId, previous: string[]): Promise<void> {
+  const { products, runs } = await catalogueCollections();
+  const doc = await products.findOne({ _id: productId });
+  if (!doc || (await runs.findOne({ productId: productId.toHexString(), status: "pending" }))) return;
+  await tidyFolder(`${productFolder(doc.userId, productId.toHexString())}inputs/`, Object.values(doc.inputs), {
+    graceMs: INPUT_GRACE_MS,
+    drop: previous,
+  });
 }
 
 // ---------- Generate ----------

@@ -388,10 +388,10 @@ describe("catalogue direct engines (Google, OpenAI)", () => {
     expect((await replicateRequests()).slice(since).some((r) => r.path.startsWith("/v1/"))).toBe(false);
 
     const generation = await (await db()).collection("generations").findOne({ _id: run.generationId as never });
-    expect(generation).toMatchObject({ provider: "google", model: "google-api/gemini-nano-banana-2.1", projectId: project.id, status: "succeeded" });
+    expect(generation).toMatchObject({ provider: "catalogue", model: "google-api/gemini-nano-banana-2.1", projectId: project.id, status: "succeeded" });
     const expected = (FAKE_GOOGLE_USAGE.promptTokenCount * 1.5 + 1680 * 30 + (100 + FAKE_GOOGLE_USAGE.thoughtsTokenCount) * 7.5) / 1e6;
     const [expense] = await (await db()).collection("expenses").find({ _id: run.generationId as never }).toArray();
-    expect(expense).toMatchObject({ provider: "google", projectId: project.id, userId: alice.id });
+    expect(expense).toMatchObject({ provider: "catalogue", projectId: project.id, userId: alice.id });
     expect(expense.amountUsd).toBeCloseTo(expected, 6);
     expect(item.spendUsd).toBeCloseTo(expected, 3);
   });
@@ -427,22 +427,84 @@ describe("catalogue direct engines (Google, OpenAI)", () => {
     const expenses = await (await db()).collection("expenses").find({ _id: { $in: ids as never[] } }).toArray();
     expect(expenses).toHaveLength(ids.length);
     for (const row of expenses) {
-      expect(row.provider).toBe("openai");
+      expect(row.provider).toBe("catalogue");
       expect(row.amountUsd).toBeCloseTo(expected, 6);
     }
   });
 
-  it("shows up under its platform in Expenses", async () => {
-    const google = await api("/api/expenses/entries?provider=google", { session: alice.session });
-    const openai = await api("/api/expenses/entries?provider=openai", { session: alice.session });
+  it("shows up as one Catalogue platform in Expenses, whichever engine made it", async () => {
+    const catalogue = await api("/api/expenses/entries?provider=catalogue", { session: alice.session });
     const replicate = await api("/api/expenses/entries?provider=replicate", { session: alice.session });
-    expect(google.status).toBe(200);
-    const ids = (res: typeof google) => JSON.stringify(res.data);
+    expect(catalogue.status).toBe(200);
+    const ids = (res: typeof catalogue) => JSON.stringify(res.data);
     const kurta = item.shots.flatMap((shot) => shot.runs).filter((run) => run.status === "succeeded");
+    expect(kurta.some((run) => run.generationId.startsWith("google-"))).toBe(true);
+    expect(kurta.some((run) => run.generationId.startsWith("openai-"))).toBe(true);
     for (const run of kurta) {
-      const where = run.generationId.startsWith("google-") ? google : openai;
-      expect(ids(where)).toContain(run.generationId);
+      expect(ids(catalogue)).toContain(run.generationId);
       expect(ids(replicate)).not.toContain(run.generationId);
     }
+  });
+});
+
+describe("catalogue blob folder", () => {
+  const stored = async () =>
+    ((await (await fetch(`${replicateUrl}/__control/blobs`)).json()) as { blobs: { url: string }[] }).blobs.map(
+      (blob) => blob.url,
+    );
+
+  it("removes a library photo once it's replaced or its item is deleted", async () => {
+    const first = await storeBlob(`catalogue/library/face-${Date.now()}-a.png`);
+    const second = await storeBlob(`catalogue/library/face-${Date.now()}-b.png`);
+    // Someone's upload whose dialog is still open
+    const pending = await storeBlob(`catalogue/library/face-${Date.now()}-c.png`);
+
+    const created = await api("/api/catalogue/library", {
+      session: admin.session,
+      json: { kind: "model", name: "Tidy", prompt: "A model", imageUrl: first },
+    });
+    expect(created.status).toBe(200);
+    const id = (created.data.asset as { id: string }).id;
+
+    const patched = await api(`/api/catalogue/assets/${id}`, {
+      session: admin.session,
+      method: "PATCH",
+      json: { imageUrl: second },
+    });
+    expect(patched.status).toBe(200);
+    let files = await stored();
+    expect(files).not.toContain(first);
+    expect(files).toContain(second);
+
+    expect((await api(`/api/catalogue/assets/${id}`, { session: admin.session, method: "DELETE" })).status).toBe(200);
+    files = await stored();
+    expect(files).not.toContain(second);
+    expect(files).toContain(pending);
+  });
+
+  it("removes replaced and removed garment photos, and nothing else", async () => {
+    const mine = await newProduct(alice.session, "Tidy shirt");
+    const other = await newProduct(alice.session, "Other shirt");
+    const folder = (id: string) => `catalogue/${alice.id}/products/${id}/inputs/`;
+    const front = await storeBlob(`${folder(mine.id)}front-1.png`);
+    const back = await storeBlob(`${folder(mine.id)}back-1.png`);
+    const otherFront = await storeBlob(`${folder(other.id)}front-1.png`);
+    const patch = (id: string, inputs: Record<string, string | null>) =>
+      api(`/api/catalogue/products/${id}`, { session: alice.session, method: "PATCH", json: { inputs } });
+
+    expect((await patch(mine.id, { front, back })).status).toBe(200);
+    expect((await patch(other.id, { front: otherFront })).status).toBe(200);
+
+    const newFront = await storeBlob(`${folder(mine.id)}front-2.png`);
+    // Uploaded a moment ago, not saved yet
+    const pending = await storeBlob(`${folder(mine.id)}detail-1.png`);
+    const { status, data } = await patch(mine.id, { front: newFront, back: null });
+    expect(status).toBe(200);
+    expect((data.product as Product).inputs).toEqual({ front: newFront });
+
+    const files = await stored();
+    expect(files).not.toContain(front);
+    expect(files).not.toContain(back);
+    expect(files).toEqual(expect.arrayContaining([newFront, pending, otherFront]));
   });
 });

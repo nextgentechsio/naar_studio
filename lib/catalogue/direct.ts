@@ -239,7 +239,8 @@ export async function startDirectRun(input: {
     predictionId: id,
     user: input.user,
     project: input.project,
-    provider: input.engine,
+    // One platform for everything Catalogue makes directly
+    provider: "catalogue",
     // "-api": never merged with the same model on Replicate
     // in reports grouped by model
     model: `${input.engine}-api/${input.model}`,

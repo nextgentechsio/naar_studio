@@ -53,9 +53,8 @@
   /* 3 = ElevenLabs; under 3:1 on the light surface, so it
      always comes with labels and a table view */
   --viz-3: #1baf7a;
-  /* 4 = Google, 5 = OpenAI (Catalogue's direct runs) */
+  /* 4 = Catalogue */
   --viz-4: #8b5cf6;
-  --viz-5: #c2410c;
   --glass-edge: rgb(255 255 255 / 0.9);
   --glass-shadow: 0 28px 70px -24px rgb(13 13 13 / 0.28);
 
@@ -107,7 +106,6 @@
     --viz-2: #d95926;
     --viz-3: #199e70;
     --viz-4: #a78bfa;
-    --viz-5: #ea7a3c;
     --glass-edge: rgb(255 255 255 / 0.09);
     --glass-shadow: 0 32px 90px -24px rgb(0 0 0 / 0.8);
 
@@ -154,7 +152,6 @@
   --viz-2: #d95926;
   --viz-3: #199e70;
   --viz-4: #a78bfa;
-  --viz-5: #ea7a3c;
   --glass-edge: rgb(255 255 255 / 0.09);
   --glass-shadow: 0 32px 90px -24px rgb(0 0 0 / 0.8);
 

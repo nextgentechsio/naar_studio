@@ -2,7 +2,17 @@
 
 import { useState, type FormEvent } from "react";
 import { useStudio } from "@/app/(studio)/_components/StudioProvider";
-import { CATEGORIES, GENDERS, INPUT_SLOTS, NAME_MAX, type Gender } from "@/lib/catalogue/shared";
+import {
+  CATEGORIES,
+  categoryFraming,
+  FRAMING_LABELS,
+  FRAMINGS,
+  GENDERS,
+  INPUT_SLOTS,
+  NAME_MAX,
+  type Framing,
+  type Gender,
+} from "@/lib/catalogue/shared";
 import { Button, Field, inputClass, textareaClass } from "@/app/components/ui/primitives";
 import PhotoSlot from "./PhotoSlot";
 import type { StepProps } from "./types";
@@ -21,6 +31,8 @@ export default function DetailsStep({ product, update, goTo }: StepProps) {
     gender: product.gender,
     notes: product.notes,
     project: product.project.name,
+    // "": from the category
+    framing: product.framing ?? "",
   }));
   const set = (key: keyof typeof form) => (value: string) => setForm((now) => ({ ...now, [key]: value }));
 
@@ -31,6 +43,7 @@ export default function DetailsStep({ product, update, goTo }: StepProps) {
     gender: product.gender,
     notes: product.notes,
     project: product.project.name,
+    framing: product.framing ?? "",
   };
   const changed = (Object.keys(form) as (keyof typeof form)[]).filter((key) => form[key] !== saved[key]);
 
@@ -44,6 +57,9 @@ export default function DetailsStep({ product, update, goTo }: StepProps) {
   const categories = CATEGORIES.includes(form.category as (typeof CATEGORIES)[number])
     ? CATEGORIES
     : [form.category, ...CATEGORIES];
+  const auto = categoryFraming(form.category);
+  const framing = (form.framing || auto) as Framing;
+  const framingLocked = product.status === "shooting" || product.status === "done";
   const projectNames = projects.some((item) => item.name === form.project)
     ? projects.map((item) => item.name)
     : [form.project, ...projects.map((item) => item.name)];
@@ -83,6 +99,33 @@ export default function DetailsStep({ product, update, goTo }: StepProps) {
               <select {...props} value={form.category} onChange={(event) => set("category")(event.target.value)} className={inputClass}>
                 {categories.map((item) => (
                   <option key={item}>{item}</option>
+                ))}
+              </select>
+            )}
+          </Field>
+          <Field
+            label="Framing"
+            hint={
+              framingLocked
+                ? "Locked: the shots follow the approved initial look"
+                : `${FRAMING_LABELS[framing].hint}. For the initial look, front, back and side shots.`
+            }
+          >
+            {(props) => (
+              <select
+                {...props}
+                disabled={framingLocked}
+                value={form.framing}
+                onChange={(event) => set("framing")(event.target.value)}
+                className={inputClass}
+              >
+                <option value="">
+                  Auto: {FRAMING_LABELS[auto].label} ({form.category})
+                </option>
+                {FRAMINGS.map((item) => (
+                  <option key={item} value={item}>
+                    {FRAMING_LABELS[item].label}
+                  </option>
                 ))}
               </select>
             )}

@@ -32,6 +32,33 @@ export type Category = (typeof CATEGORIES)[number];
 const RENAMED_CATEGORIES: Record<string, Category> = { Tops: "Top wear" };
 export const categoryName = (value: string): string => RENAMED_CATEGORIES[value] ?? value;
 
+// How much of the model the main shots (initial look,
+// front, back, side) show: the garment's part of the body.
+// Close-ups and lifestyle shots keep their own framing.
+export const FRAMINGS = ["full", "upper", "lower"] as const;
+export type Framing = (typeof FRAMINGS)[number];
+
+export const FRAMING_LABELS: Record<Framing, { label: string; hint: string }> = {
+  full: { label: "Full length", hint: "Head to toe" },
+  upper: { label: "Upper body", hint: "Head to mid-thigh, the top's hem in frame" },
+  lower: { label: "Lower body", hint: "Chest down to the feet" },
+};
+
+const CATEGORY_FRAMING: Partial<Record<string, Framing>> = {
+  "Top wear": "upper",
+  Shirts: "upper",
+  "T-shirts": "upper",
+  Bottoms: "lower",
+};
+
+// The category's framing (anything not listed, including
+// custom categories, is full length)
+export const categoryFraming = (category: string): Framing => CATEGORY_FRAMING[categoryName(category)] ?? "full";
+
+// The product's own choice, else its category's
+export const framingOf = (product: { category: string; framing?: Framing | null }): Framing =>
+  product.framing ?? categoryFraming(product.category);
+
 // Garment photo slots on a product, in upload order
 export const INPUT_SLOTS = [
   { key: "front", label: "Front", required: true, hint: "Garment front, flat lay or on a mannequin" },
@@ -215,6 +242,8 @@ export type PublicProduct = {
   inputs: Partial<Record<InputSlot, string>>;
   imageModel: ImageModelId;
   resolution: Resolution;
+  // null: from the category (framingOf)
+  framing: Framing | null;
   status: ProductStatus;
   // The initial look first, then the template's other shots
   shots: ProductShot[];

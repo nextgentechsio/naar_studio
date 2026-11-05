@@ -25,6 +25,9 @@ import { RunError } from "./run";
 import {
   CATEGORIES,
   categoryName,
+  FRAMINGS,
+  framingOf,
+  type Framing,
   DEFAULT_IMAGE_MODEL,
   FEEDBACK_MAX,
   GENDERS,
@@ -363,6 +366,7 @@ async function present(doc: ProductDoc, runs: RunDoc[]): Promise<PublicProduct> 
     inputs: doc.inputs,
     imageModel: imageModelOf(doc.imageModel),
     resolution: doc.resolution,
+    framing: doc.framing ?? null,
     status: doc.status,
     shots: doc.plan.map((shot) => ({
       shotId: shot.id,
@@ -474,6 +478,15 @@ export async function updateProduct(actor: Actor, id: string, body: Record<strin
     if (!IMAGE_MODELS.some((model) => model.id === body.imageModel)) throw new CatalogueError(400, "Unknown image model");
     set.imageModel = body.imageModel as ProductDoc["imageModel"];
   }
+  if (body.framing !== undefined) {
+    const framing = body.framing === null || body.framing === "" ? null : (body.framing as Framing);
+    if (framing !== null && !FRAMINGS.includes(framing)) throw new CatalogueError(400, "Unknown framing");
+    // The later shots must match the approved look
+    if (locked && framing !== (doc.framing ?? null)) {
+      throw new CatalogueError(409, "The framing can't change after the initial look is approved");
+    }
+    set.framing = framing;
+  }
   if (body.resolution !== undefined) {
     if (!RESOLUTIONS.includes(body.resolution as ProductDoc["resolution"])) throw new CatalogueError(400, "Unknown size");
     set.resolution = body.resolution as ProductDoc["resolution"];
@@ -567,6 +580,7 @@ async function startShot(
     shot,
     isInitial,
     product: { name: doc.name, category: categoryName(doc.category), gender: doc.gender, notes: doc.notes },
+    framing: framingOf(doc),
     styling: doc.styling,
     model,
     pose,

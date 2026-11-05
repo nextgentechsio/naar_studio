@@ -3,7 +3,7 @@
 // original's internal reference shape)
 // --------------------------------------------------
 
-import type { Gender, PublicAsset, ShotDefinition } from "../shared";
+import type { Framing, Gender, PublicAsset, ShotDefinition } from "../shared";
 import type { GarmentSlot, OriginalShotType, PatternSlot } from "./constants";
 
 export type RefRole =
@@ -67,6 +67,10 @@ export type PromptContext = {
   references: Reference[];
   // referenceCapForModel
   maxRefs: number;
+
+  // How much of the model the main shots show (ours, not
+  // the original's): "full" leaves the prompt as ported
+  framing?: Framing;
 
   // ---------- Optional (phase B/C data) ----------
   // One of the original's 13 shot keys; overrides the

@@ -3,6 +3,7 @@ import { getDb } from "@/lib/db/mongodb";
 import type {
   AssetKind,
   Crop,
+  Framing,
   Gender,
   ImageModelId,
   InputSlot,
@@ -74,6 +75,9 @@ export type ProductDoc = {
   inputs: Partial<Record<InputSlot, string>>;
   imageModel: ImageModelId;
   resolution: Resolution;
+  // How much of the model the main shots show; null or
+  // missing: from the category
+  framing?: Framing | null;
   status: ProductStatus;
   // shotId → generation id of the version in use
   selected: Record<string, string>;

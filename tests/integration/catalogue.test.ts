@@ -516,6 +516,47 @@ describe("catalogue direct engines (Google, OpenAI)", () => {
     expect((await crop(null)).status).toBe(200);
   });
 
+  it("frames the main shots by category, unless the product chooses", async () => {
+    const created = await api("/api/catalogue/products", {
+      session: alice.session,
+      json: { name: "Black hoodie", category: "Top wear", gender: "male", project: project.name },
+    });
+    expect((created.data as { product: { framing: string | null } }).product.framing).toBeNull();
+    let hoodie = (created.data as { product: Product }).product;
+    const front = await storeBlob(`catalogue/${alice.id}/products/${hoodie.id}/inputs/front.png`);
+    const quick = (await library(alice.session)).templates.find((t) => t.shots.length >= 4)!;
+    const patch = (json: Record<string, unknown>) =>
+      api(`/api/catalogue/products/${hoodie.id}`, { session: alice.session, method: "PATCH", json });
+    await patch({ inputs: { front }, templateId: quick.id });
+    expect((await patch({ framing: "sideways" })).status).toBe(400);
+
+    const lastPrompt = async () => {
+      const calls = await requestsTo("/google/", 0);
+      return ((calls.at(-1)!.body as { input: { text?: string }[] }).input.at(-1)?.text ?? "") as string;
+    };
+
+    // Auto: Top wear → upper body
+    expect((await action(alice.session, hoodie.id, "generate")).status).toBe(200);
+    hoodie = await settle(hoodie.id);
+    let prompt = await lastPrompt();
+    expect(prompt).toContain("UPPER-BODY FRAMING");
+    expect(prompt).not.toMatch(/head-to-toe/i);
+
+    // Chosen: full length, as the original
+    expect((await patch({ framing: "full" })).status).toBe(200);
+    expect((await action(alice.session, hoodie.id, "generate")).status).toBe(200);
+    hoodie = await settle(hoodie.id);
+    prompt = await lastPrompt();
+    expect(prompt).not.toContain("UPPER-BODY FRAMING");
+    expect(prompt).toMatch(/head-to-toe/i);
+
+    // Back to auto (""), then locked once approved
+    expect((await patch({ framing: "" })).status).toBe(200);
+    expect((await action(alice.session, hoodie.id, "approve", { shotIds: [] })).status).toBe(200);
+    expect((await patch({ framing: "full" })).status).toBe(409);
+    expect((await patch({ framing: null })).status).toBe(200);
+  });
+
   it("fails a blocked image cleanly, with nothing billed", async () => {
     const since = (await replicateRequests()).length;
     const { status, data } = await action(alice.session, item.id, "generate", { feedback: "blockme please" });

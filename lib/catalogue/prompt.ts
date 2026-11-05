@@ -27,6 +27,7 @@ import {
 } from "./prompt/constants";
 import { collectReferences, packReferencesToCap, uploadItemLabel } from "./prompt/references";
 import type { OrigRef, PromptContext, Reference } from "./prompt/types";
+import { applyFraming, frameShotText, framingApplies } from "./prompt/framing";
 
 export type { PromptContext, RefRole, Reference, SkinDepthNote } from "./prompt/types";
 export { ORIGINAL_SHOT_TYPES, OUTPUT_SHARPNESS, type OriginalShotType } from "./prompt/constants";
@@ -70,10 +71,11 @@ function fillOurVars(text: string, ctx: PromptContext): string {
 }
 
 function promptShot(ctx: PromptContext): PromptShot {
+  const text = fillOurVars(ctx.shot.prompt ?? "", ctx);
   return {
     shotType: originalShotType(ctx),
     isInitialLook: ctx.isInitial,
-    promptTemplate: fillOurVars(ctx.shot.prompt ?? "", ctx),
+    promptTemplate: framingApplies(ctx.framing, ctx.shot.type) ? frameShotText(text, ctx.framing) : text,
     inheritInitialLookBackground: ctx.inheritBackground !== false,
   };
 }
@@ -132,7 +134,7 @@ export function buildShotRequest(ctx: PromptContext): { prompt: string; referenc
       ? fill(ctx.modelDescription)
       : [fill(ctx.model?.prompt), fill(ctx.styling)].filter(Boolean).join("\n");
 
-  const body = buildPrompt(shot, {
+  const ported = buildPrompt(shot, {
     pose: ctx.pose
       ? {
           prompt: fill(ctx.pose.prompt),
@@ -161,6 +163,10 @@ export function buildShotRequest(ctx: PromptContext): { prompt: string; referenc
     accessories: ctx.accessories.map((a) => ({ name: a.name })),
     skinDepthNote: ctx.skinDepth ?? null,
   });
+  // Upper / lower body: the full-length lines follow the framing
+  const body = framingApplies(ctx.framing, ctx.shot.type)
+    ? applyFraming(ported, ctx.framing, ctx.product.name)
+    : ported;
 
   const feedback = ctx.feedback.trim();
   const correction = feedback ? `${CORRECTION_HEADING}\n${clipTo(feedback, 4000)}` : "";

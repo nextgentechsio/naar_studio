@@ -63,6 +63,24 @@ const SCHEMA = {
 
 export const FAKE_HF_CREDENTIALS = "fake-id:fake-secret";
 export const FAKE_ELEVENLABS_KEY = "fake-elevenlabs-key";
+// Catalogue's direct providers (never the real, billable APIs)
+export const FAKE_GOOGLE_KEY = "fake-google-key";
+export const FAKE_OPENAI_KEY = "fake-openai-key";
+// What the fakes report using (priced by lib/catalogue/direct.ts)
+export const FAKE_GOOGLE_USAGE = {
+  promptTokenCount: 4000,
+  candidatesTokenCount: 1780,
+  thoughtsTokenCount: 900,
+  candidatesTokensDetails: [
+    { modality: "IMAGE", tokenCount: 1680 },
+    { modality: "TEXT", tokenCount: 100 },
+  ],
+};
+export const FAKE_OPENAI_USAGE = {
+  input_tokens: 3000,
+  input_tokens_details: { text_tokens: 1500, image_tokens: 1500 },
+  output_tokens: 1317,
+};
 
 // 128 kbps MP3: 16,000 bytes a second (what the app asks
 // ElevenLabs for, and prices audio by)
@@ -395,6 +413,43 @@ export async function startFakeReplicate() {
       const stored = hfStore.get(name);
       if (!stored) return send(404, { error: "Not found" });
       return serveBytes(req, res, stored.bytes, { "content-type": stored.type });
+    }
+
+    // ---------- fake Google AI (/google) ----------
+    // generateContent: one image; "blockme" in the prompt
+    // comes back blocked, with no image
+
+    if (path.startsWith("/google/")) {
+      requests.push({ method: req.method ?? "", path, body, bytes: raw.length });
+      if (req.headers["x-goog-api-key"] !== FAKE_GOOGLE_KEY) {
+        return send(403, { error: { code: 403, message: "API key not valid." } });
+      }
+      if (/^\/google\/v1beta\/models\/[^/]+:generateContent$/.test(path) && req.method === "POST") {
+        const parts = ((body as { contents?: { parts?: { text?: string }[] }[] })?.contents?.[0]?.parts ?? []);
+        if (parts.some((part) => part.text?.includes("blockme"))) {
+          return send(200, { candidates: [{ finishReason: "IMAGE_SAFETY" }], usageMetadata: { promptTokenCount: 4000 } });
+        }
+        return send(200, {
+          candidates: [{ finishReason: "STOP", content: { parts: [{ inlineData: { mimeType: "image/png", data: PNG.toString("base64") } }] } }],
+          usageMetadata: FAKE_GOOGLE_USAGE,
+        });
+      }
+      return send(404, { error: { message: "No fake" } });
+    }
+
+    // ---------- fake OpenAI images (/openai) ----------
+
+    if (path.startsWith("/openai/")) {
+      // Multipart edits: note how many images came along
+      const imageParts = (raw.toString("latin1").match(/name="image(\[\])?"/g) ?? []).length;
+      requests.push({ method: req.method ?? "", path, body: body ?? { imageParts }, bytes: raw.length });
+      if (req.headers.authorization !== `Bearer ${FAKE_OPENAI_KEY}`) {
+        return send(401, { error: { message: "Incorrect API key provided" } });
+      }
+      if ((path === "/openai/images/edits" || path === "/openai/images/generations") && req.method === "POST") {
+        return send(200, { data: [{ b64_json: PNG.toString("base64") }], usage: FAKE_OPENAI_USAGE });
+      }
+      return send(404, { error: { message: "No fake" } });
     }
 
     // ---------- fake ElevenLabs API (/el) ----------

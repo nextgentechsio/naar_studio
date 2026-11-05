@@ -14,6 +14,7 @@ import {
   isHiggsfieldOutputUrl,
 } from "@/lib/higgsfield/client";
 import {
+  isLocalProvider,
   providerName,
   expensesCollection,
   generationsCollection,
@@ -488,7 +489,7 @@ export function fetchGenerationStatus(
     "_id" | "provider" | "status" | "createdAt" | "localOutputUrl" | "error" | "predictTime"
   >
 ): ReturnType<typeof fetchPrediction> {
-  if (generation.provider === "elevenlabs") return Promise.resolve(localRunStatus(generation));
+  if (isLocalProvider(generation.provider)) return Promise.resolve(localRunStatus(generation));
 
   return generation.provider === "higgsfield"
     ? checkHiggsfieldRequest(generation._id)

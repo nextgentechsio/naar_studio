@@ -33,7 +33,7 @@ export type HistoryFilters = {
   // Created between (ISO instants; to is exclusive)
   from?: string;
   to?: string;
-  provider?: "replicate" | "higgsfield" | "elevenlabs";
+  provider?: Exclude<Platform, "">;
   // Finished runs with a saved output of this kind
   kind?: "image" | "video" | "audio";
   // false: skip the filter dropdown values (see
@@ -132,7 +132,7 @@ export async function fetchCostAnalytics(options: {
   from: Date;
   to: Date;
   monthStart: Date;
-  provider?: "replicate" | "higgsfield" | "elevenlabs";
+  provider?: Exclude<Platform, "">;
 }): Promise<CostAnalytics> {
   const params = new URLSearchParams({
     from: options.from.toISOString(),
@@ -146,13 +146,15 @@ export async function fetchCostAnalytics(options: {
 }
 
 // Where a run was made (the Generate pages)
-export type Platform = "" | "replicate" | "higgsfield" | "elevenlabs";
+export type Platform = "" | "replicate" | "higgsfield" | "elevenlabs" | "google" | "openai";
 
 export const PLATFORMS: [Platform, string][] = [
   ["", "All platforms"],
   ["replicate", "Replicate"],
   ["higgsfield", "Higgsfield"],
   ["elevenlabs", "ElevenLabs"],
+  ["google", "Google"],
+  ["openai", "OpenAI"],
 ];
 
 export function readPlatform(value: string | null): Platform {
@@ -163,7 +165,7 @@ export type ExpenseQuery = {
   project?: string;
   user?: string;
   model?: string;
-  provider?: "replicate" | "higgsfield" | "elevenlabs";
+  provider?: Exclude<Platform, "">;
   from?: string;
   to?: string;
 };

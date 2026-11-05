@@ -61,6 +61,7 @@ const PATHS = {
   edit: "M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z",
   folder:
     "M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z",
+  shirt: "M20.4 6.6 16 4a4 4 0 0 1-8 0L3.6 6.6a1 1 0 0 0-.4 1.3l1.4 2.8a1 1 0 0 0 1.3.4L8 10v10a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V10l2.1 1.1a1 1 0 0 0 1.3-.4l1.4-2.8a1 1 0 0 0-.4-1.3z",
 } as const;
 
 export type IconName = keyof typeof PATHS;

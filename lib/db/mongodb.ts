@@ -76,13 +76,29 @@ export type ProjectDoc = {
 // One document per Replicate prediction; _id is the
 // Replicate prediction id.
 // Who ran a generation (and bills it)
-export type Provider = "replicate" | "higgsfield" | "elevenlabs";
+// google / openai: called directly (Catalogue), run on
+// this server like ElevenLabs
+export type Provider = "replicate" | "higgsfield" | "elevenlabs" | "google" | "openai";
 
-const PROVIDERS: Provider[] = ["replicate", "higgsfield", "elevenlabs"];
+const PROVIDERS: Provider[] = ["replicate", "higgsfield", "elevenlabs", "google", "openai"];
 
-// "Replicate", "Higgsfield", "ElevenLabs"
+const PROVIDER_NAMES: Record<Provider, string> = {
+  replicate: "Replicate",
+  higgsfield: "Higgsfield",
+  elevenlabs: "ElevenLabs",
+  google: "Google",
+  openai: "OpenAI",
+};
+
+// "Replicate", "Higgsfield", "ElevenLabs", "Google", "OpenAI"
 export function providerName(provider: Provider | undefined): string {
-  return provider === "higgsfield" ? "Higgsfield" : provider === "elevenlabs" ? "ElevenLabs" : "Replicate";
+  return PROVIDER_NAMES[provider ?? "replicate"] ?? "Replicate";
+}
+
+// Runs this server does itself (no provider-side record
+// to poll): their record is the status
+export function isLocalProvider(provider: Provider | undefined): boolean {
+  return provider === "elevenlabs" || provider === "google" || provider === "openai";
 }
 
 export function isProvider(value: unknown): value is Provider {
@@ -93,7 +109,7 @@ export function isProvider(value: unknown): value is Provider {
 // provider: they're all Replicate (the others came later).
 export function providerMatch(provider: Provider) {
   return provider === "replicate"
-    ? { provider: { $nin: ["higgsfield" as const, "elevenlabs" as const] } }
+    ? { provider: { $nin: PROVIDERS.filter((item) => item !== "replicate") } }
     : { provider };
 }
 

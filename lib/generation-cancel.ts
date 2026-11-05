@@ -1,4 +1,4 @@
-import { generationsCollection, providerName, type GenerationDoc } from "@/lib/db/mongodb";
+import { generationsCollection, isLocalProvider, providerName, type GenerationDoc } from "@/lib/db/mongodb";
 import { applyPrediction, getGeneration, isTerminalStatus } from "@/lib/generations";
 import { cancelHiggsfieldRequest } from "@/lib/higgsfield/client";
 import { readReplicateJson, replicateApiUrl, replicateErrorMessage, replicateHeaders } from "@/lib/replicate/api";
@@ -46,7 +46,7 @@ export async function cancelGeneration(generation: GenerationDoc): Promise<Cance
 
   const provider = generation.provider ?? "replicate";
 
-  if (provider === "elevenlabs") {
+  if (isLocalProvider(provider)) {
     return (await markCanceled(generation._id)) ? { ok: true, status: "canceled" } : settled(generation._id);
   }
 

@@ -74,6 +74,8 @@ describe("direct uploads", () => {
       body: JSON.stringify([blob("inputs/old.png", 8), blob("inputs/new.png", 6)]),
     });
 
+    // Only this test's requests (other tests' share the fake)
+    const seen = (await (await fetch(`${replicateUrl}/__control/blobs`)).json()).requests.length;
     expect(await pruneOldInputs()).toBe(1);
 
     const state = await (await fetch(`${replicateUrl}/__control/blobs`)).json();
@@ -82,7 +84,7 @@ describe("direct uploads", () => {
     // whole store (project photos and the media library
     // must never be swept)
     // (head() lookups by URL aren't lists)
-    const lists = state.requests.filter(
+    const lists = state.requests.slice(seen).filter(
       (r: { method: string; path: string }) =>
         r.method === "GET" && r.path.startsWith("/blob?") && !r.path.includes("url=")
     );

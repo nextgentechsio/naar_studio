@@ -132,7 +132,9 @@ export default function GenerationDrawer({
     if (!detail) return;
 
     const provider = detail.provider ?? "replicate";
-    const { loadDraft, setError: setGenerateError } = stores[provider];
+    // Catalogue's direct runs (google / openai) have no Generate page
+    if (!(provider in stores)) return;
+    const { loadDraft, setError: setGenerateError } = stores[provider as keyof typeof stores];
 
     const projectActive = projects.some((item) => item.name === detail.project);
 
@@ -336,6 +338,7 @@ export default function GenerationDrawer({
                 )}
 
               <div className="flex flex-wrap gap-2">
+                {(generation.provider ?? "replicate") in stores && (
                 <Button
                   variant="primary"
                   icon="sparkles"
@@ -349,6 +352,7 @@ export default function GenerationDrawer({
                 >
                   Run again
                 </Button>
+                )}
 
                 {generation.outputUrl && (
                   <Button icon="download" onClick={download}>

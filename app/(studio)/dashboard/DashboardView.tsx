@@ -36,7 +36,7 @@ import { BarList, SpendColumns, ViewSwitch, type DayValues, type Series } from "
 // the latest runs, whatever the period.
 // --------------------------------------------------
 
-type ProviderKey = "replicate" | "higgsfield" | "elevenlabs";
+type ProviderKey = "replicate" | "higgsfield" | "elevenlabs" | "google" | "openai";
 
 // Fixed order and colors: a platform keeps its color
 // whatever the filter (validated palette, --viz-*)
@@ -44,6 +44,8 @@ const SERIES: Series<ProviderKey>[] = [
   { key: "replicate", label: "Replicate", color: "var(--viz-1)" },
   { key: "higgsfield", label: "Higgsfield", color: "var(--viz-2)" },
   { key: "elevenlabs", label: "ElevenLabs", color: "var(--viz-3)" },
+  { key: "google", label: "Google", color: "var(--viz-4)" },
+  { key: "openai", label: "OpenAI", color: "var(--viz-5)" },
 ];
 
 const PROVIDER_LABEL = Object.fromEntries(SERIES.map((item) => [item.key, item.label])) as Record<ProviderKey, string>;
@@ -192,7 +194,7 @@ export default function DashboardView() {
   // Every day of the period, zeros included
   const byDay = new Map(data?.days.map((day) => [day.day, day]) ?? []);
   const days: DayValues<ProviderKey>[] = period.days.map(
-    (day) => byDay.get(day) ?? { day, replicate: 0, higgsfield: 0, elevenlabs: 0, runs: 0 },
+    (day) => byDay.get(day) ?? { day, replicate: 0, higgsfield: 0, elevenlabs: 0, google: 0, openai: 0, runs: 0 },
   );
 
   // Per priced run

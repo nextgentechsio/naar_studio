@@ -168,3 +168,19 @@ describe("direct provider calls", () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe("interactions usage", () => {
+  it("prices a real Nano Banana 2.1 response: image tokens at the image rate, the rest as text", async () => {
+    const { googleCostUsd, interactionUsage } = await import("@/lib/catalogue/direct");
+    // From a real 1K call on 2026-11-05
+    const usage = interactionUsage({
+      total_input_tokens: 21,
+      total_output_tokens: 1395,
+      output_tokens_by_modality: [{ modality: "image", tokens: 1120 }],
+      total_thought_tokens: 854,
+    });
+    const cost = googleCostUsd(usage, { resolution: "1K", references: 0, promptChars: 90 });
+    expect(cost).toBeCloseTo((21 * 1.5 + 1120 * 30 + (275 + 854) * 7.5) / 1e6, 8);
+    expect(cost).toBeCloseTo(0.0421, 4);
+  });
+});

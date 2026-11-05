@@ -10,6 +10,7 @@
 
 ## What stays ours (on purpose)
 - **Accounts and storage:** Naar users, roles and platform access; Naar projects as cost centres; MongoDB and Vercel Blob; our expenses.
+- **Image models: only the original's two**, called directly with its keys. These are Nano Banana 2.1 (`NANO_BANANA_API_KEY`, the default) and Sunburst (`OPENAI_API_KEY`). No Replicate (the user asked on 2026-11-05). Products saved with an old Replicate model map to the same model called directly (`imageModelOf`).
 - **No costs on Catalogue pages.** If Insights shows cost at all, only admins see it.
 - **Engine scope:** the original's **legacy engine** (`buildPrompt`) is the one we replicate. The RDA engine (scene presets, playlists, template import) depends on the Aadai Firebase snapshot and is out of scope unless that data is provided.
 - **Text and vision steps:** these use Gemini (`gemini-flash-latest`) with `NANO_BANANA_API_KEY`, as the original does. Text calls are recorded as Catalogue expenses.

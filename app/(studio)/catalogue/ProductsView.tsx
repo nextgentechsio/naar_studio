@@ -10,6 +10,7 @@ import { errorMessage } from "@/lib/client/http";
 import { Icon } from "@/app/components/ui/Icon";
 import { Alert, Button, cx, EmptyState, inputClass, PageHeader } from "@/app/components/ui/primitives";
 import NewProductDialog from "./_parts/NewProductDialog";
+import Generating from "./_parts/Generating";
 import { StatusBadge, timeAgo } from "./_parts/product-ui";
 
 // --------------------------------------------------
@@ -43,6 +44,21 @@ export default function ProductsView() {
       cancelled = true;
     };
   }, []);
+
+  // While any image is being made, refresh every 5 s so its
+  // card updates when it's done
+  const anyGenerating = Boolean(products?.some((item) => item.generating));
+  useEffect(() => {
+    if (!anyGenerating) return;
+    const timer = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      catalogueApi
+        .products()
+        .then((data) => setProducts(data.products))
+        .catch(() => {});
+    }, 5_000);
+    return () => clearInterval(timer);
+  }, [anyGenerating]);
 
   // ?project=<id>; none = all projects
   const router = useRouter();
@@ -172,10 +188,20 @@ function ProductCard({ product, owner }: { product: ProductSummary; owner: strin
           loading="lazy"
           className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
         />
-      ) : (
+      ) : product.generating ? null : (
         <span aria-hidden className="absolute inset-0 flex items-center justify-center bg-accent-soft text-accent">
           <Icon name="shirt" size={40} className="opacity-70 transition-transform duration-500 group-hover:scale-110" />
         </span>
+      )}
+
+      {product.generating && (
+        <Generating
+          run={null}
+          size="compact"
+          initial={product.status !== "shooting"}
+          overlay={Boolean(product.cover)}
+          className="pb-20"
+        />
       )}
 
       <span aria-hidden className="absolute inset-0 bg-linear-to-t from-black/70 via-black/10 to-transparent" />

@@ -34,6 +34,7 @@ const SAVE_MARGIN_MS = 8_000;
 const LEASE_EXTRA_MS = 30_000;
 
 export type QueuedJob = Pick<JobDoc, "_id" | "productId" | "engine" | "request">;
+const ENGINES = ["google", "openai"] as const;
 
 type Job = JobDoc;
 
@@ -131,7 +132,7 @@ async function releaseProduct(productId: string | null): Promise<void> {
 async function claim(timeLeftMs: number): Promise<Job | null> {
   const { jobs, slots } = await catalogueCollections();
   const now = new Date();
-  const engines = (["google", "openai"] as const).filter(
+  const engines = ENGINES.filter(
     (engine) => CALL_TIMEOUT_MS[engine] + SAVE_MARGIN_MS <= timeLeftMs,
   );
   if (!engines.length) return null;

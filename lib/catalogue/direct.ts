@@ -187,16 +187,35 @@ function googleFailure(status: number, message: string): DirectError {
 // switches.
 const googleApi = () => (process.env.CATALOGUE_GOOGLE_API === "generateContent" ? "generateContent" : "interactions");
 
-// Usage as `interactions` may report it (field names vary;
-// unknown ones fall back to the estimate)
-type InteractionUsage = Record<string, unknown>;
-function interactionUsage(usage: InteractionUsage | undefined): GoogleUsage | null {
-  if (!usage || typeof usage !== "object") return null;
-  const pick = (...keys: string[]) => keys.map((key) => num(usage[key])).find((value) => value > 0) ?? 0;
-  const input = pick("total_input_tokens", "input_tokens", "promptTokenCount", "prompt_tokens");
-  const output = pick("total_output_tokens", "output_tokens", "candidatesTokenCount", "completion_tokens");
-  const thoughts = pick("total_thought_tokens", "thought_tokens", "thoughtsTokenCount", "reasoning_tokens");
-  return output ? { promptTokenCount: input, candidatesTokenCount: output, thoughtsTokenCount: thoughts } : null;
+// `interactions` usage (checked against a real response,
+// 2026-11-05): total_input_tokens, total_output_tokens with
+// output_tokens_by_modality [{modality:"image"|"text",
+// tokens}], and total_thought_tokens apart. In the
+// generateContent shape for googleCostUsd.
+type InteractionUsage = {
+  total_input_tokens?: number;
+  total_output_tokens?: number;
+  total_thought_tokens?: number;
+  output_tokens_by_modality?: { modality?: string; tokens?: number }[];
+};
+export function interactionUsage(usage: InteractionUsage | undefined): GoogleUsage | null {
+  if (!usage || typeof usage !== "object" || !num(usage.total_output_tokens)) return null;
+  const byModality = usage.output_tokens_by_modality ?? [];
+  const image = byModality.filter((item) => item.modality?.toLowerCase() === "image").reduce((sum, item) => sum + num(item.tokens), 0);
+  return {
+    promptTokenCount: num(usage.total_input_tokens),
+    candidatesTokenCount: num(usage.total_output_tokens),
+    thoughtsTokenCount: num(usage.total_thought_tokens),
+    // The rest of the output is text
+    ...(byModality.length
+      ? {
+          candidatesTokensDetails: [
+            { modality: "IMAGE", tokenCount: image },
+            { modality: "TEXT", tokenCount: num(usage.total_output_tokens) - image },
+          ],
+        }
+      : {}),
+  };
 }
 
 // nano_banana.py: POST /v1beta/interactions

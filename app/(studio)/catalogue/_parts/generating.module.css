@@ -1,0 +1,234 @@
+/* --------------------------------------------------
+   CATALOGUE "GENERATING" ANIMATION (Generating.tsx)
+   An image being made: a slow aurora, a light scanning
+   down the frame like a print head, a breathing garment
+   mark with rings. Colours come from the theme tokens;
+   the global reduced-motion rule stills it.
+   -------------------------------------------------- */
+
+.root {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  isolation: isolate;
+  background:
+    radial-gradient(120% 90% at 50% 110%, color-mix(in oklab, var(--viz-1) 18%, transparent), transparent 60%),
+    var(--sunken);
+}
+
+/* Over the previous image: let it show through, blurred */
+.overlay {
+  background: color-mix(in oklab, var(--sunken) 45%, transparent);
+  backdrop-filter: blur(6px) saturate(120%);
+}
+
+/* Two soft colour clouds drifting in opposite ways */
+.aurora,
+.aurora::after {
+  position: absolute;
+  inset: -40%;
+  content: "";
+  background:
+    radial-gradient(35% 30% at 30% 35%, color-mix(in oklab, var(--viz-1) 55%, transparent), transparent 70%),
+    radial-gradient(30% 28% at 70% 60%, color-mix(in oklab, var(--viz-4) 50%, transparent), transparent 70%);
+  filter: blur(28px);
+  opacity: 0.55;
+  animation: drift 9s ease-in-out infinite alternate;
+}
+
+.aurora::after {
+  inset: 0;
+  background:
+    radial-gradient(30% 26% at 65% 30%, color-mix(in oklab, var(--viz-3) 45%, transparent), transparent 70%),
+    radial-gradient(26% 24% at 35% 70%, color-mix(in oklab, var(--viz-2) 35%, transparent), transparent 70%);
+  animation: drift 11s ease-in-out infinite alternate-reverse;
+}
+
+/* Faint grid, like a photo being resolved */
+.grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(color-mix(in oklab, var(--fg) 6%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in oklab, var(--fg) 6%, transparent) 1px, transparent 1px);
+  background-size: 22px 22px;
+  mask-image: radial-gradient(70% 60% at 50% 50%, #000, transparent);
+  opacity: 0.6;
+}
+
+/* The scan: a glowing band sweeping top to bottom */
+.scan {
+  position: absolute;
+  inset-inline: 0;
+  top: -30%;
+  height: 30%;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    color-mix(in oklab, var(--viz-1) 16%, transparent) 70%,
+    color-mix(in oklab, #fff 55%, var(--viz-1)) 98%,
+    transparent
+  );
+  mix-blend-mode: screen;
+  animation: scan 2.6s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+}
+
+.center {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 16px;
+  text-align: center;
+}
+
+.mark {
+  position: relative;
+  display: flex;
+  height: 56px;
+  width: 56px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18px;
+  color: var(--fg);
+  background: color-mix(in oklab, var(--surface) 70%, transparent);
+  border: 1px solid color-mix(in oklab, var(--fg) 14%, transparent);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 10px 30px -12px color-mix(in oklab, var(--viz-1) 70%, transparent);
+  animation: breathe 2.4s ease-in-out infinite;
+}
+
+/* Rings rippling out of the mark */
+.mark::before,
+.mark::after {
+  position: absolute;
+  inset: -1px;
+  content: "";
+  border-radius: inherit;
+  border: 1.5px solid color-mix(in oklab, var(--viz-1) 60%, transparent);
+  animation: ripple 2.4s ease-out infinite;
+}
+
+.mark::after {
+  animation-delay: 1.2s;
+}
+
+.label {
+  min-height: 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.phase {
+  display: inline-block;
+  animation: phase 0.5s ease-out both;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Progress that eases toward the end but never claims
+   to be done (the real time isn't known) */
+.bar {
+  position: relative;
+  height: 3px;
+  width: min(180px, 70%);
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--fg) 10%, transparent);
+}
+
+.bar > span {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--viz-1), var(--viz-4));
+  transition: width 1s linear;
+}
+
+.bar.waiting > span {
+  width: 35% !important;
+  animation: slide 1.6s ease-in-out infinite;
+}
+
+/* ---------- compact (tiles, thumbnails) ---------- */
+
+.compact .mark {
+  height: 34px;
+  width: 34px;
+  border-radius: 12px;
+}
+
+.compact .center {
+  gap: 8px;
+  padding: 8px;
+}
+
+.compact .label {
+  font-size: 0.75rem;
+}
+
+.compact .grid {
+  background-size: 14px 14px;
+}
+
+.tiny .center {
+  padding: 0;
+}
+
+.tiny .mark {
+  height: 22px;
+  width: 22px;
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.tiny .mark::before,
+.tiny .mark::after,
+.tiny .grid {
+  display: none;
+}
+
+@keyframes drift {
+  from { transform: translate3d(-6%, -4%, 0) rotate(0deg) scale(1); }
+  to { transform: translate3d(6%, 5%, 0) rotate(25deg) scale(1.08); }
+}
+
+@keyframes scan {
+  0% { transform: translateY(0); opacity: 0; }
+  12% { opacity: 1; }
+  88% { opacity: 1; }
+  100% { transform: translateY(440%); opacity: 0; }
+}
+
+@keyframes breathe {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-3px) scale(1.04); }
+}
+
+@keyframes ripple {
+  0% { transform: scale(1); opacity: 0.7; }
+  100% { transform: scale(1.7); opacity: 0; }
+}
+
+@keyframes phase {
+  from { opacity: 0; transform: translateY(4px); filter: blur(2px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+
+@keyframes slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}

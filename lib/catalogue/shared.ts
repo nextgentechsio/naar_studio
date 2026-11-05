@@ -38,11 +38,10 @@ export const INPUT_SLOTS = [
 ] as const;
 export type InputSlot = (typeof INPUT_SLOTS)[number]["key"];
 
-// Image models. "google:" / "openai:" are called directly
-// with the original catalogue's keys (lib/catalogue/direct.ts,
-// priced from the tokens used); the others go through
-// Replicate (priced in lib/replicate/cost.ts). Either way
-// each image is a generation billed to the project.
+// Image models: the original catalogue's two
+// (GENERATION_MODEL_OPTIONS), called directly with its
+// keys, NANO_BANANA_API_KEY and OPENAI_API_KEY
+// (lib/catalogue/direct.ts). No Replicate.
 export const IMAGE_MODELS = [
   {
     id: "google:gemini-nano-banana-2.1",
@@ -53,30 +52,21 @@ export const IMAGE_MODELS = [
   },
   {
     id: "openai:gpt-image-2.5-sunburst",
-    label: "GPT Image 2.5 Sunburst",
+    label: "Sunburst",
     via: "OpenAI",
-    hint: "Crisp studio look; slower",
-    maxRefs: 16,
-  },
-  {
-    id: "google/nano-banana-2",
-    label: "Nano Banana 2",
-    via: "Replicate",
-    hint: "Same family, through Replicate",
-    maxRefs: 14,
-  },
-  {
-    id: "openai/gpt-image-2.5-sunburst",
-    label: "GPT Image 2.5",
-    via: "Replicate",
-    hint: "Same model, through Replicate",
+    hint: "GPT Image 2.5 Sunburst. Crisp studio look; slower",
     maxRefs: 16,
   },
 ] as const;
 export type ImageModelId = (typeof IMAGE_MODELS)[number]["id"];
-// Replicate's Nano Banana 2 until the Google key can make
-// images (its project is on the free tier, which can't)
-export const DEFAULT_IMAGE_MODEL: ImageModelId = "google/nano-banana-2";
+export const DEFAULT_IMAGE_MODEL: ImageModelId = "google:gemini-nano-banana-2.1";
+
+// Products saved while Replicate models were offered move
+// to the same model, called directly
+export function imageModelOf(stored: string | null | undefined): ImageModelId {
+  if (IMAGE_MODELS.some((model) => model.id === stored)) return stored as ImageModelId;
+  return /sunburst|gpt-image/.test(stored ?? "") ? "openai:gpt-image-2.5-sunburst" : DEFAULT_IMAGE_MODEL;
+}
 
 export const RESOLUTIONS = ["1K", "2K"] as const;
 export type Resolution = (typeof RESOLUTIONS)[number];
@@ -175,6 +165,9 @@ export type ShotRun = {
   feedback: string;
   model: string;
   createdAt: string;
+  // When the image call began; null while it waits its
+  // turn in the queue
+  startedAt: string | null;
 };
 
 export type ProductShot = {
@@ -225,6 +218,8 @@ export type ProductSummary = Pick<
   // expenses, so it matches Expenses for the project)
   images: number;
   spendUsd: number;
+  // An image is being made right now
+  generating: boolean;
 };
 
 export const NAME_MAX = 120;

@@ -67,9 +67,14 @@ export const FAKE_ELEVENLABS_KEY = "fake-elevenlabs-key";
 export const FAKE_GOOGLE_KEY = "fake-google-key";
 export const FAKE_OPENAI_KEY = "fake-openai-key";
 // What the fakes report using (priced by lib/catalogue/direct.ts)
-// What `interactions` is assumed to report (unverified:
-// lib/catalogue/direct.ts reads several spellings)
-export const FAKE_INTERACTIONS_USAGE = { total_input_tokens: 4000, total_output_tokens: 1780, total_thought_tokens: 900 };
+// What `interactions` reports (the shape of a real
+// response, 2026-11-05)
+export const FAKE_INTERACTIONS_USAGE = {
+  total_input_tokens: 4000,
+  total_output_tokens: 1780,
+  output_tokens_by_modality: [{ modality: "image", tokens: 1680 }],
+  total_thought_tokens: 900,
+};
 
 export const FAKE_GOOGLE_USAGE = {
   promptTokenCount: 4000,

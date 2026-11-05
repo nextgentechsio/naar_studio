@@ -6,11 +6,9 @@ import {
   createProject,
   createUser,
   db,
-  fakeOutputUrl,
   loginRoot,
   replicateRequests,
   replicateUrl,
-  setPrediction,
   type Session,
 } from "./helpers";
 
@@ -90,15 +88,32 @@ const product = async (session: Session, id: string) => {
 const action = (session: Session, id: string, name: string, json: Record<string, unknown> = {}) =>
   api(`/api/catalogue/products/${id}/${name}`, { session, json });
 
-// The last prediction the app started for a model
-async function predictionsSince(count: number) {
-  return (await replicateRequests()).filter((r) => r.method === "POST" && /\/predictions$/.test(r.path)).slice(count);
-}
-const predictionCount = async () => (await predictionsSince(0)).length;
+// Calls to the fake Google / OpenAI made since a mark
+const requestsTo = async (prefix: string, since: number) =>
+  (await replicateRequests()).slice(since).filter((r) => r.path.startsWith(prefix));
+const requestMark = async () => (await replicateRequests()).length;
 
-async function succeed(ids: string[]) {
-  for (const id of ids) await setPrediction(id, { status: "succeeded", output: [fakeOutputUrl()] });
+// Until no run is pending (the queue finishes them after
+// the response; the product poll keeps it moving)
+async function settled(session: Session, id: string) {
+  for (let i = 0; i < 100; i++) {
+    const current = await product(session, id);
+    if (!current.shots.some((shot) => shot.runs.some((run) => run.status === "pending"))) return current;
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+  throw new Error("runs never finished");
 }
+
+// What one fake Nano Banana image costs (from its usage)
+// (image tokens at the image rate; other output and
+// thinking at the text rate)
+const GOOGLE_IMAGE_USD =
+  (FAKE_INTERACTIONS_USAGE.total_input_tokens * 1.5 +
+    1680 * 30 +
+    (FAKE_INTERACTIONS_USAGE.total_output_tokens - 1680 + FAKE_INTERACTIONS_USAGE.total_thought_tokens) * 7.5) /
+  1e6;
+
+const runDoc = async (id: string) => (await db()).collection("catalogueRuns").findOne({ _id: id as never });
 
 describe("catalogue library", () => {
   it("ships built-in presets that everyone can read but only admins can change", async () => {
@@ -206,8 +221,8 @@ describe("catalogue shoot", () => {
     const { status, data } = await api(`/api/catalogue/products/${item.id}`, {
       session: alice.session,
       method: "PATCH",
-      // Replicate here; the direct engines are tested below
-      json: { inputs: { front }, templateId: template.id, resolution: "2K", imageModel: "google/nano-banana-2" },
+      // The default model: Nano Banana 2.1, with the Google key
+      json: { inputs: { front }, templateId: template.id, resolution: "2K" },
     });
     expect(status).toBe(200);
     item = data.product as Product;
@@ -215,77 +230,94 @@ describe("catalogue shoot", () => {
     expect(item.shots.map((shot) => shot.shotId)).toEqual(template.shots.map((shot) => shot.id));
   });
 
+  it("offers only the original's two models, called with its own keys", async () => {
+    expect((item as Product & { imageModel: string }).imageModel).toBe("google:gemini-nano-banana-2.1");
+    for (const model of ["google/nano-banana-2", "openai/gpt-image-2.5-sunburst"]) {
+      const refused = await api(`/api/catalogue/products/${item.id}`, { session: alice.session, method: "PATCH", json: { imageModel: model } });
+      expect(refused.status).toBe(400);
+    }
+    // Saved back when Replicate models were offered: the
+    // same model, called directly
+    const old = await newProduct(alice.session, "Old pick");
+    const products = (await db()).collection("catalogueProducts");
+    const { ObjectId } = await import("mongodb");
+    await products.updateOne({ _id: new ObjectId(old.id) }, { $set: { imageModel: "openai/gpt-image-2.5-sunburst" } });
+    expect(((await product(alice.session, old.id)) as Product & { imageModel: string }).imageModel).toBe("openai:gpt-image-2.5-sunburst");
+  });
+
   it("generates the initial look as a billed generation and keeps a copy", async () => {
-    const before = await predictionCount();
+    const since = await requestMark();
     const { status, data } = await action(alice.session, item.id, "generate");
     expect(status).toBe(200);
     item = data.product as Product;
     expect(item.status).toBe("initial");
 
-    const [request] = await predictionsSince(before);
-    expect(request.path).toContain("google/nano-banana-2");
-    const input = (request.body as { input: Record<string, unknown> }).input;
-    expect(input.image_input).toEqual([item.inputs.front]);
-    expect(input.aspect_ratio).toBe("3:4");
-    expect(input.resolution).toBe("2K");
-    expect(String(input.prompt)).toContain("Linen shirt");
-
     const run = item.shots[0].runs[0];
     expect(run.status).toBe("pending");
     const generation = await (await db()).collection("generations").findOne({ _id: run.generationId as never });
-    expect(generation).toMatchObject({ userId: alice.id, projectId: project.id, model: "google/nano-banana-2" });
+    // Google with the catalogue's key, on the Catalogue platform
+    expect(generation).toMatchObject({
+      userId: alice.id,
+      projectId: project.id,
+      provider: "catalogue",
+      model: "google-api/gemini-nano-banana-2.1",
+    });
 
-    await succeed([run.generationId]);
-    item = await product(alice.session, item.id);
+    item = await settled(alice.session, item.id);
     const done = item.shots[0].runs[0];
     expect(done.status).toBe("succeeded");
     expect(done.imageUrl).toContain(`catalogue/${alice.id}/products/${item.id}/shots/`);
     expect(item.shots[0].selected).toBe(run.generationId);
 
+    const [call] = await requestsTo("/google/", since);
+    const body = call.body as { input: { type: string; text?: string }[]; response_format: { image_size: string } };
+    expect(body.response_format.image_size).toBe("2K");
+    expect(body.input.at(-1)?.text).toContain("Linen shirt");
+    expect((await runDoc(run.generationId))?.references).toEqual([{ role: "garment_front", url: item.inputs.front }]);
+    // Nothing goes to Replicate
+    expect((await replicateRequests()).slice(since).some((r) => r.path.startsWith("/v1/"))).toBe(false);
+
     const expenses = await (await db()).collection("expenses").find({ _id: run.generationId as never }).toArray();
     expect(expenses).toHaveLength(1);
-    expect(expenses[0].amountUsd).toBeCloseTo(0.101);
-    expect(item.spendUsd).toBeCloseTo(0.101);
+    expect(expenses[0]).toMatchObject({ provider: "catalogue", projectId: project.id });
+    expect(expenses[0].amountUsd).toBeCloseTo(GOOGLE_IMAGE_USD, 6);
+    expect(item.spendUsd).toBeCloseTo(GOOGLE_IMAGE_USD, 3);
   });
 
   it("retries with feedback without approving", async () => {
-    const before = await predictionCount();
-    const { status, data } = await action(alice.session, item.id, "generate", { feedback: "Make the sleeves rolled up" });
+    const since = await requestMark();
+    // "blockme": the fake refuses this one
+    const { status, data } = await action(alice.session, item.id, "generate", { feedback: "Make the sleeves rolled up blockme" });
     expect(status).toBe(200);
-    const [request] = await predictionsSince(before);
-    expect(String((request.body as { input: { prompt: string } }).input.prompt)).toContain("Make the sleeves rolled up");
-
     const retry = (data.product as Product).shots[0].runs[0];
-    await setPrediction(retry.generationId, { status: "failed", error: "NSFW filter" });
-    item = await product(alice.session, item.id);
-    expect(item.shots[0].runs[0]).toMatchObject({ status: "failed" });
+    item = await settled(alice.session, item.id);
+    const [call] = await requestsTo("/google/", since);
+    expect((call.body as { input: { text?: string }[] }).input.at(-1)?.text).toContain("Make the sleeves rolled up");
+    expect(item.shots[0].runs.find((run) => run.generationId === retry.generationId)).toMatchObject({ status: "failed" });
     // The earlier version stays in use
-    expect(item.shots[0].selected).toBe(item.shots[0].runs[1].generationId);
+    expect(item.shots[0].selected).toBe(item.shots[0].runs.find((run) => run.status === "succeeded")!.generationId);
   });
 
   it("approves: shoots every other shot with the initial look as reference", async () => {
     const initialUrl = item.shots[0].runs.find((run) => run.status === "succeeded")!.imageUrl;
-    const before = await predictionCount();
+    const since = await requestMark();
     const { status, data } = await action(alice.session, item.id, "approve");
     expect(status).toBe(200);
     item = data.product as Product;
     expect(item.status).toBe("shooting");
 
-    const started = await predictionsSince(before);
-    expect(started).toHaveLength(template.shots.length - 1);
-    for (const request of started) {
-      expect((request.body as { input: { image_input: string[] } }).input.image_input).toContain(initialUrl);
-    }
-
     // Can't approve twice, or generate a new initial look
     expect((await action(alice.session, item.id, "approve")).status).toBe(409);
     expect((await action(alice.session, item.id, "generate")).status).toBe(409);
 
-    const pending = item.shots.slice(1).map((shot) => shot.runs[0].generationId);
-    await succeed(pending);
-    item = await product(alice.session, item.id);
+    item = await settled(alice.session, item.id);
     expect(item.status).toBe("done");
     expect(item.shots.every((shot) => shot.selected)).toBe(true);
+    expect(await requestsTo("/google/", since)).toHaveLength(template.shots.length - 1);
+    for (const shot of item.shots.slice(1)) {
+      const refs = (await runDoc(shot.runs[0].generationId))?.references as { role: string; url: string }[];
+      expect(refs).toContainEqual({ role: "initial_look", url: initialUrl });
+    }
   });
 
   it("regenerates one shot with feedback, and can switch back", async () => {
@@ -298,8 +330,7 @@ describe("catalogue shoot", () => {
 
     const latest = (data.product as Product).shots[1].runs[0];
     expect(latest.feedback).toBe("Lower the camera");
-    await succeed([latest.generationId]);
-    item = await product(alice.session, item.id);
+    item = await settled(alice.session, item.id);
     // The new version doesn't replace the chosen one by itself
     expect(item.shots[1].selected).toBe(first);
 
@@ -363,9 +394,6 @@ describe("catalogue direct engines (Google, OpenAI)", () => {
     throw new Error("run never finished");
   }
 
-  const requestsTo = async (prefix: string, since: number) =>
-    (await replicateRequests()).slice(since).filter((r) => r.path.startsWith(prefix));
-
   it("makes images with Google Nano Banana 2.1, billed from the tokens it used", async () => {
     item = await newProduct(alice.session, "Cotton kurta");
     const front = await storeBlob(`catalogue/${alice.id}/products/${item.id}/inputs/front.png`);
@@ -403,8 +431,7 @@ describe("catalogue direct engines (Google, OpenAI)", () => {
 
     const generation = await (await db()).collection("generations").findOne({ _id: run.generationId as never });
     expect(generation).toMatchObject({ provider: "catalogue", model: "google-api/gemini-nano-banana-2.1", projectId: project.id, status: "succeeded" });
-    const usage = FAKE_INTERACTIONS_USAGE;
-    const expected = (usage.total_input_tokens * 1.5 + usage.total_output_tokens * 30 + usage.total_thought_tokens * 7.5) / 1e6;
+    const expected = GOOGLE_IMAGE_USD;
     const [expense] = await (await db()).collection("expenses").find({ _id: run.generationId as never }).toArray();
     expect(expense).toMatchObject({ provider: "catalogue", projectId: project.id, userId: alice.id });
     expect(expense.amountUsd).toBeCloseTo(expected, 6);

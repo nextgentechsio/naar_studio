@@ -2,7 +2,8 @@
 
 import type { ShotRun } from "@/lib/catalogue/shared";
 import { Icon } from "@/app/components/ui/Icon";
-import { cx, Spinner } from "@/app/components/ui/primitives";
+import { cx } from "@/app/components/ui/primitives";
+import Generating from "../_parts/Generating";
 import { timeAgo } from "../_parts/product-ui";
 
 // --------------------------------------------------
@@ -10,19 +11,24 @@ import { timeAgo } from "../_parts/product-ui";
 // the strip of every run (newest first) to pick from
 // --------------------------------------------------
 
-export function RunPreview({ run, alt, className }: { run: ShotRun | null; alt: string; className?: string }) {
+export function RunPreview({
+  run,
+  alt,
+  className,
+  initial = false,
+}: {
+  run: ShotRun | null;
+  alt: string;
+  className?: string;
+  initial?: boolean;
+}) {
   return (
     <div className={cx("relative aspect-3/4 overflow-hidden rounded-2xl border border-line bg-sunken", className)}>
       {run?.imageUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img key={run.imageUrl} src={run.imageUrl} alt={alt} className="ui-rise absolute inset-0 h-full w-full object-cover" />
       ) : run?.status === "pending" ? (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-fg-muted" role="status">
-          <span className="ui-skeleton absolute inset-0" aria-hidden />
-          <Spinner className="relative h-6 w-6" />
-          <span className="relative text-sm font-medium">Generating…</span>
-          <span className="relative text-xs text-fg-subtle">Usually under a minute</span>
-        </div>
+        <Generating run={run} initial={initial} />
       ) : run?.status === "failed" ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-6 text-center">
           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-danger/10 text-danger">
@@ -79,9 +85,7 @@ export function VersionStrip({
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={run.imageUrl} alt="" loading="lazy" className="absolute inset-0 h-full w-full object-cover" />
               ) : run.status === "pending" ? (
-                <span className="absolute inset-0 flex items-center justify-center text-fg-muted">
-                  <Spinner />
-                </span>
+                <Generating run={run} size="tiny" />
               ) : (
                 <span className="absolute inset-0 flex items-center justify-center text-danger">
                   <Icon name="alert" size={16} />

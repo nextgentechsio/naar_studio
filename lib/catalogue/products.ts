@@ -5,7 +5,7 @@ import { del, head, list, put } from "@vercel/blob";
 import { ObjectId } from "mongodb";
 import type { StoredUser } from "@/lib/auth/users";
 import { canManageUsers } from "@/lib/auth/roles";
-import { expensesCollection } from "@/lib/db/mongodb";
+import { expensesCollection, generationsCollection } from "@/lib/db/mongodb";
 import {
   applyPrediction,
   fetchGenerationStatus,
@@ -21,13 +21,14 @@ import { assetsByIds, CatalogueError, getTemplate, objectId } from "./library";
 import { buildShotRequest, type Reference, type RefRole } from "./prompt";
 import { startDirectRun } from "./direct";
 import { pumpQueue } from "./queue";
-import { RunError, shotInputs, startImageRun } from "./run";
+import { RunError } from "./run";
 import {
   CATEGORIES,
   DEFAULT_IMAGE_MODEL,
   FEEDBACK_MAX,
   GENDERS,
   IMAGE_MODELS,
+  imageModelOf,
   INPUT_SLOTS,
   MAX_ACCESSORIES,
   NAME_MAX,
@@ -44,9 +45,10 @@ import {
 // CATALOGUE PRODUCTS
 //
 // Private to their creator; admins (and the super admin)
-// can see and work on everyone's. Each image is started
-// with startImageRun (a normal Naar generation, billed to
-// the product's project) and linked here as a run;
+// can see and work on everyone's. Each image is a normal
+// Naar generation (platform "catalogue", billed to the
+// product's project), made with Google or OpenAI by
+// lib/catalogue/direct.ts, and linked here as a run;
 // reading a product brings its unfinished runs up to date
 // and keeps a permanent copy of each finished image.
 // --------------------------------------------------
@@ -148,8 +150,11 @@ export async function listProducts(actor: Actor): Promise<ProductSummary[]> {
     }
   }
 
-  // Spend and finished images per product
+  // Spend and finished images per product, and which
+  // have an image being made right now (its generation
+  // isn't finished: the queue keeps those up to date)
   const spend = new Map<string, { usd: number; images: number }>();
+  const generating = new Set<string>();
   if (docs.length) {
     const all = await runs
       .find({ productId: { $in: docs.map((doc) => doc._id.toHexString()) } }, { projection: { productId: 1, status: 1 } })
@@ -159,6 +164,15 @@ export async function listProducts(actor: Actor): Promise<ProductSummary[]> {
       const entry = spend.get(run.productId) ?? { usd: 0, images: 0 };
       if (run.status === "succeeded") entry.images++;
       spend.set(run.productId, entry);
+    }
+    const pendingIds = all.filter((run) => run.status === "pending").map((run) => run._id);
+    if (pendingIds.length) {
+      const live = await (await generationsCollection())
+        .find({ _id: { $in: pendingIds }, status: { $nin: ["succeeded", "failed", "canceled", "unknown"] } }, { projection: { _id: 1 } })
+        .toArray();
+      for (const generation of live) generating.add(productOf.get(generation._id)!);
+      // Keeps the call queue moving while the list is watched
+      if (live.length) after(() => pumpQueue());
     }
     if (all.length) {
       const rows = await (await expensesCollection())
@@ -184,6 +198,7 @@ export async function listProducts(actor: Actor): Promise<ProductSummary[]> {
     updatedAt: doc.updatedAt.toISOString(),
     cover: covers.get(doc._id.toHexString()) ?? null,
     shotCount: Object.keys(doc.selected).length,
+    generating: generating.has(doc._id.toHexString()),
   }));
 }
 
@@ -344,7 +359,7 @@ async function present(doc: ProductDoc, runs: RunDoc[]): Promise<PublicProduct> 
     backgroundId: doc.backgroundId,
     accessoryIds: doc.accessoryIds,
     inputs: doc.inputs,
-    imageModel: doc.imageModel,
+    imageModel: imageModelOf(doc.imageModel),
     resolution: doc.resolution,
     status: doc.status,
     shots: doc.plan.map((shot) => ({
@@ -363,6 +378,8 @@ async function present(doc: ProductDoc, runs: RunDoc[]): Promise<PublicProduct> 
             feedback: run.feedback,
             model: run.model,
             createdAt: run.createdAt.toISOString(),
+            // null while it waits in the call queue
+            startedAt: run.startedAt === undefined ? run.createdAt.toISOString() : (run.startedAt?.toISOString() ?? null),
           }),
         ),
     })),
@@ -535,7 +552,8 @@ async function startShot(
     if (previous?.imageUrl) references.push({ role: "previous", url: previous.imageUrl });
   }
 
-  const maxRefs = IMAGE_MODELS.find((item) => item.id === doc.imageModel)?.maxRefs ?? 8;
+  const imageModel = imageModelOf(doc.imageModel);
+  const maxRefs = IMAGE_MODELS.find((item) => item.id === imageModel)?.maxRefs ?? 8;
   const request = buildShotRequest({
     shot,
     isInitial,
@@ -551,26 +569,20 @@ async function startShot(
   });
 
   const project = { id: doc.projectId, name: doc.projectName };
-  const direct = /^(google|openai):(.+)$/.exec(doc.imageModel);
-  const generationId = direct
-    ? await startDirectRun({
-        user: actor,
-        project,
-        productId: doc._id.toHexString(),
-        engine: direct[1] as "google" | "openai",
-        model: direct[2],
-        prompt: request.prompt,
-        references: request.references,
-        resolution: doc.resolution,
-        // The original: high for the Initial Look, else medium
-        quality: isInitial ? "high" : "medium",
-      })
-    : await startImageRun({
-        user: actor,
-        project,
-        model: doc.imageModel,
-        inputs: shotInputs(doc.imageModel as Exclude<typeof doc.imageModel, `${string}:${string}`>, request.prompt, request.references, doc.resolution),
-      });
+  // "google:<model>" / "openai:<model>"
+  const [engine, providerModel] = imageModel.split(":") as ["google" | "openai", string];
+  const generationId = await startDirectRun({
+    user: actor,
+    project,
+    productId: doc._id.toHexString(),
+    engine,
+    model: providerModel,
+    prompt: request.prompt,
+    references: request.references,
+    resolution: doc.resolution,
+    // The original: high for the Initial Look, else medium
+    quality: isInitial ? "high" : "medium",
+  });
 
   const now = new Date();
   const { runs } = await catalogueCollections();
@@ -579,7 +591,7 @@ async function startShot(
     productId: doc._id.toHexString(),
     shotId: shot.id,
     userId: actor.id,
-    model: doc.imageModel,
+    model: imageModel,
     feedback: options.feedback,
     status: "pending",
     imageUrl: null,
@@ -587,8 +599,8 @@ async function startShot(
     // The trace: what was actually sent, in order
     prompt: request.prompt,
     references: request.references.map((url) => ({ role: references.find((ref) => ref.url === url)?.role ?? "", url })),
-    // Direct runs start when the queue takes them
-    startedAt: direct ? null : now,
+    // Runs start when the queue takes them
+    startedAt: null,
     createdAt: now,
     updatedAt: now,
   });

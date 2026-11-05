@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import type { ProductShot } from "@/lib/catalogue/shared";
+import type { ProductShot, ShotRun } from "@/lib/catalogue/shared";
 import { downloadImage } from "@/lib/client/catalogue";
 import { errorMessage } from "@/lib/client/http";
 import { Icon } from "@/app/components/ui/Icon";
 import { Alert, Button, cx, EmptyState, Spinner } from "@/app/components/ui/primitives";
+import Generating from "../_parts/Generating";
 import { shotState } from "../_parts/product-ui";
 import ShotViewer, { shotFileName } from "./ShotViewer";
 import type { StepProps } from "./types";
@@ -98,6 +99,7 @@ export default function ShotsStep({ product, library, act, goTo }: StepProps) {
               shot={item.shot}
               imageUrl={item.imageUrl}
               pending={item.pending}
+              run={item.latest}
               failed={item.failed?.error ?? (item.failed ? "Generation failed" : null)}
               initial={index === 0}
               onOpen={() => setOpen(item.shot.shotId)}
@@ -117,6 +119,7 @@ function ShotCard({
   shot,
   imageUrl,
   pending,
+  run,
   failed,
   initial,
   onOpen,
@@ -124,6 +127,7 @@ function ShotCard({
   shot: ProductShot;
   imageUrl: string | null;
   pending: boolean;
+  run: ShotRun | null;
   failed: string | null;
   initial: boolean;
   onOpen: () => void;
@@ -145,25 +149,16 @@ function ShotCard({
           loading="lazy"
           className={cx(
             "absolute inset-0 h-full w-full object-cover transition-all duration-500 group-hover:scale-[1.04]",
-            pending && "opacity-50 blur-[2px]",
           )}
         />
-      ) : pending ? (
-        <span className="ui-skeleton absolute inset-0" aria-hidden />
-      ) : (
+      ) : pending ? null : (
         <span aria-hidden className="absolute inset-0 flex items-center justify-center text-fg-subtle">
           <Icon name={failed ? "alert" : "image"} size={28} className={failed ? "text-danger" : undefined} />
         </span>
       )}
 
-      {pending && (
-        <span className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-fg">
-          <span className="glass flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium">
-            <Spinner className="h-3 w-3" />
-            Generating
-          </span>
-        </span>
-      )}
+      {/* Over the previous version when regenerating */}
+      {pending && <Generating run={run} size="compact" initial={initial} overlay={Boolean(imageUrl)} className="pb-14" />}
 
       <span aria-hidden className="absolute inset-0 bg-linear-to-t from-black/60 via-transparent to-transparent" />
 

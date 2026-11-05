@@ -62,7 +62,7 @@ export default function InitialLookStep({ product, act, goTo }: StepProps) {
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
       <div className="space-y-3">
-        <RunPreview run={view} alt={`${product.name}, initial look`} className="mx-auto w-full max-w-md lg:max-w-none" />
+        <RunPreview run={view} initial alt={`${product.name}, initial look`} className="mx-auto w-full max-w-md lg:max-w-none" />
         <VersionStrip
           runs={shot.runs}
           selected={shot.selected}

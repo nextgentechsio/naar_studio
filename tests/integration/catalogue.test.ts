@@ -488,6 +488,34 @@ describe("catalogue direct engines (Google, OpenAI)", () => {
     expect(posed?.prompt).toContain("hand-on-hip-marker");
   });
 
+  it("crops a version for show and download, keeping the full image", async () => {
+    const shot = item.shots[0];
+    const run = shot.runs.find((r) => r.status === "succeeded")!;
+    const crop = (body: unknown) =>
+      action(alice.session, item.id, "crop", { shotId: shot.shotId, generationId: run.generationId, crop: body });
+
+    // Inside the image and not tiny
+    expect((await crop({ x: 0.5, y: 0, w: 0.6, h: 0.5 })).status).toBe(400);
+    expect((await crop({ x: 0, y: 0, w: 0.01, h: 0.5 })).status).toBe(400);
+    expect((await crop({ x: "a", y: 0, w: 0.5, h: 0.5 })).status).toBe(400);
+    // Only finished versions of this product
+    expect((await action(alice.session, item.id, "crop", { shotId: shot.shotId, generationId: "nope", crop: null })).status).toBe(404);
+    expect((await action(bob.session, item.id, "crop", { shotId: shot.shotId, generationId: run.generationId, crop: null })).status).toBe(404);
+
+    const { status, data } = await crop({ x: 0.1, y: 0.2, w: 0.5, h: 0.6 });
+    expect(status).toBe(200);
+    const cropped = (data.product as { shots: { runs: { generationId: string; imageUrl: string; crop: unknown }[] }[] }).shots[0].runs.find(
+      (r) => r.generationId === run.generationId,
+    )!;
+    expect(cropped.crop).toEqual({ x: 0.1, y: 0.2, w: 0.5, h: 0.6 });
+    expect(cropped.imageUrl).toBe(run.imageUrl);
+
+    // The whole image, or null, removes it
+    const reset = await crop({ x: 0, y: 0, w: 1, h: 1 });
+    expect((reset.data.product as { shots: { runs: { crop: unknown }[] }[] }).shots[0].runs.find(Boolean)?.crop ?? null).toBeNull();
+    expect((await crop(null)).status).toBe(200);
+  });
+
   it("fails a blocked image cleanly, with nothing billed", async () => {
     const since = (await replicateRequests()).length;
     const { status, data } = await action(alice.session, item.id, "generate", { feedback: "blockme please" });

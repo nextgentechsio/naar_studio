@@ -160,6 +160,11 @@ export type ProductStatus =
   | "shooting" // approved; other shots generating
   | "done";
 
+// Part of an image to show and download: fractions
+// (0-1) of its width and height. The full image is kept,
+// so a crop can be changed or removed later.
+export type Crop = { x: number; y: number; w: number; h: number };
+
 export type ShotRun = {
   // The Naar generation id (History / Expenses)
   generationId: string;
@@ -173,6 +178,8 @@ export type ShotRun = {
   // When the image call began; null while it waits its
   // turn in the queue
   startedAt: string | null;
+  // How this version is cropped; null: the whole image
+  crop: Crop | null;
 };
 
 export type ProductShot = {

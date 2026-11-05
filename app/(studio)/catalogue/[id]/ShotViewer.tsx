@@ -1,15 +1,25 @@
 "use client";
 
 import { useState } from "react";
-import type { PublicProduct } from "@/lib/catalogue/shared";
-import { catalogueApi, downloadImage, type Library } from "@/lib/client/catalogue";
+import type { Crop, PublicProduct } from "@/lib/catalogue/shared";
+import {
+  catalogueApi,
+  downloadImage,
+  type Library,
+} from "@/lib/client/catalogue";
 import { errorMessage } from "@/lib/client/http";
 import { Modal } from "@/app/components/ui/Modal";
-import { Button, Field, inputClass, Spinner } from "@/app/components/ui/primitives";
+import {
+  Button,
+  Field,
+  inputClass,
+  Spinner,
+} from "@/app/components/ui/primitives";
 import { assetsOf, shotState } from "../_parts/product-ui";
+import CropDialog from "./CropDialog";
 import FeedbackBox from "./FeedbackBox";
 import type { StepProps } from "./types";
-import { RunPreview, VersionStrip } from "./Versions";
+import { RunPreview, useImageRatio, VersionStrip } from "./Versions";
 
 // --------------------------------------------------
 // ONE SHOT, LARGE (window)
@@ -44,6 +54,8 @@ export default function ShotViewer({
   const [starting, setStarting] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState("");
+  const [cropping, setCropping] = useState(false);
+  const { ratioOf, setRatio } = useImageRatio();
 
   const shot = product.shots.find((item) => item.shotId === shotId);
   const state = shot ? shotState(shot) : null;
@@ -76,11 +88,15 @@ export default function ShotViewer({
     }
   }
 
-  async function download(url: string) {
+  async function download(url: string, crop: Crop | null) {
     setDownloading(true);
     setError("");
     try {
-      await downloadImage(url, shotFileName(product, shot?.label ?? shotId));
+      await downloadImage(
+        url,
+        shotFileName(product, shot?.label ?? shotId),
+        crop,
+      );
     } catch (err) {
       setError(errorMessage(err, "Couldn't download the image."));
     } finally {
@@ -91,110 +107,167 @@ export default function ShotViewer({
   const busy = Boolean(state?.pending) || starting;
 
   return (
-    <Modal title={shot?.label ?? "Shot"} subtitle={product.name} size="xl" onClose={onClose}>
-      {() =>
-        !shot || !state ? (
-          <p className="px-5 pb-5 text-sm text-fg-muted">This shot is no longer in the product.</p>
-        ) : (
-          <div className="grid min-h-0 gap-5 overflow-y-auto px-5 pb-5 pt-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <div className="space-y-3">
-              <RunPreview run={view} alt={`${product.name}, ${shot.label}`} />
-              <VersionStrip
-                runs={shot.runs}
-                selected={shot.selected}
-                viewing={view?.generationId ?? null}
-                onView={(run) => setViewId(run.generationId)}
-              />
-            </div>
-
-            <div className="space-y-4">
-              <div className="flex flex-wrap gap-2">
-                {view?.status === "succeeded" && view.generationId !== shot.selected && (
-                  <Button
-                    variant="primary"
-                    icon="check"
-                    onClick={async () => {
-                      setError("");
-                      const failed = await act(
-                        () => catalogueApi.select(product.id, shotId, view.generationId),
-                        "Couldn't use that version.",
-                      );
-                      if (failed) setError(failed);
-                    }}
-                  >
-                    Use this version
-                  </Button>
-                )}
-                {view?.imageUrl && (
-                  <Button icon={downloading ? undefined : "download"} disabled={downloading} onClick={() => void download(view.imageUrl!)}>
-                    {downloading && <Spinner />}
-                    Download
-                  </Button>
-                )}
+    <>
+      <Modal
+        title={shot?.label ?? "Shot"}
+        subtitle={product.name}
+        size="xl"
+        onClose={onClose}
+      >
+        {() =>
+          !shot || !state ? (
+            <p className="px-5 pb-5 text-sm text-fg-muted">
+              This shot is no longer in the product.
+            </p>
+          ) : (
+            <div className="grid min-h-0 gap-5 overflow-y-auto px-5 pb-5 pt-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+              <div className="space-y-3">
+                <RunPreview
+                  run={view}
+                  alt={`${product.name}, ${shot.label}`}
+                  fit={140}
+                  imageRatio={ratioOf(view?.imageUrl)}
+                  onRatio={setRatio}
+                  onCrop={() => setCropping(true)}
+                />
+                <VersionStrip
+                  runs={shot.runs}
+                  selected={shot.selected}
+                  viewing={view?.generationId ?? null}
+                  onView={(run) => setViewId(run.generationId)}
+                />
               </div>
-              {view?.feedback && (
-                <p className="rounded-lg border border-line bg-sunken px-3 py-2 text-xs text-fg-muted">
-                  Feedback for this version: &ldquo;{view.feedback}&rdquo;
-                </p>
-              )}
-              {error && (
-                <p role="alert" className="text-sm text-danger">
-                  {error}
-                </p>
-              )}
 
-              <section className="space-y-3 border-t border-line pt-4">
-                <h3 className="text-sm font-semibold text-fg">Regenerate</h3>
-                <FeedbackBox value={feedback} onChange={setFeedback} disabled={busy} />
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label="Pose">
-                    {(props) => (
-                      <select
-                        {...props}
-                        value={poseId}
-                        disabled={busy}
-                        onChange={(event) => setPoseId(event.target.value)}
-                        className={inputClass}
+              <div className="space-y-4">
+                <div className="flex flex-wrap gap-2">
+                  {view?.status === "succeeded" &&
+                    view.generationId !== shot.selected && (
+                      <Button
+                        variant="primary"
+                        icon="check"
+                        onClick={async () => {
+                          setError("");
+                          const failed = await act(
+                            () =>
+                              catalogueApi.select(
+                                product.id,
+                                shotId,
+                                view.generationId,
+                              ),
+                            "Couldn't use that version.",
+                          );
+                          if (failed) setError(failed);
+                        }}
                       >
-                        <option value="">As before</option>
-                        {poses.map((asset) => (
-                          <option key={asset.id} value={asset.id}>
-                            {asset.name}
-                          </option>
-                        ))}
-                      </select>
+                        Use this version
+                      </Button>
                     )}
-                  </Field>
-                  <Field label="Background">
-                    {(props) => (
-                      <select
-                        {...props}
-                        value={backgroundId}
-                        disabled={busy}
-                        onChange={(event) => setBackgroundId(event.target.value)}
-                        className={inputClass}
-                      >
-                        <option value="">As before</option>
-                        {backgrounds.map((asset) => (
-                          <option key={asset.id} value={asset.id}>
-                            {asset.name}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  </Field>
+                  {view?.imageUrl && (
+                    <Button
+                      icon={downloading ? undefined : "download"}
+                      disabled={downloading}
+                      onClick={() => void download(view.imageUrl!, view.crop)}
+                    >
+                      {downloading && <Spinner />}
+                      Download
+                    </Button>
+                  )}
                 </div>
-                <div className="flex flex-wrap items-center gap-3">
-                  <Button variant="primary" icon={busy ? undefined : "sparkles"} disabled={busy} onClick={() => void regenerate()}>
-                    {busy && <Spinner />}
-                    {state.pending ? "Generating…" : "Regenerate"}
-                  </Button>
-                </div>
-              </section>
+                {view?.feedback && (
+                  <p className="rounded-lg border border-line bg-sunken px-3 py-2 text-xs text-fg-muted">
+                    Feedback for this version: &ldquo;{view.feedback}&rdquo;
+                  </p>
+                )}
+                {error && (
+                  <p role="alert" className="text-sm text-danger">
+                    {error}
+                  </p>
+                )}
+
+                <section className="space-y-3 border-t border-line pt-4">
+                  <h3 className="text-sm font-semibold text-fg">Regenerate</h3>
+                  <FeedbackBox
+                    value={feedback}
+                    onChange={setFeedback}
+                    disabled={busy}
+                  />
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="Pose">
+                      {(props) => (
+                        <select
+                          {...props}
+                          value={poseId}
+                          disabled={busy}
+                          onChange={(event) => setPoseId(event.target.value)}
+                          className={inputClass}
+                        >
+                          <option value="">As before</option>
+                          {poses.map((asset) => (
+                            <option key={asset.id} value={asset.id}>
+                              {asset.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </Field>
+                    <Field label="Background">
+                      {(props) => (
+                        <select
+                          {...props}
+                          value={backgroundId}
+                          disabled={busy}
+                          onChange={(event) =>
+                            setBackgroundId(event.target.value)
+                          }
+                          className={inputClass}
+                        >
+                          <option value="">As before</option>
+                          {backgrounds.map((asset) => (
+                            <option key={asset.id} value={asset.id}>
+                              {asset.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </Field>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Button
+                      variant="primary"
+                      icon={busy ? undefined : "sparkles"}
+                      disabled={busy}
+                      onClick={() => void regenerate()}
+                    >
+                      {busy && <Spinner />}
+                      {state.pending ? "Generating…" : "Regenerate"}
+                    </Button>
+                  </div>
+                </section>
+              </div>
             </div>
-          </div>
-        )
-      }
-    </Modal>
+          )
+        }
+      </Modal>
+      {cropping && shot && view?.imageUrl && (
+        <CropDialog
+          src={view.imageUrl}
+          crop={view.crop}
+          imageRatio={ratioOf(view.imageUrl)}
+          onSave={async (crop) => {
+            const failed = await act(
+              () =>
+                catalogueApi.crop(product.id, {
+                  shotId,
+                  generationId: view.generationId,
+                  crop,
+                }),
+              "Couldn't save the crop.",
+            );
+            return failed;
+          }}
+          onClose={() => setCropping(false)}
+        />
+      )}
+    </>
   );
 }

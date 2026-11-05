@@ -1,5 +1,5 @@
 import { CatalogueError } from "@/lib/catalogue/library";
-import { approve, generateInitial, regenerateShot, selectRun } from "@/lib/catalogue/products";
+import { approve, cropRun, generateInitial, regenerateShot, selectRun } from "@/lib/catalogue/products";
 import { catalogueRoute, jsonBody } from "@/lib/catalogue/http";
 
 export const runtime = "nodejs";
@@ -19,6 +19,8 @@ const ACTIONS = {
   regenerate: regenerateShot,
   // Use a version: { shotId, generationId }
   select: selectRun,
+  // Crop a version: { shotId, generationId, crop: {x,y,w,h} | null }
+  crop: cropRun,
 };
 
 export async function POST(request: Request, context: Context) {

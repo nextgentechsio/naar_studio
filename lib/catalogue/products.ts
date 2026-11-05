@@ -40,6 +40,7 @@ import {
   type PublicProduct,
   type ShotDefinition,
   type ShotRun,
+  type Crop,
 } from "./shared";
 
 // --------------------------------------------------
@@ -386,6 +387,7 @@ async function present(doc: ProductDoc, runs: RunDoc[]): Promise<PublicProduct> 
             createdAt: run.createdAt.toISOString(),
             // null while it waits in the call queue
             startedAt: run.startedAt === undefined ? run.createdAt.toISOString() : (run.startedAt?.toISOString() ?? null),
+            crop: doc.crops?.[run._id] ?? null,
           }),
         ),
     })),
@@ -663,6 +665,45 @@ export async function selectRun(actor: Actor, id: string, body: Record<string, u
   const run = await runs.findOne({ _id: generationId, productId: id, shotId, status: "succeeded" });
   if (!run?.imageUrl) throw new CatalogueError(404, "That version isn't ready");
   await products.updateOne({ _id: doc._id }, { $set: { [`selected.${shotId}`]: generationId, updatedAt: new Date() } });
+  return getProduct(actor, id);
+}
+
+// A crop: fractions of the image, inside it, not tiny
+function readCrop(value: unknown): Crop | null {
+  if (value === null) return null;
+  const crop = value as Partial<Record<keyof Crop, unknown>> | undefined;
+  const parts = ["x", "y", "w", "h"].map((key) => crop?.[key as keyof Crop]);
+  if (!parts.every((part) => typeof part === "number" && Number.isFinite(part))) {
+    throw new CatalogueError(400, "Invalid crop");
+  }
+  // Rounded, so a crop is stored the same way each time
+  const [x, y, w, h] = (parts as number[]).map((part) => Math.round(part * 10_000) / 10_000);
+  const EPS = 0.0001;
+  if (x < 0 || y < 0 || w < 0.05 || h < 0.05 || x + w > 1 + EPS || y + h > 1 + EPS) {
+    throw new CatalogueError(400, "The crop must be inside the image");
+  }
+  // The whole image: no crop
+  if (w >= 1 - EPS && h >= 1 - EPS) return null;
+  return { x, y, w: Math.min(w, 1 - x), h: Math.min(h, 1 - y) };
+}
+
+// Crops one finished version (or removes its crop with
+// crop: null). Allowed at any stage: the image itself
+// doesn't change, only what's shown and downloaded.
+export async function cropRun(actor: Actor, id: string, body: Record<string, unknown>): Promise<PublicProduct> {
+  const doc = await load(actor, id);
+  const shotId = String(body.shotId ?? "");
+  const generationId = String(body.generationId ?? "");
+  const crop = readCrop(body.crop);
+  const { runs, products } = await catalogueCollections();
+  const run = await runs.findOne({ _id: generationId, productId: id, shotId, status: "succeeded" });
+  if (!run?.imageUrl) throw new CatalogueError(404, "That version isn't ready");
+  await products.updateOne(
+    { _id: doc._id },
+    crop
+      ? { $set: { [`crops.${generationId}`]: crop, updatedAt: new Date() } }
+      : { $unset: { [`crops.${generationId}`]: "" }, $set: { updatedAt: new Date() } },
+  );
   return getProduct(actor, id);
 }
 

@@ -2,6 +2,7 @@ import type { Collection, ObjectId } from "mongodb";
 import { getDb } from "@/lib/db/mongodb";
 import type {
   AssetKind,
+  Crop,
   Gender,
   ImageModelId,
   InputSlot,
@@ -82,6 +83,9 @@ export type ProductDoc = {
   // older products.
   poseOverrides?: Record<string, string>;
   backgroundOverrides?: Record<string, string>;
+  // generation id → its crop (display and download only;
+  // references always use the full image)
+  crops?: Record<string, Crop>;
   createdAt: Date;
   updatedAt: Date;
 };

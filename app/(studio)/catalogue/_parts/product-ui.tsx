@@ -45,6 +45,7 @@ export function shotState(shot: ProductShot) {
     pending: latest?.status === "pending",
     failed: latest?.status === "failed" ? latest : null,
     imageUrl: selected?.imageUrl ?? null,
+    crop: selected?.crop ?? null,
   };
 }
 

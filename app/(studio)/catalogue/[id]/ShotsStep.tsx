@@ -1,15 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import type { ProductShot, ShotRun } from "@/lib/catalogue/shared";
+import type { Crop, ProductShot, ShotRun } from "@/lib/catalogue/shared";
 import { downloadImage } from "@/lib/client/catalogue";
 import { errorMessage } from "@/lib/client/http";
 import { Icon } from "@/app/components/ui/Icon";
 import { Alert, Button, cx, EmptyState, Spinner } from "@/app/components/ui/primitives";
+import CroppedImage from "../_parts/CroppedImage";
 import Generating from "../_parts/Generating";
 import { shotState } from "../_parts/product-ui";
 import ShotViewer, { shotFileName } from "./ShotViewer";
 import type { StepProps } from "./types";
+import { DEFAULT_RATIO } from "./Versions";
 
 // --------------------------------------------------
 // STEP 5: SHOTS (the result)
@@ -53,7 +55,7 @@ export default function ShotsStep({ product, library, act, goTo }: StepProps) {
     try {
       // One after another: browsers block a burst of downloads
       for (const [index, item] of ready.entries()) {
-        await downloadImage(item.imageUrl!, shotFileName(product, item.shot.label));
+        await downloadImage(item.imageUrl!, shotFileName(product, item.shot.label), item.crop);
         setSaving({ done: index + 1, total: ready.length });
       }
     } catch (err) {
@@ -98,6 +100,7 @@ export default function ShotsStep({ product, library, act, goTo }: StepProps) {
             <ShotCard
               shot={item.shot}
               imageUrl={item.imageUrl}
+              crop={item.crop}
               pending={item.pending}
               run={item.latest}
               failed={item.failed?.error ?? (item.failed ? "Generation failed" : null)}
@@ -118,6 +121,7 @@ export default function ShotsStep({ product, library, act, goTo }: StepProps) {
 function ShotCard({
   shot,
   imageUrl,
+  crop,
   pending,
   run,
   failed,
@@ -126,6 +130,7 @@ function ShotCard({
 }: {
   shot: ProductShot;
   imageUrl: string | null;
+  crop: Crop | null;
   pending: boolean;
   run: ShotRun | null;
   failed: string | null;
@@ -142,14 +147,14 @@ function ShotCard({
       className="group relative block aspect-3/4 w-full overflow-hidden rounded-2xl border border-line bg-sunken text-left transition-all duration-300 hover:-translate-y-1 hover:border-line-strong hover:shadow-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
     >
       {imageUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
+        <CroppedImage
           src={imageUrl}
+          crop={crop}
+          imageRatio={DEFAULT_RATIO}
+          boxRatio={DEFAULT_RATIO}
           alt=""
           loading="lazy"
-          className={cx(
-            "absolute inset-0 h-full w-full object-cover transition-all duration-500 group-hover:scale-[1.04]",
-          )}
+          className="transition-transform duration-500 group-hover:scale-[1.04]"
         />
       ) : pending ? null : (
         <span aria-hidden className="absolute inset-0 flex items-center justify-center text-fg-subtle">

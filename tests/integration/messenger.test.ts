@@ -1,5 +1,6 @@
+import { ObjectId } from "mongodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { api, closeDb, createUser, loginRoot } from "./helpers";
+import { api, closeDb, createUser, db, loginRoot } from "./helpers";
 
 // --------------------------------------------------
 // Messenger: one-to-one chats between active users,
@@ -174,5 +175,168 @@ describe("messenger", () => {
     // The two people's state is untouched
     expect((await chats(alice)).conversations.find((item) => item.id === chat.id)?.unread).toBe(aliceBefore.unread);
     expect((await page(bob, chat.id)).otherReadAt).toBe(bobSeenBefore);
+  });
+
+  describe("groups", () => {
+    type Group = Conversation & { group: { name: string; members: { id: string }[]; canManage: boolean } };
+    const create = (session: Session, json: unknown) => api("/api/messenger/groups", { session, json });
+    const patch = (session: Session, id: string, json: unknown) => api(`/api/messenger/groups/${id}`, { session, method: "PATCH", json });
+    const memberIds = (group: Group) => group.group.members.map((member) => member.id).sort();
+
+    it("only admins and the super admin create groups", async () => {
+      expect((await create(alice.session, { name: "Nope", members: [bob.id] })).status).toBe(403);
+      expect((await create(carol.session, { name: "  ", members: [bob.id] })).status).toBe(400);
+      expect((await create(carol.session, { name: "Solo", members: [] })).status).toBe(400);
+      expect((await create(carol.session, { name: "Ghosts", members: ["nobody"] })).status).toBe(400);
+      expect((await create(carol.session, { name: "x".repeat(61), members: [bob.id] })).status).toBe(400);
+
+      const { status, data } = await create(carol.session, { name: "Landmark crew", members: [alice.id, bob.id] });
+      expect(status).toBe(201);
+      const group = data.conversation as Group;
+      expect(group.group).toMatchObject({ name: "Landmark crew", canManage: true });
+      expect(memberIds(group)).toEqual([alice.id, bob.id, carol.id].sort());
+
+      // Everyone in it sees it, with the event line as the latest
+      for (const user of [alice, bob]) {
+        const listed = (await chats(user)).conversations.find((item) => item.id === group.id) as Group | undefined;
+        expect(listed?.group.canManage).toBe(false);
+        expect(listed?.last?.body).toContain("created the group");
+      }
+    });
+
+    it("members chat; each message shows who wrote it; 'Seen by' lists readers", async () => {
+      const group = (await create(carol.session, { name: `Chat ${Date.now()}`, members: [alice.id, bob.id] })).data.conversation as Group;
+      expect((await send(alice, group.id, "Morning all")).status).toBe(201);
+      expect((await send(bob, group.id, "Hi!")).status).toBe(201);
+
+      const seen = await page(carol, group.id);
+      expect(seen.messages.map((message) => [message.body.slice(0, 12), (message as unknown as { senderName: string; system: boolean }).system])).toEqual([
+        [expect.any(String), true],
+        ["Morning all", false],
+        ["Hi!", false],
+      ]);
+      expect((seen.messages[1] as unknown as { senderName: string }).senderName).toMatch(/^Alice /);
+      expect((await chats(carol)).conversations.find((item) => item.id === group.id)?.unread).toBe(2);
+
+      await api(`/api/messenger/conversations/${group.id}/read`, { session: carol.session, method: "POST" });
+      const readers = (await api(`/api/messenger/conversations/${group.id}/messages`, { session: alice.session })).data.readers as { id: string }[];
+      expect(readers.map((reader) => reader.id).sort()).toEqual([bob.id, carol.id].sort());
+    });
+
+    it("admins manage groups they're in; the super admin manages any group", async () => {
+      const group = (await create(carol.session, { name: "Ops", members: [alice.id] })).data.conversation as Group;
+
+      // A plain member can't manage; an outsider can't even see it
+      expect((await patch(alice.session, group.id, { name: "Mine now" })).status).toBe(403);
+      expect((await patch(bob.session, group.id, { add: [bob.id] })).status).toBe(404);
+      expect((await api(`/api/messenger/groups/${group.id}`, { session: bob.session, method: "DELETE" })).status).toBe(404);
+
+      // The admin in it renames, adds and removes; each is posted
+      let updated = (await patch(carol.session, group.id, { name: "Ops team", add: [bob.id] })).data.conversation as Group;
+      expect(updated.group.name).toBe("Ops team");
+      expect(memberIds(updated)).toEqual([alice.id, bob.id, carol.id].sort());
+      updated = (await patch(carol.session, group.id, { remove: [alice.id] })).data.conversation as Group;
+      expect(memberIds(updated)).toEqual([bob.id, carol.id].sort());
+      expect((await patch(carol.session, group.id, { remove: [carol.id] })).status).toBe(400);
+      const lines = (await page(bob, group.id)).messages.filter((message) => (message as unknown as { system: boolean }).system).map((message) => message.body);
+      expect(lines.join(" | ")).toMatch(/renamed the group to “Ops team” \| .* added .* \| .* removed /);
+
+      // Alice is out: no list entry, no messages, can't write
+      expect((await chats(alice)).conversations.some((item) => item.id === group.id)).toBe(false);
+      expect((await api(`/api/messenger/conversations/${group.id}/messages`, { session: alice.session })).status).toBe(404);
+      expect((await send(alice, group.id, "hello?")).status).toBe(404);
+
+      // The super admin, not a member, manages it too
+      const another = await createUser(root, "admin");
+      expect((await patch(another.session, group.id, { name: "Hijack" })).status).toBe(404);
+      updated = (await patch(root, group.id, { name: "Ops (super)", add: [alice.id] })).data.conversation as Group;
+      expect(updated.group).toMatchObject({ name: "Ops (super)", canManage: true });
+      expect((await api(`/api/messenger/groups/${group.id}`, { session: root })).status).toBe(200);
+      // …but doesn't write in it
+      expect((await api(`/api/messenger/conversations/${group.id}/messages`, { session: root, json: { body: "hi" } })).status).toBe(404);
+      // All chats lists it by name
+      const all = (await api("/api/messenger/conversations?scope=all", { session: root })).data.conversations as { id: string; name: string | null }[];
+      expect(all.find((item) => item.id === group.id)?.name).toBe("Ops (super)");
+
+      expect((await api(`/api/messenger/groups/${group.id}`, { session: root, method: "DELETE" })).status).toBe(204);
+      expect((await chats(bob)).conversations.some((item) => item.id === group.id)).toBe(false);
+    });
+
+    it("anyone can leave; the last one out deletes the group", async () => {
+      const group = (await create(carol.session, { name: `Leavers ${Date.now()}`, members: [alice.id] })).data.conversation as Group;
+      expect((await api(`/api/messenger/groups/${group.id}/leave`, { session: alice.session, method: "POST" })).status).toBe(204);
+      expect((await chats(alice)).conversations.some((item) => item.id === group.id)).toBe(false);
+      expect((await page(carol, group.id)).messages.at(-1)?.body).toMatch(/left$/);
+      expect((await api(`/api/messenger/groups/${group.id}/leave`, { session: alice.session, method: "POST" })).status).toBe(404);
+
+      expect((await api(`/api/messenger/groups/${group.id}/leave`, { session: carol.session, method: "POST" })).status).toBe(204);
+      expect((await api(`/api/messenger/groups/${group.id}`, { session: root })).status).toBe(404);
+      // Direct chats can't be "left"
+      const direct = await open(alice, bob.id);
+      expect((await api(`/api/messenger/groups/${direct.id}/leave`, { session: alice.session, method: "POST" })).status).toBe(400);
+    });
+
+    it("won't add disabled accounts", async () => {
+      const dan = await createUser(root, "user");
+      expect((await api(`/api/users/${dan.id}`, { session: root, method: "PATCH", json: { disabled: true } })).status).toBe(200);
+      expect((await create(carol.session, { name: "With Dan", members: [dan.id] })).status).toBe(400);
+    });
+  });
+
+  describe("super admin deleting", () => {
+    const removeMessage = (session: Session, chatId: string, messageId: string) =>
+      api(`/api/messenger/conversations/${chatId}/messages/${messageId}`, { session, method: "DELETE" });
+    const removeChat = (session: Session, chatId: string) => api(`/api/messenger/conversations/${chatId}`, { session, method: "DELETE" });
+
+    it("deletes any single message, for everyone, and the preview follows", async () => {
+      const chat = await open(alice, bob.id);
+      const first = (await send(alice, chat.id, `keep ${Date.now()}`)).data.message as Message;
+      const second = (await send(bob, chat.id, "delete me")).data.message as Message;
+
+      // Nobody else may: not the people in it, not admins
+      for (const session of [alice.session, bob.session, carol.session]) {
+        expect((await removeMessage(session, chat.id, second.id)).status).toBe(403);
+      }
+
+      expect((await removeMessage(root, chat.id, second.id)).status).toBe(204);
+      expect((await removeMessage(root, chat.id, second.id)).status).toBe(404);
+      expect((await removeMessage(root, chat.id, "not-an-id")).status).toBe(404);
+
+      const seen = await page(alice, chat.id);
+      expect(seen.messages.some((message) => message.id === second.id)).toBe(false);
+      // Open windows learn which to drop
+      expect((seen as unknown as { deleted: string[] }).deleted).toContain(second.id);
+      expect((await chats(alice)).conversations.find((item) => item.id === chat.id)?.last?.body).toBe(first.body);
+    });
+
+    it("deletes whole chats, direct and group, for everyone in them", async () => {
+      const direct = await open(bob, carol.id);
+      await send(bob, direct.id, "something");
+      const group = (await api("/api/messenger/groups", { session: carol.session, json: { name: `Doomed ${Date.now()}`, members: [alice.id] } })).data
+        .conversation as Conversation;
+
+      expect((await removeChat(carol.session, group.id)).status).toBe(403);
+      expect((await removeChat(bob.session, direct.id)).status).toBe(403);
+
+      expect((await removeChat(root, direct.id)).status).toBe(204);
+      expect((await removeChat(root, group.id)).status).toBe(204);
+      expect((await removeChat(root, group.id)).status).toBe(404);
+
+      expect((await chats(bob)).conversations.some((item) => item.id === direct.id)).toBe(false);
+      expect((await chats(alice)).conversations.some((item) => item.id === group.id)).toBe(false);
+      expect((await api(`/api/messenger/conversations/${direct.id}/messages`, { session: bob.session })).status).toBe(404);
+      expect(await (await db()).collection("messages").countDocuments({ conversationId: new ObjectId(direct.id) })).toBe(0);
+    });
+
+    it("a group keeps its place when all its messages are deleted", async () => {
+      const group = (await api("/api/messenger/groups", { session: carol.session, json: { name: `Empty ${Date.now()}`, members: [alice.id] } })).data
+        .conversation as Conversation;
+      for (const message of (await page(carol, group.id)).messages) {
+        expect((await removeMessage(root, group.id, message.id)).status).toBe(204);
+      }
+      const listed = (await chats(alice)).conversations.find((item) => item.id === group.id);
+      expect(listed).toBeDefined();
+      expect(listed?.last).toBeNull();
+    });
   });
 });

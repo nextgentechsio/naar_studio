@@ -4,11 +4,12 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { Icon } from "@/app/components/ui/Icon";
 import { cx } from "@/app/components/ui/primitives";
 import { errorMessage, fetchJson, logRequestError } from "@/lib/client/http";
-import { canReadAllChats } from "@/lib/auth/roles";
+import { canDeleteAnyChat, canManageGroups, canReadAllChats } from "@/lib/auth/roles";
 import type { AuditConversation, AuditList, ConversationList, Person, PublicConversation } from "@/lib/messenger/shared";
 import { useStudio } from "../_components/StudioProvider";
 import ChatWindow from "./ChatWindow";
-import { Avatar, UnreadBadge, shortTime } from "./parts";
+import GroupForm from "./GroupForm";
+import { Avatar, GroupAvatar, UnreadBadge, shortTime } from "./parts";
 
 // --------------------------------------------------
 // MESSENGER (floating, bottom right)
@@ -38,9 +39,20 @@ const nameOf = (conversation: AnyConversation) =>
   isAudit(conversation) ? conversation.members.map((member) => member.name).join(" & ") : conversation.other.name;
 const unreadOf = (conversation: AnyConversation) => (isAudit(conversation) ? 0 : conversation.unread);
 
+// The list's second line: "You: …", in groups "Alice: …"
+// (event lines already start with who did it)
+function previewLine(conversation: PublicConversation) {
+  const last = conversation.last!;
+  if (!conversation.group) return `${last.mine ? "You: " : ""}${last.body}`;
+  if (last.sender && last.body.startsWith(last.sender)) return last.body;
+  return `${last.mine ? "You" : last.sender.split(" ")[0]}: ${last.body}`;
+}
+
 export default function Messenger() {
   const { currentUser } = useStudio();
   const canAudit = canReadAllChats(currentUser);
+  const canCreateGroups = canManageGroups(currentUser);
+  const canDelete = canDeleteAnyChat(currentUser);
   const [list, setList] = useState<ConversationList | null>(null);
   const [panel, setPanel] = useState(false);
   const [open, setOpen] = useState<Open[]>([]);
@@ -104,6 +116,14 @@ export default function Messenger() {
   }, [list, extra]);
 
   function show(conversation: AnyConversation) {
+    // A group from All chats: open it as a group (members,
+    // and managing it), read only unless they're in it
+    if (isAudit(conversation) && conversation.name !== null) {
+      fetchJson<{ conversation: PublicConversation }>(`/api/messenger/groups/${conversation.id}`)
+        .then((data) => show(data.conversation))
+        .catch((error) => logRequestError(error, "Open group"));
+      return;
+    }
     setExtra((current) => (current[conversation.id] ? current : { ...current, [conversation.id]: conversation }));
     setOpen((current) => {
       const rest = current.filter((item) => item.id !== conversation.id);
@@ -129,6 +149,23 @@ export default function Messenger() {
     setOpen((current) => current.filter((item) => item.id !== id));
   }
 
+  // A group was renamed or its members changed (null:
+  // left or deleted, so its window closes)
+  function groupChanged(id: string, updated: PublicConversation | null) {
+    if (!updated) {
+      close(id);
+      setExtra((current) => Object.fromEntries(Object.entries(current).filter(([key]) => key !== id)));
+    } else {
+      setExtra((current) => ({ ...current, [id]: updated }));
+      setList((current) =>
+        current
+          ? { ...current, conversations: current.conversations.map((item) => (item.id === id ? { ...updated, unread: item.unread } : item)) }
+          : current,
+      );
+    }
+    load();
+  }
+
   const unread = list?.unread ?? 0;
   const windows = open.filter((item) => !item.minimized && byId.has(item.id));
   const heads = open.filter((item) => item.minimized && byId.has(item.id));
@@ -151,6 +188,9 @@ export default function Messenger() {
                 onClose={() => close(item.id)}
                 onMinimize={() => minimize(item.id)}
                 onActivity={load}
+                selfId={currentUser.id}
+                onGroupChange={(updated) => groupChanged(item.id, updated)}
+                canDelete={canDelete}
               />
             </div>
           ))}
@@ -161,7 +201,15 @@ export default function Messenger() {
       {/* Phones: hidden behind an open chat (it would cover
           the send button); − or × brings it back */}
       <div ref={root} className={cx("fixed bottom-5 right-5 z-40 flex flex-col items-end gap-3", narrow && windows.length > 0 && "hidden")}>
-        {panel && <ChatsPanel list={list} onPick={show} canAudit={canAudit} />}
+        {panel && (
+          <ChatsPanel
+            list={list}
+            onPick={show}
+            canAudit={canAudit}
+            canCreateGroups={canCreateGroups}
+            onDeleted={(id) => groupChanged(id, null)}
+          />
+        )}
 
         {heads.map((item) => {
           const conversation = byId.get(item.id)!;
@@ -222,12 +270,19 @@ function ChatsPanel({
   list,
   onPick,
   canAudit,
+  canCreateGroups,
+  onDeleted,
 }: {
   list: ConversationList | null;
   onPick: (conversation: AnyConversation) => void;
   canAudit: boolean;
+  canCreateGroups: boolean;
+  // The super admin deleted a chat from All chats
+  onDeleted: (id: string) => void;
 }) {
   const [query, setQuery] = useState("");
+  // Admins: making a new group (replaces the list)
+  const [creating, setCreating] = useState(false);
   // Super admin: their own chats, or everyone's
   const [tab, setTab] = useState<"mine" | "all">("mine");
   const [all, setAll] = useState<AuditList | null>(null);
@@ -297,8 +352,26 @@ function ChatsPanel({
       className="glass flex max-h-[min(72vh,560px)] w-[min(calc(100vw-40px),360px)] origin-bottom-right animate-[ui-pop-in_0.24s_cubic-bezier(0.2,0.9,0.3,1)_both] flex-col overflow-hidden rounded-2xl border"
     >
       <div className="shrink-0 space-y-2.5 px-4 pb-3 pt-3.5">
-        <p className="text-lg font-semibold tracking-tight text-fg">Chats</p>
-        {canAudit && (
+        <div className="flex items-center justify-between">
+          <p className="text-lg font-semibold tracking-tight text-fg">{creating ? "New group" : "Chats"}</p>
+          {canCreateGroups && (
+            <button
+              type="button"
+              onClick={() => setCreating((value) => !value)}
+              aria-pressed={creating}
+              title={creating ? "Back to chats" : "New group"}
+              className={cx(
+                "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
+                creating ? "text-fg-muted hover:bg-fg/[0.06]" : "bg-accent-soft text-accent hover:bg-accent-soft/70",
+              )}
+            >
+              <Icon name={creating ? "chevronLeft" : "users"} size={13} />
+              {creating ? "Back" : "New group"}
+            </button>
+          )}
+        </div>
+        {creating && <GroupForm people={people} onCreated={(conversation) => onPick(conversation)} />}
+        {canAudit && !creating && (
           <div role="tablist" aria-label="Whose chats" className="flex gap-1 rounded-full bg-fg/[0.06] p-0.5">
             {(
               [
@@ -325,7 +398,7 @@ function ChatsPanel({
         <label htmlFor={searchId} className="sr-only">
           Search people and chats
         </label>
-        <div className="flex items-center gap-2 rounded-full bg-fg/[0.07] px-3 py-1.5 transition-shadow focus-within:shadow-[0_0_0_1.5px_var(--accent)]">
+        <div className={cx("flex items-center gap-2 rounded-full bg-fg/[0.07] px-3 py-1.5 transition-shadow focus-within:shadow-[0_0_0_1.5px_var(--accent)]", creating && "hidden")}>
           <Icon name="search" size={15} className="text-fg-subtle" />
           <input
             id={searchId}
@@ -339,10 +412,24 @@ function ChatsPanel({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-2 [scrollbar-width:thin]">
+      <div className={cx("min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-2 [scrollbar-width:thin]", creating && "hidden")}>
         {error && <p className="px-2 py-2 text-xs text-danger">{error}</p>}
         {tab === "all" ? (
-          <AllChats data={all} matches={matches} onPick={onPick} />
+          <AllChats
+            data={all}
+            matches={matches}
+            onPick={onPick}
+            onDelete={(conversation) => {
+              const label = conversation.name ? `the group “${conversation.name}”` : `the chat between ${conversation.members.map((member) => member.name).join(" and ")}`;
+              if (!window.confirm(`Delete ${label} and all its messages for everyone? This can't be undone.`)) return;
+              fetchJson(`/api/messenger/conversations/${conversation.id}`, { method: "DELETE" })
+                .then(() => {
+                  setAll((current) => (current ? { conversations: current.conversations.filter((item) => item.id !== conversation.id) } : current));
+                  onDeleted(conversation.id);
+                })
+                .catch((err) => setError(errorMessage(err, "Couldn't delete the chat")));
+            }}
+          />
         ) : (
           <>
             {!list && <p className="px-2 py-6 text-center text-xs text-fg-subtle">Loading chats…</p>}
@@ -362,14 +449,18 @@ function ChatsPanel({
                     onClick={() => onPick(conversation)}
                     className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-fg/[0.06]"
                   >
-                    <Avatar id={conversation.other.id} name={conversation.other.name} size={44} />
+                    {conversation.group ? (
+                      <GroupAvatar members={conversation.group.members} size={44} />
+                    ) : (
+                      <Avatar id={conversation.other.id} name={conversation.other.name} size={44} />
+                    )}
                     <span className="min-w-0 flex-1">
                       <span className={cx("block truncate text-sm", conversation.unread ? "font-semibold text-fg" : "font-medium text-fg")}>
                         {conversation.other.name}
                       </span>
                       <span className={cx("flex gap-1 text-xs", conversation.unread ? "font-semibold text-fg" : "text-fg-subtle")}>
                         <span className="min-w-0 truncate">
-                          {conversation.last ? `${conversation.last.mine ? "You: " : ""}${conversation.last.body}` : "No messages yet"}
+                          {conversation.last ? previewLine(conversation) : "No messages yet"}
                         </span>
                         {conversation.last && <span className="shrink-0">· {shortTime(conversation.last.at)}</span>}
                       </span>
@@ -413,11 +504,6 @@ function ChatsPanel({
         )}
       </div>
 
-      {/* Everyone is told: no silent monitoring */}
-      <p className="flex shrink-0 items-center justify-center gap-1.5 border-t border-line px-4 py-2 text-[10px] text-fg-subtle">
-        <Icon name="eye" size={11} />
-        {canAudit ? "You can read every chat. People are told this here." : "Chats are private, but the super admin can review them."}
-      </p>
     </div>
   );
 }
@@ -427,10 +513,12 @@ function AllChats({
   data,
   matches,
   onPick,
+  onDelete,
 }: {
   data: AuditList | null;
   matches: (person: { name: string; username: string }) => boolean;
   onPick: (conversation: AnyConversation) => void;
+  onDelete: (conversation: AuditConversation) => void;
 }) {
   if (!data) return <p className="px-2 py-6 text-center text-xs text-fg-subtle">Loading all chats…</p>;
   const rows = data.conversations.filter((conversation) => conversation.members.some(matches));
@@ -442,21 +530,22 @@ function AllChats({
     <ul>
       {rows.map((conversation, index) => {
         const [first, second] = conversation.members;
+        const title = conversation.name ?? `${first.name} & ${second?.name ?? ""}`;
         const sender = conversation.members.find((member) => member.id === conversation.last?.senderId);
         return (
-          <li key={conversation.id} className="ui-rise" style={{ "--i": index } as React.CSSProperties}>
+          <li key={conversation.id} className="ui-rise group/row relative" style={{ "--i": index } as React.CSSProperties}>
             <button
               type="button"
               onClick={() => onPick(conversation)}
               className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-fg/[0.06]"
             >
-              <span className="relative h-11 w-11 shrink-0">
-                <Avatar id={first.id} name={first.name} size={28} className="absolute left-0 top-0" />
-                <Avatar id={second.id} name={second.name} size={28} className="absolute bottom-0 right-0 ring-2 ring-[var(--canvas)]" />
-              </span>
+              <GroupAvatar members={conversation.members} size={44} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium text-fg">
-                  {first.name} &amp; {second.name}
+                  {title}
+                  {conversation.name !== null && (
+                    <span className="ml-1.5 text-xs font-normal text-fg-subtle">· {conversation.members.length} people</span>
+                  )}
                 </span>
                 <span className="flex gap-1 text-xs text-fg-subtle">
                   <span className="min-w-0 truncate">
@@ -465,7 +554,16 @@ function AllChats({
                   {conversation.last && <span className="shrink-0">· {shortTime(conversation.last.at)}</span>}
                 </span>
               </span>
-              <Icon name="eye" size={14} className="shrink-0 text-fg-subtle" />
+              <Icon name="eye" size={14} className="shrink-0 text-fg-subtle group-hover/row:opacity-0" />
+            </button>
+            <button
+              type="button"
+              onClick={() => onDelete(conversation)}
+              aria-label={`Delete ${title}`}
+              title="Delete for everyone"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-fg-subtle opacity-0 transition-opacity hover:bg-danger/10 hover:text-danger focus-visible:opacity-100 group-hover/row:opacity-100"
+            >
+              <Icon name="trash" size={14} />
             </button>
           </li>
         );

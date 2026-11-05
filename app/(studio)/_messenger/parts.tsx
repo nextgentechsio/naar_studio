@@ -52,6 +52,20 @@ export function Avatar({
   );
 }
 
+// A group: two of its members' faces, overlapped
+export function GroupAvatar({ members, size = 36 }: { members: { id: string; name: string }[]; size?: number }) {
+  const [first, second] = members;
+  const small = Math.round(size * 0.62);
+  if (!first) return <Avatar id="group" name="Group" size={size} />;
+  if (!second) return <Avatar id={first.id} name={first.name} size={size} />;
+  return (
+    <span aria-hidden className="relative shrink-0" style={{ width: size, height: size }}>
+      <Avatar id={first.id} name={first.name} size={small} className="absolute left-0 top-0" />
+      <Avatar id={second.id} name={second.name} size={small} className="absolute bottom-0 right-0 ring-2 ring-[var(--canvas)]" />
+    </span>
+  );
+}
+
 export function UnreadBadge({ count, className }: { count: number; className?: string }) {
   if (count <= 0) return null;
   return (

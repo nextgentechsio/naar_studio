@@ -110,6 +110,18 @@ export function canReadAllChats(actor: Actor): boolean {
   return !actor.disabled && actor.role === "super_admin";
 }
 
+// Deleting any Messenger message or chat (direct or
+// group), whoever is in it
+export function canDeleteAnyChat(actor: Actor): boolean {
+  return !actor.disabled && actor.role === "super_admin";
+}
+
+// Creating Messenger groups and managing their members
+// (admins: groups they're in; the super admin: every one)
+export function canManageGroups(actor: Actor): boolean {
+  return !actor.disabled && (actor.role === "super_admin" || actor.role === "admin");
+}
+
 // Sending (and deleting) notifications to everyone
 export function canSendNotifications(actor: Actor): boolean {
   return !actor.disabled && actor.role === "super_admin";

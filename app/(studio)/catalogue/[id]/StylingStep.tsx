@@ -3,8 +3,8 @@
 import type { ReactNode } from "react";
 import { IMAGE_MODELS, MAX_ACCESSORIES, RESOLUTIONS } from "@/lib/catalogue/shared";
 import { Icon } from "@/app/components/ui/Icon";
-import { Button, cx, formatCost } from "@/app/components/ui/primitives";
-import { assetsOf, imagePrice, Segmented } from "../_parts/product-ui";
+import { Button, cx } from "@/app/components/ui/primitives";
+import { assetsOf, Segmented } from "../_parts/product-ui";
 import AssetPicker from "./AssetPicker";
 import type { StepProps } from "./types";
 
@@ -137,9 +137,6 @@ export default function StylingStep({ product, library, update, goTo }: StepProp
                   )}
                 </span>
                 <span className="mt-0.5 block text-xs text-fg-muted">{model.hint}</span>
-                <span className="mt-2 block text-[11px] text-fg-subtle">
-                  {RESOLUTIONS.map((size) => `${size} ≈ ${formatCost(imagePrice(model.id, size))}`).join(" · ")} per image
-                </span>
               </button>
             );
           })}
@@ -152,9 +149,6 @@ export default function StylingStep({ product, library, update, goTo }: StepProp
             options={RESOLUTIONS.map((size) => ({ value: size, label: size }))}
             onChange={(resolution) => resolution !== product.resolution && void update({ resolution })}
           />
-          <span className="text-xs text-fg-subtle">
-            ≈ {formatCost(imagePrice(product.imageModel, product.resolution))} per image
-          </span>
         </div>
       </Section>
 

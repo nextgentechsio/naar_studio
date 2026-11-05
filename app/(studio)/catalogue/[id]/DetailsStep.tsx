@@ -104,7 +104,7 @@ export default function DetailsStep({ product, update, goTo }: StepProps) {
           </Field>
           <Field
             label="Project"
-            hint={product.projectLocked ? "Locked: its images are already billed to this project" : "Billed for every image"}
+            hint={product.projectLocked ? "Locked: it already has images in this project" : "Its images are kept under this project"}
           >
             {(props) => (
               <select {...props} disabled={product.projectLocked} value={form.project} onChange={(event) => set("project")(event.target.value)} className={inputClass}>

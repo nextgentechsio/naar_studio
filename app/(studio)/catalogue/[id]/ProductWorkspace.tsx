@@ -275,8 +275,8 @@ function DeleteDialog({
         <>
           <div className="space-y-3 px-5 pb-4 pt-1 text-sm text-fg-muted">
             <p>
-              Its photos and shots are removed from the catalogue. The images stay in History, and what they cost stays in
-              Expenses under {product.project.name}.
+              Its photos and shots are removed from the catalogue. The images stay in History under{" "}
+              {product.project.name}.
             </p>
             {error && <Alert>{error}</Alert>}
           </div>

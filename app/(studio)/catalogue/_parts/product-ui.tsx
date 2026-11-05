@@ -3,11 +3,9 @@
 import type {
   AssetKind,
   Gender,
-  ImageModelId,
   ProductShot,
   ProductStatus,
   PublicAsset,
-  Resolution,
   ShotRun,
 } from "@/lib/catalogue/shared";
 import { Badge, Spinner } from "@/app/components/ui/primitives";
@@ -15,7 +13,7 @@ import { Badge, Spinner } from "@/app/components/ui/primitives";
 // --------------------------------------------------
 // CATALOGUE PRODUCTS: small shared pieces
 //
-// Status labels, the per-image price hint, a shot's
+// Status labels, a shot's
 // current state and a relative "updated" time.
 // --------------------------------------------------
 
@@ -36,20 +34,6 @@ export function StatusBadge({ status, className }: { status: ProductStatus; clas
   );
 }
 
-// Rough per-image prices (USD) for the hint; the real
-// charge is recorded in Expenses when a run finishes
-// (direct ones: typical token use at the list prices in
-// lib/catalogue/direct.ts, with a few reference photos)
-const PRICES: Record<ImageModelId, Record<Resolution, number>> = {
-  "google:gemini-nano-banana-2.1": { "1K": 0.05, "2K": 0.067 },
-  "openai:gpt-image-2.5-sunburst": { "1K": 0.046, "2K": 0.065 },
-  "google/nano-banana-2": { "1K": 0.067, "2K": 0.101 },
-  "openai/gpt-image-2.5-sunburst": { "1K": 0.047, "2K": 0.128 },
-};
-
-export function imagePrice(model: ImageModelId, resolution: Resolution): number {
-  return PRICES[model]?.[resolution] ?? 0;
-}
 
 // What a shot shows right now
 export function shotState(shot: ProductShot) {

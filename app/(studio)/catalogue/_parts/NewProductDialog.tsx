@@ -42,7 +42,7 @@ export default function NewProductDialog({
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!name.trim()) return setError("Add a name");
-    if (!chosenProject) return setError("Choose the project it's billed to");
+    if (!chosenProject) return setError("Choose a project for it");
     setSaving(true);
     setError("");
     try {
@@ -118,7 +118,7 @@ export default function NewProductDialog({
                   </select>
                 )}
               </Field>
-              <Field label="Project" required error={projectsError || undefined} hint={projectsError ? undefined : "Every image is billed to it"}>
+              <Field label="Project" required error={projectsError || undefined} hint={projectsError ? undefined : "Its images are kept under this project"}>
                 {(props) => (
                   <select
                     {...props}

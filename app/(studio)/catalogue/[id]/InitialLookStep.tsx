@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { catalogueApi } from "@/lib/client/catalogue";
-import { Alert, Button, EmptyState, formatCost, Spinner } from "@/app/components/ui/primitives";
+import { Alert, Button, EmptyState, Spinner } from "@/app/components/ui/primitives";
 import { Modal } from "@/app/components/ui/Modal";
-import { imagePrice, shotState } from "../_parts/product-ui";
+import { shotState } from "../_parts/product-ui";
 import FeedbackBox from "./FeedbackBox";
 import type { StepProps } from "./types";
 import { RunPreview, VersionStrip } from "./Versions";
@@ -47,7 +47,6 @@ export default function InitialLookStep({ product, act, goTo }: StepProps) {
   const view =
     shot.runs.find((run) => run.generationId === viewId) ?? (state.pending ? state.latest : (state.selected ?? state.latest));
   const missing = !product.inputs.front ? "Upload the garment's front photo first." : null;
-  const price = imagePrice(product.imageModel, product.resolution);
   const rest = product.shots.length - 1;
 
   async function generate() {
@@ -110,7 +109,6 @@ export default function InitialLookStep({ product, act, goTo }: StepProps) {
                   {(state.pending || starting) && <Spinner />}
                   {state.pending ? "Generating…" : shot.runs.length ? "Try again" : "Generate initial look"}
                 </Button>
-                <span className="text-xs text-fg-subtle">≈ {formatCost(price)} per image</span>
               </div>
             </>
           )}
@@ -139,7 +137,6 @@ export default function InitialLookStep({ product, act, goTo }: StepProps) {
       {confirming && (
         <ApproveDialog
           shots={rest}
-          cost={rest * price}
           project={product.project.name}
           onApprove={async () => {
             const failed = await act(() => catalogueApi.approve(product.id), "Couldn't approve the initial look.");
@@ -154,13 +151,11 @@ export default function InitialLookStep({ product, act, goTo }: StepProps) {
 
 function ApproveDialog({
   shots,
-  cost,
   project,
   onApprove,
   onClose,
 }: {
   shots: number;
-  cost: number;
   project: string;
   onApprove: () => Promise<void>;
   onClose: () => void;
@@ -175,11 +170,7 @@ function ApproveDialog({
             <p>
               This locks the look and the template, then shoots the other {shots} shot{shots === 1 ? "" : "s"} from it.
             </p>
-            <div className="flex items-baseline justify-between rounded-xl border border-line bg-sunken px-3.5 py-3">
-              <span>Estimated cost</span>
-              <span className="text-base font-semibold text-fg">≈ {formatCost(cost)}</span>
-            </div>
-            <p className="text-xs text-fg-subtle">Billed to {project}. Regenerating a shot later costs one more image.</p>
+            <p className="text-xs text-fg-subtle">The images go to {project}. You can regenerate any shot later.</p>
           </div>
           <div className="flex justify-end gap-2 border-t border-line px-5 py-3">
             <Button onClick={close} disabled={busy}>

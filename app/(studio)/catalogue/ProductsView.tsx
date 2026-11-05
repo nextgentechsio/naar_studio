@@ -8,7 +8,7 @@ import type { ProductSummary } from "@/lib/catalogue/shared";
 import { catalogueApi } from "@/lib/client/catalogue";
 import { errorMessage } from "@/lib/client/http";
 import { Icon } from "@/app/components/ui/Icon";
-import { Alert, Button, cx, EmptyState, formatCost, inputClass, PageHeader } from "@/app/components/ui/primitives";
+import { Alert, Button, cx, EmptyState, inputClass, PageHeader } from "@/app/components/ui/primitives";
 import NewProductDialog from "./_parts/NewProductDialog";
 import { StatusBadge, timeAgo } from "./_parts/product-ui";
 
@@ -54,16 +54,15 @@ export default function ProductsView() {
 
   // Active projects, plus any (archived) a product is in
   const scopes = useMemo(() => {
-    const byId = new Map<string, { id: string; name: string; spendUsd: number; products: number; images: number }>();
-    for (const project of projects) byId.set(project.id, { id: project.id, name: project.name, spendUsd: 0, products: 0, images: 0 });
+    const byId = new Map<string, Scope>();
+    for (const project of projects) byId.set(project.id, { id: project.id, name: project.name, products: 0, images: 0 });
     for (const item of products ?? []) {
-      const entry = byId.get(item.project.id) ?? { id: item.project.id, name: item.project.name, spendUsd: 0, products: 0, images: 0 };
-      entry.spendUsd += item.spendUsd;
+      const entry = byId.get(item.project.id) ?? { id: item.project.id, name: item.project.name, products: 0, images: 0 };
       entry.products++;
       entry.images += item.images;
       byId.set(item.project.id, entry);
     }
-    return [...byId.values()].sort((a, b) => b.spendUsd - a.spendUsd || a.name.localeCompare(b.name));
+    return [...byId.values()].sort((a, b) => b.products - a.products || a.name.localeCompare(b.name));
   }, [projects, products]);
   const scope = scopes.find((item) => item.id === projectId) ?? null;
 
@@ -84,7 +83,7 @@ export default function ProductsView() {
     <div className="space-y-6">
       <PageHeader
         title="Catalogue"
-        description="Shoot your garments on AI models, every catalogue angle, billed to a project."
+        description="Shoot your garments on AI models, every catalogue angle, organised by project."
         actions={newButton}
       />
 
@@ -95,7 +94,6 @@ export default function ProductsView() {
           scopes={scopes}
           scope={scope}
           total={{
-            spendUsd: products.reduce((sum, item) => sum + item.spendUsd, 0),
             products: products.length,
             images: products.reduce((sum, item) => sum + item.images, 0),
           }}
@@ -200,22 +198,16 @@ function ProductCard({ product, owner }: { product: ProductSummary; owner: strin
             </>
           )}
           <span className="truncate">Updated {timeAgo(product.updatedAt)}</span>
-          {product.spendUsd > 0 && (
-            <>
-              <span aria-hidden>·</span>
-              <span className="shrink-0 font-medium tabular-nums text-fg-muted">{formatCost(product.spendUsd)}</span>
-            </>
-          )}
         </span>
       </span>
     </Link>
   );
 }
 
-type Scope = { id: string; name: string; spendUsd: number; products: number; images: number };
+type Scope = { id: string; name: string; products: number; images: number };
 
-// The project being viewed, and what catalogue shoots
-// have cost there (the same expenses as Expenses shows)
+// The project being viewed, and how much is in it (no
+// costs here: those are in Expenses)
 function ProjectBar({
   scopes,
   scope,
@@ -232,36 +224,22 @@ function ProjectBar({
     <section aria-label="Project" className="glass ui-rise space-y-4 rounded-2xl border p-4 sm:p-5">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
-          <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-fg-subtle">Catalogue spend</p>
-          <p className="mt-1 flex items-baseline gap-2">
-            <span className="text-[28px] font-bold tabular-nums tracking-[-0.02em] text-fg">{formatCost(shown.spendUsd)}</span>
-            <span className="truncate text-sm text-fg-muted">{shown.name}</span>
-          </p>
+          <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-fg-subtle">Project</p>
+          <p className="mt-1 truncate text-[22px] font-bold tracking-[-0.02em] text-fg">{shown.name}</p>
           <p className="mt-0.5 text-xs text-fg-subtle">
             {shown.products} product{shown.products === 1 ? "" : "s"} · {shown.images} image{shown.images === 1 ? "" : "s"}
-            {scope && (
-              <>
-                {" · "}
-                <Link
-                  href={`/expenses?project=${encodeURIComponent(scope.id)}`}
-                  className="font-medium text-accent hover:underline"
-                >
-                  See in Expenses
-                </Link>
-              </>
-            )}
           </p>
         </div>
       </div>
 
       <div role="tablist" aria-label="Projects" className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:thin]">
-        <ProjectChip active={!scope} label="All projects" spendUsd={total.spendUsd} onClick={() => onChoose("")} />
+        <ProjectChip active={!scope} label="All projects" count={total.products} onClick={() => onChoose("")} />
         {scopes.map((item) => (
           <ProjectChip
             key={item.id}
             active={scope?.id === item.id}
             label={item.name}
-            spendUsd={item.spendUsd}
+            count={item.products}
             onClick={() => onChoose(item.id)}
           />
         ))}
@@ -270,7 +248,7 @@ function ProjectBar({
   );
 }
 
-function ProjectChip({ active, label, spendUsd, onClick }: { active: boolean; label: string; spendUsd: number; onClick: () => void }) {
+function ProjectChip({ active, label, count, onClick }: { active: boolean; label: string; count: number; onClick: () => void }) {
   return (
     <button
       type="button"
@@ -284,8 +262,8 @@ function ProjectChip({ active, label, spendUsd, onClick }: { active: boolean; la
     >
       <Icon name="folder" size={13} className="shrink-0 opacity-80" />
       <span className="max-w-[12rem] truncate">{label}</span>
-      {spendUsd > 0 && (
-        <span className={cx("tabular-nums text-xs", active ? "opacity-80" : "text-fg-subtle")}>{formatCost(spendUsd)}</span>
+      {count > 0 && (
+        <span className={cx("tabular-nums text-xs", active ? "opacity-80" : "text-fg-subtle")}>{count}</span>
       )}
     </button>
   );

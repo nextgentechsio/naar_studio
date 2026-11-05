@@ -5,8 +5,8 @@ import type { PublicProduct } from "@/lib/catalogue/shared";
 import { catalogueApi, downloadImage, type Library } from "@/lib/client/catalogue";
 import { errorMessage } from "@/lib/client/http";
 import { Modal } from "@/app/components/ui/Modal";
-import { Button, Field, formatCost, inputClass, Spinner } from "@/app/components/ui/primitives";
-import { assetsOf, imagePrice, shotState } from "../_parts/product-ui";
+import { Button, Field, inputClass, Spinner } from "@/app/components/ui/primitives";
+import { assetsOf, shotState } from "../_parts/product-ui";
 import FeedbackBox from "./FeedbackBox";
 import type { StepProps } from "./types";
 import { RunPreview, VersionStrip } from "./Versions";
@@ -189,9 +189,6 @@ export default function ShotViewer({
                     {busy && <Spinner />}
                     {state.pending ? "Generating…" : "Regenerate"}
                   </Button>
-                  <span className="text-xs text-fg-subtle">
-                    ≈ {formatCost(imagePrice(product.imageModel, product.resolution))}
-                  </span>
                 </div>
               </section>
             </div>

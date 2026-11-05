@@ -5,7 +5,7 @@ import type { ProductShot } from "@/lib/catalogue/shared";
 import { downloadImage } from "@/lib/client/catalogue";
 import { errorMessage } from "@/lib/client/http";
 import { Icon } from "@/app/components/ui/Icon";
-import { Alert, Button, cx, EmptyState, formatCost, Spinner } from "@/app/components/ui/primitives";
+import { Alert, Button, cx, EmptyState, Spinner } from "@/app/components/ui/primitives";
 import { shotState } from "../_parts/product-ui";
 import ShotViewer, { shotFileName } from "./ShotViewer";
 import type { StepProps } from "./types";
@@ -76,8 +76,7 @@ export default function ShotsStep({ product, library, act, goTo }: StepProps) {
             )}
           </p>
           <p className="mt-0.5 text-xs text-fg-muted">
-            Spent so far <span className="font-semibold text-fg">{formatCost(product.spendUsd)}</span> · Counted in Expenses
-            under project {product.project.name}
+            Project {product.project.name}
           </p>
         </div>
         <Button

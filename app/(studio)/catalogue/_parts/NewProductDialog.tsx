@@ -62,7 +62,7 @@ export default function NewProductDialog({
   }
 
   return (
-    <Modal title="New product" subtitle="One garment or SKU. You'll add its photos next." onClose={onClose}>
+    <Modal title="New product" subtitle="One garment. You'll add its photos next." onClose={onClose}>
       {(close) => (
         <form onSubmit={submit} className="flex min-h-0 flex-col">
           <div className="min-h-0 space-y-4 overflow-y-auto px-5 pb-4 pt-2">
@@ -81,14 +81,14 @@ export default function NewProductDialog({
             </Field>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="SKU">
+              <Field label="SKU (product code)" hint="Your store's code for this item. Used to find it in search and to name its downloaded images.">
                 {(props) => (
                   <input
                     {...props}
                     value={sku}
                     maxLength={80}
                     onChange={(event) => setSku(event.target.value)}
-                    placeholder="Optional"
+                    placeholder="e.g. DRS-LIN-042 (optional)"
                     className={inputClass}
                   />
                 )}

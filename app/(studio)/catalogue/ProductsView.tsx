@@ -124,7 +124,7 @@ export default function ProductsView() {
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder={`Search ${scope ? scope.products : products.length} product${(scope ? scope.products : products.length) === 1 ? "" : "s"}`}
+            placeholder={`Search ${scope ? scope.products : products.length} product${(scope ? scope.products : products.length) === 1 ? "" : "s"} by name or SKU`}
             aria-label="Search products"
             className={cx(inputClass, "pl-9")}
           />
@@ -213,7 +213,7 @@ function ProductCard({ product, owner }: { product: ProductSummary; owner: strin
       <span className="glass absolute inset-x-2 bottom-2 block rounded-xl border px-3 py-2.5">
         <span className="block truncate text-sm font-semibold text-fg">{product.name}</span>
         <span className="mt-0.5 block truncate text-xs text-fg-muted">
-          {[product.sku, product.project.name].filter(Boolean).join(" · ")}
+          {[product.sku && `SKU ${product.sku}`, product.project.name].filter(Boolean).join(" · ")}
         </span>
         <span className="mt-1 flex items-center gap-1.5 truncate text-[11px] text-fg-subtle">
           {owner && (

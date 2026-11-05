@@ -156,7 +156,12 @@ export default function ProductWorkspace({ id }: { id: string }) {
           <h1 className="mt-1 truncate text-2xl font-bold tracking-[-0.02em] text-fg sm:text-[28px]">{product.name}</h1>
           <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-fg-muted">
             <StatusBadge status={product.status} />
-            {product.sku && <Badge>{product.sku}</Badge>}
+            {product.sku && (
+              <Badge>
+                <span className="mr-1 font-normal text-fg-subtle">SKU</span>
+                {product.sku}
+              </Badge>
+            )}
             <span className="inline-flex items-center gap-1">
               <Icon name="folder" size={12} />
               {product.project.name}

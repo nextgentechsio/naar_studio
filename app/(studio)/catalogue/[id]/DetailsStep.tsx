@@ -66,13 +66,14 @@ export default function DetailsStep({ product, update, goTo }: StepProps) {
         </Field>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="SKU">
+          <Field label="SKU (product code)" hint="Your store's code for this item. Used to find it in search and to name its downloaded images.">
             {(props) => (
               <input
                 {...props}
                 value={form.sku}
                 maxLength={80}
                 onChange={(event) => set("sku")(event.target.value)}
+                placeholder="e.g. DRS-LIN-042 (optional)"
                 className={inputClass}
               />
             )}

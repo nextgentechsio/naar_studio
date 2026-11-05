@@ -24,6 +24,7 @@ import { pumpQueue } from "./queue";
 import { RunError } from "./run";
 import {
   CATEGORIES,
+  categoryName,
   DEFAULT_IMAGE_MODEL,
   FEEDBACK_MAX,
   GENDERS,
@@ -106,7 +107,7 @@ export async function createProduct(actor: Actor, body: Record<string, unknown>)
     projectName: project.name,
     name: text(body.name, "Name", NAME_MAX, true),
     sku: text(body.sku, "SKU", 80),
-    category: text(body.category, "Category", 60) || CATEGORIES[0],
+    category: categoryName(text(body.category, "Category", 60)) || CATEGORIES[0],
     gender,
     notes: text(body.notes, "Notes", PROMPT_MAX),
     templateId: null,
@@ -191,7 +192,7 @@ export async function listProducts(actor: Actor): Promise<ProductSummary[]> {
     spendUsd: Math.round((spend.get(doc._id.toHexString())?.usd ?? 0) * 1000) / 1000,
     name: doc.name,
     sku: doc.sku,
-    category: doc.category,
+    category: categoryName(doc.category),
     status: doc.status,
     project: { id: doc.projectId, name: doc.projectName },
     owner: { id: doc.userId, name: doc.userName },
@@ -349,7 +350,7 @@ async function present(doc: ProductDoc, runs: RunDoc[]): Promise<PublicProduct> 
     id,
     name: doc.name,
     sku: doc.sku,
-    category: doc.category,
+    category: categoryName(doc.category),
     gender: doc.gender,
     notes: doc.notes,
     project: { id: doc.projectId, name: doc.projectName },
@@ -365,6 +366,11 @@ async function present(doc: ProductDoc, runs: RunDoc[]): Promise<PublicProduct> 
     shots: doc.plan.map((shot) => ({
       shotId: shot.id,
       label: shot.label,
+      type: shot.type,
+      templatePoseId: shot.poseId ?? null,
+      templateBackgroundId: shot.backgroundId ?? null,
+      poseId: doc.poseOverrides?.[shot.id] ?? null,
+      backgroundId: doc.backgroundOverrides?.[shot.id] ?? null,
       selected: doc.selected[shot.id] ?? null,
       runs: runs
         .filter((run) => run.shotId === shot.id)
@@ -424,7 +430,7 @@ export async function updateProduct(actor: Actor, id: string, body: Record<strin
 
   if (body.name !== undefined) set.name = text(body.name, "Name", NAME_MAX, true);
   if (body.sku !== undefined) set.sku = text(body.sku, "SKU", 80);
-  if (body.category !== undefined) set.category = text(body.category, "Category", 60);
+  if (body.category !== undefined) set.category = categoryName(text(body.category, "Category", 60));
   if (body.notes !== undefined) set.notes = text(body.notes, "Notes", PROMPT_MAX);
   if (body.gender !== undefined) {
     if (!GENDERS.includes(body.gender as ProductDoc["gender"])) throw new CatalogueError(400, "Unknown gender");
@@ -524,8 +530,9 @@ async function startShot(
 ): Promise<string> {
   const isInitial = shot.type === "initial";
   // Shot's own choice, else the product's
-  const poseId = options.poseId ?? shot.poseId ?? doc.poseId;
-  const backgroundId = options.backgroundId ?? shot.backgroundId ?? doc.backgroundId;
+  const poseId = options.poseId ?? doc.poseOverrides?.[shot.id] ?? shot.poseId ?? doc.poseId;
+  const backgroundId =
+    options.backgroundId ?? doc.backgroundOverrides?.[shot.id] ?? shot.backgroundId ?? doc.backgroundId;
   const assets = await assetsByIds([doc.modelId, poseId, backgroundId, ...doc.accessoryIds]);
   const model = (doc.modelId && assets.get(doc.modelId)) || null;
   const pose = (poseId && assets.get(poseId)) || null;
@@ -557,7 +564,7 @@ async function startShot(
   const request = buildShotRequest({
     shot,
     isInitial,
-    product: { name: doc.name, category: doc.category, gender: doc.gender, notes: doc.notes },
+    product: { name: doc.name, category: categoryName(doc.category), gender: doc.gender, notes: doc.notes },
     styling: doc.styling,
     model,
     pose,
@@ -659,6 +666,30 @@ export async function selectRun(actor: Actor, id: string, body: Record<string, u
   return getProduct(actor, id);
 }
 
+// { shotId: assetId } chosen per shot at approve: later
+// shots only, assets of the right kind that are in use
+async function shotOverrides(
+  doc: ProductDoc,
+  value: unknown,
+  kind: "pose" | "background",
+): Promise<Record<string, string>> {
+  if (value === undefined || value === null) return {};
+  if (typeof value !== "object" || Array.isArray(value)) throw new CatalogueError(400, `Invalid ${kind} choices`);
+  const later = new Set(doc.plan.slice(1).map((shot) => shot.id));
+  const out: Record<string, string> = {};
+  for (const [shotId, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (!later.has(shotId)) throw new CatalogueError(400, `Unknown shot for a ${kind} choice`);
+    const id = optionalId(raw, kind);
+    if (id) out[shotId] = id;
+  }
+  const assets = await assetsByIds(Object.values(out));
+  for (const id of Object.values(out)) {
+    const asset = assets.get(id);
+    if (!asset || asset.kind !== kind || asset.status !== "active") throw new CatalogueError(400, `Unknown ${kind}`);
+  }
+  return out;
+}
+
 // Locks the initial look and shoots every other shot
 export async function approve(actor: Actor, id: string, body: Record<string, unknown>): Promise<PublicProduct> {
   await getProduct(actor, id); // sync first
@@ -670,11 +701,22 @@ export async function approve(actor: Actor, id: string, body: Record<string, unk
 
   const only = Array.isArray(body.shotIds) ? new Set(body.shotIds.map(String)) : null;
   const shots = doc.plan.slice(1).filter((shot) => !only || only.has(shot.id));
+  const poseOverrides = await shotOverrides(doc, body.poseOverrides, "pose");
+  const backgroundOverrides = await shotOverrides(doc, body.backgroundOverrides, "background");
+  doc.poseOverrides = poseOverrides;
+  doc.backgroundOverrides = backgroundOverrides;
 
   const { products } = await catalogueCollections();
   await products.updateOne(
     { _id: doc._id },
-    { $set: { status: shots.length ? "shooting" : "done", updatedAt: new Date() } },
+    {
+      $set: {
+        status: shots.length ? "shooting" : "done",
+        poseOverrides,
+        backgroundOverrides,
+        updatedAt: new Date(),
+      },
+    },
   );
 
   // A few at a time; one shot failing to start doesn't stop the rest
@@ -710,17 +752,24 @@ export async function regenerateShot(actor: Actor, id: string, body: Record<stri
   if (await runs.findOne({ productId: id, shotId: shot.id, status: "pending" })) {
     throw new CatalogueError(409, "This shot is already being generated");
   }
+  const poseId = optionalId(body.poseId, "pose");
+  const backgroundId = optionalId(body.backgroundId, "background");
   try {
     await startShot(actor, doc, shot, {
       feedback: text(body.feedback, "Feedback", FEEDBACK_MAX),
       initialUrl: shot.type === "initial" ? null : await initialImage(doc),
-      poseId: optionalId(body.poseId, "pose"),
-      backgroundId: optionalId(body.backgroundId, "background"),
+      poseId,
+      backgroundId,
     });
   } catch (error) {
     runError(error);
   }
-  await products.updateOne({ _id: doc._id }, { $set: { status: "shooting", updatedAt: new Date() } });
+  // A new pose / background sticks to the shot (as the
+  // original's pose_overrides)
+  const set: Record<string, unknown> = { status: "shooting", updatedAt: new Date() };
+  if (poseId && shot.type !== "initial") set[`poseOverrides.${shot.id}`] = poseId;
+  if (backgroundId && shot.type !== "initial") set[`backgroundOverrides.${shot.id}`] = backgroundId;
+  await products.updateOne({ _id: doc._id }, { $set: set });
   return getProduct(actor, id);
 }
 

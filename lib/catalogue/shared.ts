@@ -13,7 +13,7 @@ export const GENDERS = ["female", "male"] as const;
 export type Gender = (typeof GENDERS)[number];
 
 export const CATEGORIES = [
-  "Tops",
+  "Top wear",
   "Shirts",
   "T-shirts",
   "Dresses",
@@ -26,6 +26,11 @@ export const CATEGORIES = [
   "Kidswear",
 ] as const;
 export type Category = (typeof CATEGORIES)[number];
+
+// Categories that were renamed: values saved under the
+// old name read as the new one
+const RENAMED_CATEGORIES: Record<string, Category> = { Tops: "Top wear" };
+export const categoryName = (value: string): string => RENAMED_CATEGORIES[value] ?? value;
 
 // Garment photo slots on a product, in upload order
 export const INPUT_SLOTS = [
@@ -173,6 +178,14 @@ export type ShotRun = {
 export type ProductShot = {
   shotId: string;
   label: string;
+  type: ShotType;
+  // What the template set for this shot (null: none)
+  templatePoseId: string | null;
+  templateBackgroundId: string | null;
+  // Chosen for this product's shot (approve / change
+  // pose); null: the template's, else the product's
+  poseId: string | null;
+  backgroundId: string | null;
   // Newest first
   runs: ShotRun[];
   // The version in use (a succeeded run), or null

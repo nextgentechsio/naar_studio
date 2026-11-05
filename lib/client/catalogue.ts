@@ -45,8 +45,16 @@ export const catalogueApi = {
   deleteProduct: (id: string) => fetchJson(`/api/catalogue/products/${id}`, { method: "DELETE" }),
   generate: (id: string, feedback = "") =>
     fetchJson<{ product: PublicProduct }>(`/api/catalogue/products/${id}/generate`, json("POST", { feedback })),
-  approve: (id: string) =>
-    fetchJson<{ product: PublicProduct }>(`/api/catalogue/products/${id}/approve`, json("POST", {})),
+  // Optional: only some shots, and a pose / background
+  // per shot ({ shotId: assetId })
+  approve: (
+    id: string,
+    body: {
+      shotIds?: string[];
+      poseOverrides?: Record<string, string>;
+      backgroundOverrides?: Record<string, string>;
+    } = {},
+  ) => fetchJson<{ product: PublicProduct }>(`/api/catalogue/products/${id}/approve`, json("POST", body)),
   regenerate: (id: string, body: { shotId: string; feedback?: string; poseId?: string | null; backgroundId?: string | null }) =>
     fetchJson<{ product: PublicProduct }>(`/api/catalogue/products/${id}/regenerate`, json("POST", body)),
   select: (id: string, shotId: string, generationId: string) =>

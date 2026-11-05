@@ -438,6 +438,56 @@ describe("catalogue direct engines (Google, OpenAI)", () => {
     expect(item.spendUsd).toBeCloseTo(expected, 3);
   });
 
+  it("shoots only the chosen shots, each with the pose and background picked for it", async () => {
+    const pose = await api("/api/catalogue/library", {
+      session: admin.session,
+      json: { kind: "pose", name: "Hand on hip", prompt: "POSE: hand-on-hip-marker" },
+    });
+    const scene = await api("/api/catalogue/library", {
+      session: admin.session,
+      json: { kind: "background", name: "Rooftop", prompt: "rooftop-scene-marker" },
+    });
+    expect(pose.status).toBe(200);
+    expect(scene.status).toBe(200);
+    const poseId = (pose.data as { asset: { id: string } }).asset.id;
+    const sceneId = (scene.data as { asset: { id: string } }).asset.id;
+
+    let planned = await newProduct(alice.session, "Planned shirt");
+    const front = await storeBlob(`catalogue/${alice.id}/products/${planned.id}/inputs/front.png`);
+    const quick = (await library(alice.session)).templates.find((t) => t.shots.length >= 4)!;
+    await api(`/api/catalogue/products/${planned.id}`, { session: alice.session, method: "PATCH", json: { inputs: { front }, templateId: quick.id } });
+    expect((await action(alice.session, planned.id, "generate")).status).toBe(200);
+    planned = await settle(planned.id);
+    const [, first, second, third] = planned.shots;
+
+    // Choices are checked: the right kind, later shots only
+    expect((await action(alice.session, planned.id, "approve", { poseOverrides: { [first.shotId]: sceneId } })).status).toBe(400);
+    expect((await action(alice.session, planned.id, "approve", { poseOverrides: { [planned.shots[0].shotId]: poseId } })).status).toBe(400);
+    expect((await action(alice.session, planned.id, "approve", { poseOverrides: { nope: poseId } })).status).toBe(400);
+
+    const since = await requestMark();
+    const { status, data } = await action(alice.session, planned.id, "approve", {
+      shotIds: [first.shotId, second.shotId],
+      poseOverrides: { [first.shotId]: poseId, [third.shotId]: poseId },
+      backgroundOverrides: { [second.shotId]: sceneId },
+    });
+    expect(status).toBe(200);
+    expect((data.product as Product).shots[1]).toMatchObject({ poseId, backgroundId: null });
+    expect((data.product as Product).shots[2]).toMatchObject({ poseId: null, backgroundId: sceneId });
+    planned = await settle(planned.id);
+
+    // Left-out shots aren't made
+    expect(planned.shots[3].runs).toHaveLength(0);
+    const prompts = (await requestsTo("/google/", since)).map(
+      (call) => ((call.body as { input: { type: string; text?: string }[] }).input.at(-1)?.text ?? ""),
+    );
+    expect(prompts).toHaveLength(2);
+    expect(prompts.filter((text) => text.includes("hand-on-hip-marker"))).toHaveLength(1);
+    expect(prompts.filter((text) => text.includes("rooftop-scene-marker"))).toHaveLength(1);
+    const posed = await runDoc(planned.shots[1].runs[0].generationId);
+    expect(posed?.prompt).toContain("hand-on-hip-marker");
+  });
+
   it("fails a blocked image cleanly, with nothing billed", async () => {
     const since = (await replicateRequests()).length;
     const { status, data } = await action(alice.session, item.id, "generate", { feedback: "blockme please" });

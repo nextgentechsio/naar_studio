@@ -95,3 +95,4 @@ Status: prompt and references done (2026-11-05); image processing (face crop, sk
   - The database-backed call queue (`lib/catalogue/queue.ts`: 4 slots, 3 per product, leases, one safe retry).
   - OpenAI quality as in the legacy engine; the generate busy guard; reference checks; per-run traces.
 - 2026-11-05: **phase B prompt port done.** Word-for-word `buildPrompt` blocks 1–22, `@imgN` tags, the original's reference order, ranks and packing. 347 tests pass.
+- 2026-11-05: **approve-time shot plan (from phase C) done.** The Approve popup ("Plan the shots") sets a pose and background for each later shot and can leave shots out. Choices are sent as `shotIds` / `poseOverrides` / `backgroundOverrides`, validated, and stored on the product (`poseOverrides`, `backgroundOverrides`). They win over the template's and the product's choice. A pose or background picked when regenerating is kept for that shot, as in the original's `pose_overrides`.

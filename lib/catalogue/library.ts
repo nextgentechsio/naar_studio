@@ -7,6 +7,7 @@ import { tidyLibrary } from "./files";
 import { PRESET_ASSETS, PRESET_TEMPLATES } from "./presets";
 import {
   ASSET_KINDS,
+  categoryName,
   GENDERS,
   MAX_SHOTS,
   NAME_MAX,
@@ -296,7 +297,7 @@ export function toTemplate(doc: TemplateDoc): PublicTemplate {
     name: doc.name,
     description: doc.description,
     styling: doc.styling,
-    categories: doc.categories,
+    categories: [...new Set(doc.categories.map(categoryName))],
     shots: doc.shots,
     status: doc.status,
     builtIn: Boolean(doc.presetKey),
@@ -367,7 +368,7 @@ function templateFields(input: TemplateInput, partial: boolean) {
     if (!Array.isArray(categories) || !categories.every((c) => typeof c === "string")) {
       throw new CatalogueError(400, "Invalid categories");
     }
-    fields.categories = [...new Set(categories.map((c) => c.trim()).filter(Boolean))].slice(0, 30);
+    fields.categories = [...new Set(categories.map((c) => categoryName(c.trim())).filter(Boolean))].slice(0, 30);
   }
   if (!partial || input.shots !== undefined) fields.shots = parseShots(input.shots);
   if (input.status !== undefined) {

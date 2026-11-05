@@ -249,7 +249,7 @@ export const PRESET_TEMPLATES: PresetTemplate[] = [
     name: "E-commerce standard",
     description: "The balanced marketplace set: hero look, front, back, side, detail close-up and one lifestyle shot.",
     styling: "Clean, modern e-commerce styling — minimal, true-to-size fit, nothing that distracts from the garment.",
-    categories: ["Tops", "Shirts", "T-shirts", "Dresses", "Bottoms", "Co-ords", "Outerwear", "Activewear"],
+    categories: ["Top wear", "Shirts", "T-shirts", "Dresses", "Bottoms", "Co-ords", "Outerwear", "Activewear"],
     shots: [
       { id: "initial", label: "Initial look", type: "initial", prompt: SHOT.initial, poseKey: "pose-three-quarter", backgroundKey: "bg-white-studio" },
       { id: "front", label: "Front", type: "front", prompt: SHOT.front, poseKey: "pose-front-standing", backgroundKey: null },

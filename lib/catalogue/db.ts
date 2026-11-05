@@ -76,6 +76,12 @@ export type ProductDoc = {
   status: ProductStatus;
   // shotId → generation id of the version in use
   selected: Record<string, string>;
+  // shotId → pose / background chosen for that shot at
+  // approve (or when regenerating with a new pose); wins
+  // over the template's and the product's. Missing on
+  // older products.
+  poseOverrides?: Record<string, string>;
+  backgroundOverrides?: Record<string, string>;
   createdAt: Date;
   updatedAt: Date;
 };

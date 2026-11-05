@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { catalogueApi } from "@/lib/client/catalogue";
 import { Alert, Button, EmptyState, Spinner } from "@/app/components/ui/primitives";
-import { Modal } from "@/app/components/ui/Modal";
 import { shotState } from "../_parts/product-ui";
 import FeedbackBox from "./FeedbackBox";
+import ShotPlanDialog from "./ShotPlanDialog";
 import type { StepProps } from "./types";
 import { RunPreview, VersionStrip } from "./Versions";
 
@@ -17,7 +17,7 @@ import { RunPreview, VersionStrip } from "./Versions";
 // then approve to shoot the rest of the template from it.
 // --------------------------------------------------
 
-export default function InitialLookStep({ product, act, goTo }: StepProps) {
+export default function InitialLookStep({ product, library, act, goTo }: StepProps) {
   const [feedback, setFeedback] = useState("");
   // The version in the preview; null: the newest that matters
   const [viewId, setViewId] = useState<string | null>(null);
@@ -119,7 +119,7 @@ export default function InitialLookStep({ product, act, goTo }: StepProps) {
             <h2 className="text-sm font-semibold text-fg">Happy with it?</h2>
             <p className="text-xs text-fg-muted">
               {shot.selected
-                ? `Approving locks this look and shoots the other ${rest} shot${rest === 1 ? "" : "s"} of the template from it.`
+                ? `Approving locks this look. Next you choose a pose and background for each of the other ${rest} shot${rest === 1 ? "" : "s"}, then they're shot from it.`
                 : "Generate a look and choose the version you like (tap it in the strip) to approve it."}
             </p>
             <Button
@@ -128,71 +128,24 @@ export default function InitialLookStep({ product, act, goTo }: StepProps) {
               disabled={!shot.selected || state.pending}
               onClick={() => setConfirming(true)}
             >
-              Approve &amp; shoot all {product.shots.length} shots
+              Approve &amp; plan {rest} shot{rest === 1 ? "" : "s"}
             </Button>
           </section>
         )}
       </div>
 
       {confirming && (
-        <ApproveDialog
-          shots={rest}
-          project={product.project.name}
-          onApprove={async () => {
-            const failed = await act(() => catalogueApi.approve(product.id), "Couldn't approve the initial look.");
+        <ShotPlanDialog
+          product={product}
+          assets={library?.assets ?? null}
+          initialUrl={shot.runs.find((run) => run.generationId === shot.selected)?.imageUrl ?? null}
+          onApprove={async (plan) => {
+            const failed = await act(() => catalogueApi.approve(product.id, plan), "Couldn't approve the initial look.");
             if (!failed) goTo(5);
           }}
           onClose={() => setConfirming(false)}
         />
       )}
     </div>
-  );
-}
-
-function ApproveDialog({
-  shots,
-  project,
-  onApprove,
-  onClose,
-}: {
-  shots: number;
-  project: string;
-  onApprove: () => Promise<void>;
-  onClose: () => void;
-}) {
-  const [busy, setBusy] = useState(false);
-
-  return (
-    <Modal title="Approve the initial look?" size="sm" onClose={onClose}>
-      {(close) => (
-        <>
-          <div className="space-y-3 px-5 pb-4 pt-1 text-sm text-fg-muted">
-            <p>
-              This locks the look and the template, then shoots the other {shots} shot{shots === 1 ? "" : "s"} from it.
-            </p>
-            <p className="text-xs text-fg-subtle">The images go to {project}. You can regenerate any shot later.</p>
-          </div>
-          <div className="flex justify-end gap-2 border-t border-line px-5 py-3">
-            <Button onClick={close} disabled={busy}>
-              Not yet
-            </Button>
-            <Button
-              variant="primary"
-              icon={busy ? undefined : "check"}
-              disabled={busy}
-              onClick={async () => {
-                setBusy(true);
-                // Closed either way: the workspace shows why it failed
-                await onApprove();
-                close();
-              }}
-            >
-              {busy && <Spinner />}
-              {busy ? "Starting shots…" : "Approve & shoot"}
-            </Button>
-          </div>
-        </>
-      )}
-    </Modal>
   );
 }

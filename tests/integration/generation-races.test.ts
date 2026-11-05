@@ -131,6 +131,7 @@ describe("reconcilePending", () => {
     disabled: false,
     sessionVersion: 0,
     passwordHash: "",
+    platforms: ["replicate" as const, "higgsfield" as const, "elevenlabs" as const, "catalogue" as const],
     createdAt: "",
     updatedAt: "",
   };

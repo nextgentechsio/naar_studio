@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/auth";
+import { platformDenied } from "@/lib/auth/platform-access";
 import { createHiggsfieldUpload, higgsfieldConfigured } from "@/lib/higgsfield/client";
 import { HIGGSFIELD_UPLOAD_TYPES } from "@/lib/higgsfield/models";
 
@@ -19,6 +20,8 @@ export const runtime = "nodejs";
 export async function GET() {
   const auth = await requireUser();
   if (auth.response) return auth.response;
+  const denied = platformDenied(auth.user, "higgsfield");
+  if (denied) return denied;
 
   return NextResponse.json({
     enabled: higgsfieldConfigured(),
@@ -29,6 +32,8 @@ export async function GET() {
 export async function POST(request: Request) {
   const auth = await requireUser();
   if (auth.response) return auth.response;
+  const denied = platformDenied(auth.user, "higgsfield");
+  if (denied) return denied;
 
   if (!higgsfieldConfigured()) {
     return NextResponse.json({ error: "Higgsfield is not configured on the server" }, { status: 500 });

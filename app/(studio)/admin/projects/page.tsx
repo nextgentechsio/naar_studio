@@ -11,7 +11,7 @@ export const metadata: Metadata = { title: "Projects" };
 export default async function Page() {
   const user = await getCurrentUser();
 
-  if (!user || !canManageProjects(user)) redirect("/replicate");
+  if (!user || !canManageProjects(user)) redirect("/");
 
   return <ProjectsView />;
 }

@@ -37,6 +37,7 @@ export async function PATCH(
       role: body?.role,
       disabled: body?.disabled,
       password: body?.password,
+      platforms: body?.platforms,
     });
 
     if (!result.ok) {

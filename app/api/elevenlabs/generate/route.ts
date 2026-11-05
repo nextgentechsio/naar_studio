@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { after, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/auth";
+import { platformDenied } from "@/lib/auth/platform-access";
 import {
   audioSeconds,
   ElevenLabsError,
@@ -38,6 +39,8 @@ function badRequest(error: string, status = 400) {
 export async function POST(request: Request) {
   const auth = await requireUser();
   if (auth.response) return auth.response;
+  const denied = platformDenied(auth.user, "elevenlabs");
+  if (denied) return denied;
 
   if (!elevenLabsConfigured()) {
     return badRequest("ElevenLabs is not configured on the server", 500);

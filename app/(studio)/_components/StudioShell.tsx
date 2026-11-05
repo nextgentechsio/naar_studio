@@ -18,6 +18,7 @@ import {
 } from "@/lib/auth/roles";
 import AppFooter from "@/app/components/AppFooter";
 import { APP_NAME } from "@/lib/app-info";
+import { canUsePlatform, type PlatformKey } from "@/lib/auth/platforms";
 import { signOut, useStudio } from "./StudioProvider";
 import Greeting from "./Greeting";
 import Messenger from "../_messenger/Messenger";
@@ -53,12 +54,15 @@ export default function StudioShell({
   const navGroups: { label: string; items: NavItem[] }[] = [
     {
       label: "Create",
-      items: [
-        { href: "/replicate", label: "Replicate", icon: "sparkles" },
-        { href: "/higgsfield", label: "Higgsfield", icon: "video" },
-        { href: "/elevenlabs", label: "ElevenLabs", icon: "audio" },
-        { href: "/catalogue", label: "Catalogue", icon: "shirt" },
-      ],
+      // Only the platforms this account may use
+      items: (
+        [
+          { href: "/replicate", label: "Replicate", icon: "sparkles", platform: "replicate" },
+          { href: "/higgsfield", label: "Higgsfield", icon: "video", platform: "higgsfield" },
+          { href: "/elevenlabs", label: "ElevenLabs", icon: "audio", platform: "elevenlabs" },
+          { href: "/catalogue", label: "Catalogue", icon: "shirt", platform: "catalogue" },
+        ] satisfies (NavItem & { platform: PlatformKey })[]
+      ).filter((item) => canUsePlatform(currentUser, item.platform)),
     },
     {
       label: "Library",

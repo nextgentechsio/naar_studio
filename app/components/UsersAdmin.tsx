@@ -3,11 +3,18 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
 import { PasswordInput } from "@/app/components/ui/primitives";
 import { formatLastSeen } from "@/lib/auth/presence";
+import {
+  ALL_PLATFORMS,
+  platformLabel,
+  STUDIO_PLATFORMS,
+  type PlatformKey,
+} from "@/lib/auth/platforms";
 import {
   assignableRoles,
   canManageUser,
@@ -30,6 +37,8 @@ type FormState = {
   name: string;
   role: Role;
   password: string;
+  // Create platforms the account may use
+  platforms: PlatformKey[];
 };
 
 const inputClass =
@@ -151,6 +160,8 @@ export default function UsersAdmin({
       name: "",
       role: "user",
       password: "",
+      // New accounts start with what you have
+      platforms: [...currentUser.platforms],
     });
   }
 
@@ -164,6 +175,7 @@ export default function UsersAdmin({
       name: user.name,
       role: user.role,
       password: "",
+      platforms: [...user.platforms],
     });
   }
 
@@ -187,6 +199,7 @@ export default function UsersAdmin({
             name: form.name,
             role: form.role,
             password: form.password,
+            platforms: form.platforms,
           }),
         });
 
@@ -197,6 +210,9 @@ export default function UsersAdmin({
           body: JSON.stringify({
             name: form.name,
             role: form.role,
+            ...(platformsEditable(form)
+              ? { platforms: form.platforms }
+              : {}),
             // Blank means "keep the current password"
             ...(form.password
               ? { password: form.password }
@@ -272,6 +288,218 @@ export default function UsersAdmin({
   const editingSelf =
     form?.mode === "edit" && form.id === currentUser.id;
 
+  // Your own platforms (and the super admin's, always all)
+  // aren't changed here
+  function platformsEditable(state: FormState) {
+    return (
+      state.role !== "super_admin" &&
+      !(state.mode === "edit" && state.id === currentUser.id)
+    );
+  }
+
+  function togglePlatform(key: PlatformKey) {
+    if (!form) return;
+    setForm({
+      ...form,
+      platforms: form.platforms.includes(key)
+        ? form.platforms.filter((item) => item !== key)
+        : ALL_PLATFORMS.filter(
+            (item) => item === key || form.platforms.includes(item)
+          ),
+    });
+  }
+
+  // The add / edit form: at the top for a new user, right
+  // under the row for an edit
+  const formPanel = form ? (
+      <form
+        onSubmit={submitForm}
+        className="glass space-y-5 rounded-2xl border p-5"
+      >
+        <h2 className="font-semibold">
+          {form.mode === "create"
+            ? "New user"
+            : `Edit ${form.username}`}
+        </h2>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="block space-y-2">
+            <span className="block text-sm text-fg">
+              Username
+            </span>
+
+            <input
+              value={form.username}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+                  username: event.target.value,
+                })
+              }
+              disabled={form.mode === "edit"}
+              required
+              autoComplete="off"
+              placeholder="e.g. sabina"
+              className={inputClass}
+            />
+          </label>
+
+          <label className="block space-y-2">
+            <span className="block text-sm text-fg">
+              Display name
+            </span>
+
+            <input
+              value={form.name}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+                  name: event.target.value,
+                })
+              }
+              required
+              autoComplete="off"
+              placeholder="e.g. Sabina"
+              className={inputClass}
+            />
+          </label>
+
+          <label className="block space-y-2">
+            <span className="block text-sm text-fg">
+              Role
+            </span>
+
+            <select
+              value={form.role}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+                  role: event.target.value as Role,
+                })
+              }
+              disabled={editingSelf}
+              className={inputClass}
+            >
+              {/* Keep the current role visible even if
+                  this actor can't assign it */}
+              {(roleOptions.includes(form.role)
+                ? roleOptions
+                : [form.role, ...roleOptions]
+              ).map((role) => (
+                <option key={role} value={role}>
+                  {ROLE_LABELS[role]}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block space-y-2">
+            <span className="block text-sm text-fg">
+              {form.mode === "create"
+                ? "Password"
+                : "New password"}
+            </span>
+
+            <PasswordInput
+              baseClassName={inputClass}
+              value={form.password}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+                  password: event.target.value,
+                })
+              }
+              required={form.mode === "create"}
+              minLength={8}
+              autoComplete="new-password"
+              placeholder={
+                form.mode === "create"
+                  ? "At least 8 characters"
+                  : "Leave blank to keep current"
+              }
+            />
+          </label>
+        </div>
+
+        <fieldset className="space-y-3">
+          <legend className="text-sm text-fg">
+            Platforms they can use
+          </legend>
+
+          {platformsEditable(form) ? (
+            <>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                {STUDIO_PLATFORMS.map((platform) => {
+                  const checked = form.platforms.includes(platform.key);
+                  // You can only hand out what you have
+                  const grantable = currentUser.platforms.includes(platform.key);
+
+                  return (
+                    <label
+                      key={platform.key}
+                      className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2.5 ${
+                        checked
+                          ? "border-accent bg-accent/10"
+                          : "border-line bg-sunken"
+                      } ${grantable ? "" : "cursor-not-allowed opacity-60"}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={!grantable}
+                        onChange={() => togglePlatform(platform.key)}
+                        className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium text-fg">
+                          {platform.label}
+                        </span>
+                        <span className="block text-xs text-fg-subtle">
+                          {grantable
+                            ? platform.hint
+                            : "You don't have this one"}
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+
+              <p className="text-xs text-fg-subtle">
+                {form.platforms.length
+                  ? "Turned-off platforms are hidden from their menu and their runs are refused. History, Elements and spend stay visible."
+                  : "No platforms: they can still sign in and see History, Elements and spend, but can't make anything."}
+              </p>
+            </>
+          ) : (
+            <p className="text-xs text-fg-subtle">
+              {form.role === "super_admin"
+                ? "The super admin always has every platform."
+                : "Your own platforms are set by whoever manages your account."}
+            </p>
+          )}
+        </fieldset>
+
+        <div className="flex gap-2">
+          <button
+            type="submit"
+            disabled={saving}
+            className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-on-accent hover:bg-accent-hover disabled:bg-raised disabled:text-fg-subtle"
+          >
+            {saving ? "Saving..." : "Save"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setForm(null)}
+            className="rounded-xl border border-line-strong px-4 py-2 text-sm text-fg hover:bg-raised"
+          >
+            Cancel
+          </button>
+        </div>
+      </form>
+  ) : null;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -317,135 +545,10 @@ export default function UsersAdmin({
         </div>
       )}
 
-      {form && (
-        <form
-          onSubmit={submitForm}
-          className="space-y-5 rounded-2xl border border-line bg-surface p-5"
-        >
-          <h2 className="font-semibold">
-            {form.mode === "create"
-              ? "New user"
-              : `Edit ${form.username}`}
-          </h2>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="block space-y-2">
-              <span className="block text-sm text-fg">
-                Username
-              </span>
-
-              <input
-                value={form.username}
-                onChange={(event) =>
-                  setForm({
-                    ...form,
-                    username: event.target.value,
-                  })
-                }
-                disabled={form.mode === "edit"}
-                required
-                autoComplete="off"
-                placeholder="e.g. sabina"
-                className={inputClass}
-              />
-            </label>
-
-            <label className="block space-y-2">
-              <span className="block text-sm text-fg">
-                Display name
-              </span>
-
-              <input
-                value={form.name}
-                onChange={(event) =>
-                  setForm({
-                    ...form,
-                    name: event.target.value,
-                  })
-                }
-                required
-                autoComplete="off"
-                placeholder="e.g. Sabina"
-                className={inputClass}
-              />
-            </label>
-
-            <label className="block space-y-2">
-              <span className="block text-sm text-fg">
-                Role
-              </span>
-
-              <select
-                value={form.role}
-                onChange={(event) =>
-                  setForm({
-                    ...form,
-                    role: event.target.value as Role,
-                  })
-                }
-                disabled={editingSelf}
-                className={inputClass}
-              >
-                {/* Keep the current role visible even if
-                    this actor can't assign it */}
-                {(roleOptions.includes(form.role)
-                  ? roleOptions
-                  : [form.role, ...roleOptions]
-                ).map((role) => (
-                  <option key={role} value={role}>
-                    {ROLE_LABELS[role]}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="block space-y-2">
-              <span className="block text-sm text-fg">
-                {form.mode === "create"
-                  ? "Password"
-                  : "New password"}
-              </span>
-
-              <PasswordInput
-                baseClassName={inputClass}
-                value={form.password}
-                onChange={(event) =>
-                  setForm({
-                    ...form,
-                    password: event.target.value,
-                  })
-                }
-                required={form.mode === "create"}
-                minLength={8}
-                autoComplete="new-password"
-                placeholder={
-                  form.mode === "create"
-                    ? "At least 8 characters"
-                    : "Leave blank to keep current"
-                }
-              />
-            </label>
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              disabled={saving}
-              className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-on-accent hover:bg-accent-hover disabled:bg-raised disabled:text-fg-subtle"
-            >
-              {saving ? "Saving..." : "Save"}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setForm(null)}
-              className="rounded-xl border border-line-strong px-4 py-2 text-sm text-fg hover:bg-raised"
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
-      )}
+      {/* New user: opens at the top */}
+      <Reveal open={form?.mode === "create"}>
+        {form?.mode === "create" ? formPanel : null}
+      </Reveal>
 
       <div className="overflow-hidden rounded-2xl border border-line bg-surface">
         {loading ? (
@@ -466,96 +569,120 @@ export default function UsersAdmin({
                 isSelf ||
                 canManageUser(currentUser, user);
 
+              const editing =
+                form?.mode === "edit" && form.id === user.id;
+
               return (
-                <div
-                  key={user.id}
-                  className="grid items-center gap-3 px-5 py-4 md:grid-cols-[minmax(0,1fr)_120px_90px_220px]"
-                >
-                  <div className="flex min-w-0 items-center gap-3">
-                    {showPresence && (
-                      <UserAvatar
-                        name={user.name}
-                        online={isOnline(user)}
-                      />
-                    )}
-
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-fg">
-                        {user.name}
-                        {isSelf && (
-                          <span className="ml-2 text-xs text-fg-muted">
-                            (you)
-                          </span>
-                        )}
-                      </p>
-
-                      <p className="mt-1 truncate text-xs text-fg-subtle">
-                        @{user.username}
-                        {showPresence && user.presence && (
-                          <>
-                            {" · "}
-                            {isOnline(user) ? (
-                              <span className="font-medium text-success">
-                                Online now
-                              </span>
-                            ) : now ? (
-                              formatLastSeen(user.presence.lastSeenAt, now)
-                            ) : null}
-                          </>
-                        )}
-                      </p>
-                    </div>
-                  </div>
-
-                  <span className="text-xs text-fg-muted">
-                    {ROLE_LABELS[user.role]}
-                  </span>
-
-                  <span
-                    className={`text-xs ${
-                      user.disabled
-                        ? "font-medium text-danger"
-                        : "text-fg-muted"
+                <div key={user.id}>
+                  <div
+                    className={`grid items-center gap-3 px-5 py-4 transition-colors duration-300 md:grid-cols-[minmax(0,1fr)_180px_120px_90px_220px] ${
+                      editing ? "bg-raised/60" : ""
                     }`}
                   >
-                    {user.disabled ? "Disabled" : "Active"}
-                  </span>
+                    <div className="flex min-w-0 items-center gap-3">
+                      {showPresence && (
+                        <UserAvatar
+                          name={user.name}
+                          online={isOnline(user)}
+                        />
+                      )}
 
-                  <div className="flex flex-wrap justify-end gap-2">
-                    {manageable && (
-                      <button
-                        type="button"
-                        onClick={() => openEdit(user)}
-                        className="rounded-lg border border-line-strong px-3 py-1.5 text-xs text-fg hover:bg-raised"
-                      >
-                        Edit
-                      </button>
-                    )}
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-fg">
+                          {user.name}
+                          {isSelf && (
+                            <span className="ml-2 text-xs text-fg-muted">
+                              (you)
+                            </span>
+                          )}
+                        </p>
 
-                    {manageable && !isSelf && (
-                      <>
+                        <p className="mt-1 truncate text-xs text-fg-subtle">
+                          @{user.username}
+                          {showPresence && user.presence && (
+                            <>
+                              {" · "}
+                              {isOnline(user) ? (
+                                <span className="font-medium text-success">
+                                  Online now
+                                </span>
+                              ) : now ? (
+                                formatLastSeen(user.presence.lastSeenAt, now)
+                              ) : null}
+                            </>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+
+                    <PlatformsSummary platforms={user.platforms} />
+
+                    <span className="text-xs text-fg-muted">
+                      {ROLE_LABELS[user.role]}
+                    </span>
+
+                    <span
+                      className={`text-xs ${
+                        user.disabled
+                          ? "font-medium text-danger"
+                          : "text-fg-muted"
+                      }`}
+                    >
+                      {user.disabled ? "Disabled" : "Active"}
+                    </span>
+
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {manageable && (
                         <button
                           type="button"
                           onClick={() =>
-                            toggleDisabled(user)
+                            editing ? setForm(null) : openEdit(user)
                           }
-                          className="rounded-lg border border-line-strong px-3 py-1.5 text-xs text-fg hover:bg-raised"
+                          aria-expanded={editing}
+                          className={`rounded-lg border px-3 py-1.5 text-xs transition-colors hover:bg-raised ${
+                            editing
+                              ? "border-accent bg-raised text-fg"
+                              : "border-line-strong text-fg"
+                          }`}
                         >
-                          {user.disabled
-                            ? "Enable"
-                            : "Disable"}
+                          {editing ? "Close" : "Edit"}
                         </button>
+                      )}
 
-                        <button
-                          type="button"
-                          onClick={() => removeUser(user)}
-                          className="rounded-lg border border-danger/40 px-3 py-1.5 text-xs text-danger hover:bg-danger/15"
-                        >
-                          Delete
-                        </button>
-                      </>
-                    )}
+                      {manageable && !isSelf && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              toggleDisabled(user)
+                            }
+                            className="rounded-lg border border-line-strong px-3 py-1.5 text-xs text-fg hover:bg-raised"
+                          >
+                            {user.disabled
+                              ? "Enable"
+                              : "Disable"}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => removeUser(user)}
+                            className="rounded-lg border border-danger/40 px-3 py-1.5 text-xs text-danger hover:bg-danger/15"
+                          >
+                            Delete
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
+
+                  {/* Edit opens right here, under the row */}
+                  <Reveal open={editing}>
+                    {editing ? (
+                      <div className="px-3 pb-3 sm:px-4 sm:pb-4">
+                        {formPanel}
+                      </div>
+                    ) : null}
+                  </Reveal>
                 </div>
               );
             })}
@@ -567,6 +694,53 @@ export default function UsersAdmin({
 }
 
 const PRESENCE_REFRESH_MS = 30_000;
+
+// Slides its content open and shut (height, fade and a
+// small lift). While closing it keeps showing what it last
+// had, so the form folds away instead of vanishing.
+function Reveal({
+  open,
+  children,
+}: {
+  open: boolean;
+  children: React.ReactNode;
+}) {
+  const [kept, setKept] = useState<React.ReactNode>(children);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Remember the latest content while open (set during
+  // render: React re-renders right away, no effect needed)
+  if (open && children && children !== kept) setKept(children);
+
+  // Bring it into view once it has opened
+  useEffect(() => {
+    if (!open) return;
+    const timer = setTimeout(() => {
+      ref.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }, 320);
+    return () => clearTimeout(timer);
+  }, [open]);
+
+  return (
+    <div
+      ref={ref}
+      inert={!open}
+      className={`grid transition-[grid-template-rows,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+        open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+      }`}
+    >
+      <div className="min-h-0 overflow-hidden">
+        <div
+          className={`transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+            open ? "translate-y-0 scale-100" : "-translate-y-2 scale-[0.99]"
+          }`}
+        >
+          {open ? children : kept}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // Current time, updated each minute, browser-only (null
 // during the server render), for "Last seen 5 min ago"
@@ -596,6 +770,30 @@ function UserAvatar({ name, online }: { name: string; online: boolean }) {
         role="img"
         aria-label={online ? "Online" : "Offline"}
       />
+    </span>
+  );
+}
+
+// "All platforms", "None", or the ones they have
+function PlatformsSummary({ platforms }: { platforms: PlatformKey[] }) {
+  if (platforms.length === ALL_PLATFORMS.length) {
+    return <span className="text-xs text-fg-muted">All platforms</span>;
+  }
+
+  if (!platforms.length) {
+    return <span className="text-xs font-medium text-warning">No platforms</span>;
+  }
+
+  return (
+    <span className="flex flex-wrap gap-1">
+      {platforms.map((key) => (
+        <span
+          key={key}
+          className="rounded-full border border-line bg-sunken px-2 py-0.5 text-[11px] text-fg-muted"
+        >
+          {platformLabel(key)}
+        </span>
+      ))}
     </span>
   );
 }

@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/auth";
+import { platformDenied } from "@/lib/auth/platform-access";
 import type { StoredUser } from "@/lib/auth/users";
 import { CatalogueError } from "./library";
 
 // --------------------------------------------------
-// CATALOGUE API: signed-in users only; a CatalogueError
+// CATALOGUE API: signed-in users allowed on the Catalogue
+// platform (lib/auth/platforms.ts) only; a CatalogueError
 // becomes { error } with its status, anything else a 500
 // --------------------------------------------------
 
@@ -13,6 +15,8 @@ export async function catalogueRoute(
 ): Promise<NextResponse> {
   const auth = await requireUser();
   if (auth.response) return auth.response;
+  const denied = platformDenied(auth.user, "catalogue");
+  if (denied) return denied;
   try {
     const result = await work(auth.user);
     return NextResponse.json(result ?? { ok: true });

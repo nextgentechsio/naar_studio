@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/auth";
+import { platformDenied } from "@/lib/auth/platform-access";
 import {
   findHiggsfieldModel,
   higgsfieldConfigured,
@@ -25,6 +26,8 @@ const PLACEHOLDER_URL = "https://example.com/placeholder.png";
 export async function POST(request: Request) {
   const auth = await requireUser();
   if (auth.response) return auth.response;
+  const denied = platformDenied(auth.user, "higgsfield");
+  if (denied) return denied;
 
   const body = await request.json().catch(() => null);
   const { model, inputs } = (body ?? {}) as Record<string, unknown>;

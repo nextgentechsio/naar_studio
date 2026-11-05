@@ -11,6 +11,7 @@
 // user:        manages no one
 // --------------------------------------------------
 
+import type { PlatformKey } from "@/lib/auth/platforms";
 import type { Presence } from "@/lib/auth/presence";
 
 export const ROLES = [
@@ -33,6 +34,9 @@ export type PublicUser = {
   name: string;
   role: Role;
   disabled: boolean;
+  // Create platforms they may use (always all for the
+  // super admin)
+  platforms: PlatformKey[];
   createdAt: string;
   updatedAt: string;
   // Only included for the super admin (Users page)

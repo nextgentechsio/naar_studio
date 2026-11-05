@@ -22,6 +22,13 @@ import {
   type PublicUser,
   type Role,
 } from "@/lib/auth/roles";
+import {
+  ALL_PLATFORMS,
+  mergePlatforms,
+  parsePlatforms,
+  resolvePlatforms,
+  type PlatformKey,
+} from "@/lib/auth/platforms";
 
 const scrypt = promisify(scryptCallback) as (
   password: string,
@@ -50,6 +57,7 @@ function fromDoc(doc: UserDoc): StoredUser {
     name: doc.name,
     role: doc.role,
     disabled: doc.disabled,
+    platforms: resolvePlatforms(doc.role, doc.platforms),
     createdAt: doc.createdAt.toISOString(),
     updatedAt: doc.updatedAt.toISOString(),
     passwordHash: doc.passwordHash,
@@ -247,9 +255,26 @@ export function toPublicUser(user: StoredUser): PublicUser {
     name: user.name,
     role: user.role,
     disabled: user.disabled,
+    platforms: user.platforms,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
+}
+
+// Every platform is stored as "missing", so platforms
+// added later are on for these accounts too
+function storedPlatforms(
+  role: Role,
+  platforms: PlatformKey[]
+): Pick<UserDoc, "platforms"> {
+  if (
+    role === "super_admin" ||
+    ALL_PLATFORMS.every((key) => platforms.includes(key))
+  ) {
+    return {};
+  }
+
+  return { platforms };
 }
 
 export type UserResult =
@@ -367,6 +392,7 @@ export async function createUser(
     name?: unknown;
     password?: unknown;
     role?: unknown;
+    platforms?: unknown;
   }
 ): Promise<UserResult> {
   const username = normalizeUsername(input.username);
@@ -401,6 +427,26 @@ export async function createUser(
 
   if (passwordError) return fail(400, passwordError);
 
+  // Default: what the creator has themselves
+  let platforms: PlatformKey[] = actor.platforms;
+
+  if (input.platforms !== undefined) {
+    const requested = parsePlatforms(input.platforms);
+
+    if (!requested) return fail(400, "Invalid platforms");
+
+    const merged = mergePlatforms(actor.platforms, [], requested);
+
+    if (!merged) {
+      return fail(
+        403,
+        "You can only give platforms you have yourself"
+      );
+    }
+
+    platforms = merged;
+  }
+
   const now = new Date();
 
   const doc: UserDoc = {
@@ -409,6 +455,7 @@ export async function createUser(
     name,
     role,
     disabled: false,
+    ...storedPlatforms(role, platforms),
     passwordHash: await hashPassword(
       input.password as string
     ),
@@ -439,6 +486,7 @@ export async function updateUser(
     role?: unknown;
     disabled?: unknown;
     password?: unknown;
+    platforms?: unknown;
   }
 ): Promise<UserResult> {
   const users = await getUsers();
@@ -461,6 +509,7 @@ export async function updateUser(
   }
 
   const set: Partial<UserDoc> = {};
+  const unset: Partial<Record<keyof UserDoc, "">> = {};
   // Bumped to revoke existing sessions
   let revokeSessions = false;
 
@@ -526,12 +575,44 @@ export async function updateUser(
     revokeSessions = true;
   }
 
+  if (patch.platforms !== undefined) {
+    const requested = parsePlatforms(patch.platforms);
+
+    if (!requested) return fail(400, "Invalid platforms");
+
+    if (isSelf) {
+      return fail(400, "You cannot change your own platforms");
+    }
+
+    const merged = mergePlatforms(
+      actor.platforms,
+      target.platforms,
+      requested
+    );
+
+    if (!merged) {
+      return fail(
+        403,
+        "You can only give platforms you have yourself"
+      );
+    }
+
+    const stored = storedPlatforms(
+      (set.role ?? target.role) as Role,
+      merged
+    );
+
+    if (stored.platforms) set.platforms = stored.platforms;
+    else unset.platforms = "";
+  }
+
   set.updatedAt = new Date();
 
   const updated = await users.findOneAndUpdate(
     { _id: id },
     {
       $set: set,
+      ...(Object.keys(unset).length ? { $unset: unset } : {}),
       ...(revokeSessions
         ? { $inc: { sessionVersion: 1 } }
         : {}),

@@ -21,6 +21,9 @@ export type UserDoc = {
   name: string;
   role: Role;
   disabled: boolean;
+  // Create platforms this account may use (lib/auth/
+  // platforms.ts); missing = all of them
+  platforms?: string[];
   passwordHash: string;
   sessionVersion: number;
   // Why the last session version bump happened, so an

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/auth";
+import { platformDenied } from "@/lib/auth/platform-access";
 import { recordGeneration } from "@/lib/generations";
 import { findActiveProjectByName } from "@/lib/projects";
 import {
@@ -40,6 +41,8 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 export async function POST(request: Request) {
   const auth = await requireUser();
   if (auth.response) return auth.response;
+  const denied = platformDenied(auth.user, "replicate");
+  if (denied) return denied;
 
   const body = await request.json().catch(() => null);
 

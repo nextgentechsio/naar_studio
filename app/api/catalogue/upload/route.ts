@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { requireUser } from "@/lib/auth/auth";
+import { platformDenied } from "@/lib/auth/platform-access";
 import { catalogueCollections, libraryFolder, productFolder } from "@/lib/catalogue/db";
 import { canEditLibrary } from "@/lib/catalogue/library";
 import { canManageUsers } from "@/lib/auth/roles";
@@ -24,6 +25,8 @@ const TOKEN_TTL_MS = 30 * 60 * 1000;
 export async function POST(request: Request) {
   const auth = await requireUser();
   if (auth.response) return auth.response;
+  const denied = platformDenied(auth.user, "catalogue");
+  if (denied) return denied;
   if (!blobUploadsEnabled()) {
     return NextResponse.json({ error: "Direct uploads are not configured" }, { status: 501 });
   }

@@ -6,6 +6,7 @@ import {
   NotEnoughCreditsError,
 } from "@higgsfield/client/v2";
 import { requireUser } from "@/lib/auth/auth";
+import { platformDenied } from "@/lib/auth/platform-access";
 import { recordGeneration } from "@/lib/generations";
 import {
   cancelHiggsfieldRequest,
@@ -77,6 +78,8 @@ function startErrorResponse(error: unknown) {
 export async function POST(request: Request) {
   const auth = await requireUser();
   if (auth.response) return auth.response;
+  const denied = platformDenied(auth.user, "higgsfield");
+  if (denied) return denied;
 
   if (!higgsfieldConfigured()) {
     return badRequest("Higgsfield is not configured on the server", 500);

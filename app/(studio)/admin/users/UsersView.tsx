@@ -14,8 +14,8 @@ export default function UsersView() {
         title="Users"
         description={
           currentUser.role === "super_admin"
-            ? "Add admins and users, set their passwords and roles."
-            : "Add users and set their passwords."
+            ? "Add admins and users, set their passwords, roles and the platforms they can use."
+            : "Add users, set their passwords and the platforms they can use."
         }
       />
 

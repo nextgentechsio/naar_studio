@@ -94,9 +94,49 @@ export type RunDoc = {
   error: string | null;
   // Someone is copying the output (only one at a time)
   copyingUntil?: Date | null;
+  // What was actually sent (the original's per-shot
+  // trace): the final prompt and the references in order
+  prompt?: string;
+  references?: { role: string; url: string }[];
+  // When the provider call began (direct runs wait in the
+  // queue first; stale checks count from here)
+  startedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };
+
+// A direct (Google / OpenAI) image call waiting for, or
+// holding, one of the global call slots (lib/catalogue/
+// queue.ts). _id = the generation id.
+export type JobDoc = {
+  _id: string;
+  productId: string | null;
+  engine: "google" | "openai";
+  request: {
+    model: string;
+    prompt: string;
+    references: string[];
+    resolution: Resolution;
+    quality?: "low" | "medium" | "high";
+  };
+  status: "queued" | "running" | "done";
+  // Calls made so far, and when a retry may start
+  attempts?: number;
+  notBefore?: Date | null;
+  // The slot it holds while running, and until when
+  slot: number | null;
+  leaseUntil: Date | null;
+  createdAt: Date;
+  startedAt: Date | null;
+  finishedAt: Date | null;
+};
+
+// The global limit on direct calls in flight: one doc per
+// slot, taken atomically (_id 0..N-1)
+export type SlotDoc = { _id: number; jobId: string | null; leaseUntil: Date };
+// Calls in flight per product (_id = product id), raised
+// only while under the limit
+export type ProductSlotDoc = { _id: string; count: number; updatedAt?: Date };
 
 const globalForCatalogue = globalThis as unknown as {
   catalogueIndexes?: Promise<unknown>;
@@ -107,12 +147,18 @@ export async function catalogueCollections(): Promise<{
   templates: Collection<TemplateDoc>;
   products: Collection<ProductDoc>;
   runs: Collection<RunDoc>;
+  jobs: Collection<JobDoc>;
+  slots: Collection<SlotDoc>;
+  productSlots: Collection<ProductSlotDoc>;
 }> {
   const db = await getDb();
   const assets = db.collection<AssetDoc>("catalogueAssets");
   const templates = db.collection<TemplateDoc>("catalogueTemplates");
   const products = db.collection<ProductDoc>("catalogueProducts");
   const runs = db.collection<RunDoc>("catalogueRuns");
+  const jobs = db.collection<JobDoc>("catalogueJobs");
+  const slots = db.collection<SlotDoc>("catalogueSlots");
+  const productSlots = db.collection<ProductSlotDoc>("catalogueProductSlots");
 
   if (!globalForCatalogue.catalogueIndexes) {
     const preset = { unique: true, partialFilterExpression: { presetKey: { $type: "string" } } };
@@ -125,6 +171,8 @@ export async function catalogueCollections(): Promise<{
       products.createIndex({ updatedAt: -1 }),
       runs.createIndex({ productId: 1, shotId: 1, createdAt: -1 }),
       runs.createIndex({ status: 1, createdAt: -1 }),
+      jobs.createIndex({ status: 1, createdAt: 1 }),
+      jobs.createIndex({ productId: 1, status: 1 }),
     ]).catch((error) => {
       globalForCatalogue.catalogueIndexes = undefined;
       throw error;
@@ -132,7 +180,7 @@ export async function catalogueCollections(): Promise<{
   }
   await globalForCatalogue.catalogueIndexes;
 
-  return { assets, templates, products, runs };
+  return { assets, templates, products, runs, jobs, slots, productSlots };
 }
 
 // Blob folders (output retention only prunes outputs/

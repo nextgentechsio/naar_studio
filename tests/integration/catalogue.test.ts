@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { FAKE_BLOB_TOKEN, FAKE_GOOGLE_USAGE, FAKE_OPENAI_USAGE } from "./fake-replicate";
+import { FAKE_BLOB_TOKEN, FAKE_INTERACTIONS_USAGE, FAKE_OPENAI_USAGE } from "./fake-replicate";
 import {
   api,
   closeDb,
@@ -369,27 +369,42 @@ describe("catalogue direct engines (Google, OpenAI)", () => {
   it("makes images with Google Nano Banana 2.1, billed from the tokens it used", async () => {
     item = await newProduct(alice.session, "Cotton kurta");
     const front = await storeBlob(`catalogue/${alice.id}/products/${item.id}/inputs/front.png`);
-    const quick = (await library(alice.session)).templates.find((t) => t.shots.length === 3) ?? (await library(alice.session)).templates[0];
+    // Six shots: approving starts five at once (the queue test)
+    const quick = (await library(alice.session)).templates.find((t) => t.shots.length >= 6) ?? (await library(alice.session)).templates[0];
     await api(`/api/catalogue/products/${item.id}`, { session: alice.session, method: "PATCH", json: { inputs: { front }, templateId: quick.id, resolution: "1K", imageModel: "google:gemini-nano-banana-2.1" } });
 
     const since = (await replicateRequests()).length;
     expect((await action(alice.session, item.id, "generate")).status).toBe(200);
+    // A second click while it runs doesn't pay twice
+    expect((await action(alice.session, item.id, "generate")).status).toBe(409);
     item = await settle(item.id);
     const run = item.shots[0].runs[0];
     expect(run.status).toBe("succeeded");
     expect(run.imageUrl).toContain(`catalogue/${alice.id}/products/${item.id}/shots/`);
 
-    const [call] = await requestsTo("/google/", since);
-    expect(call.path).toBe("/google/v1beta/models/gemini-nano-banana-2.1:generateContent");
-    const body = call.body as { contents: { parts: { inlineData?: unknown; text?: string }[] }[]; generationConfig: { imageConfig: unknown } };
-    expect(body.contents[0].parts.filter((part) => part.inlineData)).toHaveLength(1);
-    expect(body.generationConfig.imageConfig).toEqual({ aspectRatio: "3:4", imageSize: "1K" });
+    // The original's legacy engine call (nano_banana.py)
+    const calls = await requestsTo("/google/", since);
+    expect(calls).toHaveLength(1);
+    const [call] = calls;
+    expect(call.path).toBe("/google/v1beta/interactions");
+    const body = call.body as { model: string; input: { type: string; text?: string }[]; response_format: unknown };
+    expect(body.model).toBe("gemini-nano-banana-2.1");
+    expect(body.input.filter((part) => part.type === "image")).toHaveLength(1);
+    expect(body.input.at(-1)?.type).toBe("text");
+    expect(body.response_format).toEqual({ type: "image", mime_type: "image/jpeg", aspect_ratio: "3:4", image_size: "1K" });
+
+    // The trace: the prompt and references actually sent
+    const trace = await (await db()).collection("catalogueRuns").findOne({ _id: run.generationId as never });
+    expect(trace?.prompt).toBe(body.input.at(-1)?.text);
+    expect(trace?.references).toEqual([{ role: "garment_front", url: front }]);
+    expect(trace?.startedAt).toBeInstanceOf(Date);
     // Nothing went to Replicate
     expect((await replicateRequests()).slice(since).some((r) => r.path.startsWith("/v1/"))).toBe(false);
 
     const generation = await (await db()).collection("generations").findOne({ _id: run.generationId as never });
     expect(generation).toMatchObject({ provider: "catalogue", model: "google-api/gemini-nano-banana-2.1", projectId: project.id, status: "succeeded" });
-    const expected = (FAKE_GOOGLE_USAGE.promptTokenCount * 1.5 + 1680 * 30 + (100 + FAKE_GOOGLE_USAGE.thoughtsTokenCount) * 7.5) / 1e6;
+    const usage = FAKE_INTERACTIONS_USAGE;
+    const expected = (usage.total_input_tokens * 1.5 + usage.total_output_tokens * 30 + usage.total_thought_tokens * 7.5) / 1e6;
     const [expense] = await (await db()).collection("expenses").find({ _id: run.generationId as never }).toArray();
     expect(expense).toMatchObject({ provider: "catalogue", projectId: project.id, userId: alice.id });
     expect(expense.amountUsd).toBeCloseTo(expected, 6);
@@ -397,10 +412,13 @@ describe("catalogue direct engines (Google, OpenAI)", () => {
   });
 
   it("fails a blocked image cleanly, with nothing billed", async () => {
+    const since = (await replicateRequests()).length;
     const { status, data } = await action(alice.session, item.id, "generate", { feedback: "blockme please" });
     expect(status).toBe(200);
     const id = (data.product as Product).shots[0].runs[0].generationId;
     item = await settle(item.id);
+    // No image is retried once, as the original does
+    expect(await requestsTo("/google/", since)).toHaveLength(2);
     const failed = item.shots[0].runs.find((run) => run.generationId === id)!;
     expect(failed.status).toBe("failed");
     expect(failed.error ?? "").toMatch(/didn't make an image/);
@@ -410,17 +428,27 @@ describe("catalogue direct engines (Google, OpenAI)", () => {
   it("uses OpenAI GPT Image with the reference photos, billed from its usage", async () => {
     await api(`/api/catalogue/products/${item.id}`, { session: alice.session, method: "PATCH", json: { imageModel: "openai:gpt-image-2.5-sunburst" } });
     const since = (await replicateRequests()).length;
+    // Slow calls: the queue keeps one product to 3 at once
+    const control = (json?: unknown) =>
+      fetch(`${replicateUrl}/__control/direct`, json ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(json) } : {}).then((r) => r.json());
+    await control({ delayMs: 400 });
     const { data } = await action(alice.session, item.id, "approve");
     expect((data.product as Product).status).toBe("shooting");
     item = await settle(item.id);
     expect(item.status).toBe("done");
+    const { max } = await control();
+    await control({ delayMs: 0 });
+    expect(item.shots.length - 1).toBeGreaterThan(3);
+    expect(max).toBeGreaterThanOrEqual(2);
+    expect(max).toBeLessThanOrEqual(3);
 
     const calls = await requestsTo("/openai/", since);
     expect(calls.length).toBe(item.shots.length - 1);
     // Garment front + the initial look
     for (const call of calls) {
       expect(call.path).toBe("/openai/images/edits");
-      expect((call.body as { imageParts: number }).imageParts).toBe(2);
+      // Later shots: medium (the Initial Look is high)
+      expect(call.body).toMatchObject({ imageParts: 2, quality: "medium" });
     }
     const expected = (1500 * 5 + 1500 * 8 + FAKE_OPENAI_USAGE.output_tokens * 30) / 1e6;
     const ids = item.shots.slice(1).map((shot) => shot.runs[0].generationId);

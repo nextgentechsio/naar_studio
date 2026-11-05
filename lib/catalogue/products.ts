@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { Readable } from "stream";
 import type { ReadableStream as NodeReadableStream } from "stream/web";
 import { del, head, list, put } from "@vercel/blob";
@@ -19,6 +20,7 @@ import { INPUT_GRACE_MS, tidyFolder } from "./files";
 import { assetsByIds, CatalogueError, getTemplate, objectId } from "./library";
 import { buildShotRequest, type Reference, type RefRole } from "./prompt";
 import { startDirectRun } from "./direct";
+import { pumpQueue } from "./queue";
 import { RunError, shotInputs, startImageRun } from "./run";
 import {
   CATEGORIES,
@@ -193,6 +195,10 @@ export async function getProduct(actor: Actor, id: string): Promise<PublicProduc
   let list = await runs.find({ productId: id }).sort({ createdAt: -1 }).limit(500).toArray();
 
   if (list.some((run) => run.status === "pending" || (run.status === "succeeded" && !run.imageUrl))) {
+    // Keeps the direct-call queue moving while it's watched
+    if (list.some((run) => run.status === "pending" && /^(google|openai)-/.test(run._id))) {
+      after(() => pumpQueue());
+    }
     await Promise.all(list.filter((run) => run.status !== "failed" && !run.imageUrl).map((run) => syncRun(doc, run)));
     list = await runs.find({ productId: id }).sort({ createdAt: -1 }).limit(500).toArray();
   }
@@ -214,13 +220,17 @@ async function syncRun(product: ProductDoc, run: RunDoc): Promise<void> {
 
     if (!isTerminalStatus(generation.status)) {
       const result = await fetchGenerationStatus(generation);
+      // Counted from when the call began (a queued direct
+      // run hasn't started yet)
+      const since = run.startedAt === null ? null : (run.startedAt ?? run.createdAt).getTime();
+      const stale = since !== null && Date.now() - since > RUN_STALE_MS;
       if (!result.ok) {
-        if (Date.now() - run.createdAt.getTime() > RUN_STALE_MS) await fail("The image model stopped responding");
+        if (stale) await fail("The image model stopped responding");
         return;
       }
       const status = String(result.prediction.status ?? "");
       if (!isTerminalStatus(status)) {
-        if (Date.now() - run.createdAt.getTime() > RUN_STALE_MS) await fail("This took too long. Try again.");
+        if (stale) await fail("This took too long. Try again.");
         return;
       }
       // Prices it, saves the output, records the expense
@@ -546,11 +556,14 @@ async function startShot(
     ? await startDirectRun({
         user: actor,
         project,
+        productId: doc._id.toHexString(),
         engine: direct[1] as "google" | "openai",
         model: direct[2],
         prompt: request.prompt,
         references: request.references,
         resolution: doc.resolution,
+        // The original: high for the Initial Look, else medium
+        quality: isInitial ? "high" : "medium",
       })
     : await startImageRun({
         user: actor,
@@ -571,6 +584,11 @@ async function startShot(
     status: "pending",
     imageUrl: null,
     error: null,
+    // The trace: what was actually sent, in order
+    prompt: request.prompt,
+    references: request.references.map((url) => ({ role: references.find((ref) => ref.url === url)?.role ?? "", url })),
+    // Direct runs start when the queue takes them
+    startedAt: direct ? null : now,
     createdAt: now,
     updatedAt: now,
   });
@@ -602,6 +620,11 @@ export async function generateInitial(actor: Actor, id: string, body: Record<str
     throw new CatalogueError(409, "The initial look is already approved. Regenerate it as a shot instead.");
   }
   const feedback = text(body.feedback, "Feedback", FEEDBACK_MAX);
+  // One at a time (a double click must not pay twice)
+  const { runs } = await catalogueCollections();
+  if (await runs.findOne({ productId: id, shotId: doc.plan[0].id, status: "pending" })) {
+    throw new CatalogueError(409, "The initial look is already being generated");
+  }
   try {
     await startShot(actor, doc, doc.plan[0], { feedback, initialUrl: null });
   } catch (error) {

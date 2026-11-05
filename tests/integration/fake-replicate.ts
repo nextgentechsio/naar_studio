@@ -67,6 +67,10 @@ export const FAKE_ELEVENLABS_KEY = "fake-elevenlabs-key";
 export const FAKE_GOOGLE_KEY = "fake-google-key";
 export const FAKE_OPENAI_KEY = "fake-openai-key";
 // What the fakes report using (priced by lib/catalogue/direct.ts)
+// What `interactions` is assumed to report (unverified:
+// lib/catalogue/direct.ts reads several spellings)
+export const FAKE_INTERACTIONS_USAGE = { total_input_tokens: 4000, total_output_tokens: 1780, total_thought_tokens: 900 };
+
 export const FAKE_GOOGLE_USAGE = {
   promptTokenCount: 4000,
   candidatesTokenCount: 1780,
@@ -255,6 +259,16 @@ export async function startFakeReplicate() {
   const requests: { method: string; path: string; body: unknown; bytes: number }[] = [];
   let counter = 0;
   let blobs: { url: string; pathname: string; size: number; uploadedAt: string; contentType?: string }[] = [];
+  // Google / OpenAI calls: an optional delay, and the most
+  // in flight at once (Catalogue's queue limits)
+  const direct = { delayMs: 0, inFlight: 0, max: 0 };
+  const directCall = async () => {
+    if (!direct.delayMs) return;
+    direct.inFlight++;
+    direct.max = Math.max(direct.max, direct.inFlight);
+    await new Promise((resolve) => setTimeout(resolve, direct.delayMs));
+    direct.inFlight--;
+  };
   const blobRequests: { method: string; path: string; body: unknown }[] = [];
   // Stored bytes, served at /blobfiles/<pathname>
   const blobBytes = new Map<string, Buffer>();
@@ -383,10 +397,13 @@ export async function startFakeReplicate() {
     if (path.startsWith("/blobfiles/") && (req.method === "GET" || req.method === "HEAD")) {
       // Like the real store (checked): browsers may fetch
       res.setHeader("access-control-allow-origin", "*");
-      const bytes = blobBytes.get(decodeURIComponent(path.slice("/blobfiles/".length)));
+      const name = decodeURIComponent(path.slice("/blobfiles/".length));
+      const bytes = blobBytes.get(name);
       if (!bytes) return send(404, { error: "Not found" });
+      // With the type it was stored with, like the real store
+      const type = blobs.find((blob) => blob.pathname === name)?.contentType;
 
-      return serveBytes(req, res, bytes);
+      return serveBytes(req, res, bytes, type ? { "content-type": type } : undefined);
     }
 
     // ---------- fake Higgsfield storage (/hfstore) ----------
@@ -424,6 +441,7 @@ export async function startFakeReplicate() {
       if (req.headers["x-goog-api-key"] !== FAKE_GOOGLE_KEY) {
         return send(403, { error: { code: 403, message: "API key not valid." } });
       }
+      await directCall();
       if (/^\/google\/v1beta\/models\/[^/]+:generateContent$/.test(path) && req.method === "POST") {
         const parts = ((body as { contents?: { parts?: { text?: string }[] }[] })?.contents?.[0]?.parts ?? []);
         if (parts.some((part) => part.text?.includes("blockme"))) {
@@ -434,6 +452,17 @@ export async function startFakeReplicate() {
           usageMetadata: FAKE_GOOGLE_USAGE,
         });
       }
+      // interactions (the original's nano_banana provider)
+      if (path === "/google/v1beta/interactions" && req.method === "POST") {
+        const input = (body as { input?: { type?: string; text?: string }[] })?.input ?? [];
+        if (input.some((part) => part.text?.includes("blockme"))) {
+          return send(200, { steps: [{ content: [{ type: "text", text: "I can't make that image." }] }] });
+        }
+        return send(200, {
+          steps: [{ content: [{ type: "text", text: "Here it is" }, { type: "image", mime_type: "image/jpeg", data: PNG.toString("base64") }] }],
+          usage: FAKE_INTERACTIONS_USAGE,
+        });
+      }
       return send(404, { error: { message: "No fake" } });
     }
 
@@ -441,11 +470,14 @@ export async function startFakeReplicate() {
 
     if (path.startsWith("/openai/")) {
       // Multipart edits: note how many images came along
-      const imageParts = (raw.toString("latin1").match(/name="image(\[\])?"/g) ?? []).length;
-      requests.push({ method: req.method ?? "", path, body: body ?? { imageParts }, bytes: raw.length });
+      const text = raw.toString("latin1");
+      const imageParts = (text.match(/name="image(\[\])?"/g) ?? []).length;
+      const quality = /name="quality"\r\n\r\n(\w+)/.exec(text)?.[1] ?? null;
+      requests.push({ method: req.method ?? "", path, body: body ?? { imageParts, quality }, bytes: raw.length });
       if (req.headers.authorization !== `Bearer ${FAKE_OPENAI_KEY}`) {
         return send(401, { error: { message: "Incorrect API key provided" } });
       }
+      await directCall();
       if ((path === "/openai/images/edits" || path === "/openai/images/generations") && req.method === "POST") {
         return send(200, { data: [{ b64_json: PNG.toString("base64") }], usage: FAKE_OPENAI_USAGE });
       }
@@ -616,6 +648,14 @@ export async function startFakeReplicate() {
 
     if (path === "/__control/short.mp4") {
       return serveBytes(req, res, FAKE_SHORT_MP4, { "content-type": "video/mp4" });
+    }
+
+    if (path === "/__control/direct") {
+      if (req.method === "POST") {
+        direct.delayMs = Number((body as { delayMs?: number })?.delayMs ?? 0);
+        direct.max = 0;
+      }
+      return send(200, { max: direct.max });
     }
 
     if (path === "/__control/blobs") {

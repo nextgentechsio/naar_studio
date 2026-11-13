@@ -3,9 +3,11 @@ import { requireUser } from "@/lib/auth/auth";
 import { isProvider, type Provider } from "@/lib/db/mongodb";
 import { maybePruneOutputs } from "@/lib/storage/output-retention";
 import {
+  HISTORY_SORTS,
   HISTORY_STATUSES,
   listGenerations,
   reconcilePending,
+  type HistorySort,
   type HistoryStatus,
 } from "@/lib/generations";
 
@@ -23,6 +25,7 @@ const OUTPUT_KINDS = ["image", "video", "audio"] as const;
 // &provider=replicate|higgsfield|elevenlabs
 // &kind=image|video|audio (finished runs with a saved
 // output of that kind)
+// &sort=newest|oldest|longest|shortest|costly|cheap
 // &options=0 leaves out the filter dropdown values
 // An ISO date from the query; anything else is ignored
 function instant(value: string | null): Date | undefined {
@@ -73,6 +76,7 @@ export async function GET(request: Request) {
         outputKind: OUTPUT_KINDS.find((kind) => kind === params.get("kind")),
         createdFrom: instant(params.get("from")),
         createdTo: instant(params.get("to")),
+        sort: HISTORY_SORTS.find((sort) => sort === params.get("sort")) as HistorySort | undefined,
         withOptions: params.get("options") !== "0",
       })
     );

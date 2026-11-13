@@ -11,6 +11,7 @@ import {
   buttonClass,
   cx,
   EmptyState,
+  inputClass,
   PageHeader,
 } from "@/app/components/ui/primitives";
 import {
@@ -19,6 +20,7 @@ import {
   readPlatform,
   setGenerationHidden,
   type HistoryPage,
+  type HistorySort,
   type HistoryStatus,
 } from "@/lib/client/data";
 import { readCache, writeCache } from "@/lib/client/cache";
@@ -56,6 +58,21 @@ const STATUSES: HistoryStatus[] = ["succeeded", "failed", "running", "hidden"];
 // are a click away (GridSize).
 const gridClass = (size: GridSize) => cx("grid", size === "s" ? "gap-3" : "gap-4", PAGE_GRID[size]);
 
+// The orders to list in (?sort=; newest when absent).
+// Runs without the value go last.
+const SORTS: { value: HistorySort; label: string }[] = [
+  { value: "newest", label: "Newest first" },
+  { value: "oldest", label: "Oldest first" },
+  { value: "longest", label: "Longest gen time" },
+  { value: "shortest", label: "Shortest gen time" },
+  { value: "costly", label: "Highest cost" },
+  { value: "cheap", label: "Lowest cost" },
+];
+
+function readSort(value: string | null): HistorySort {
+  return SORTS.find((item) => item.value === value)?.value ?? "newest";
+}
+
 const FILTER_KEYS = ["q", "platform", "project", "model", "user", "status", "range", "from", "to"] as const;
 
 function readFilters(params: URLSearchParams): FilterValues {
@@ -88,6 +105,7 @@ export default function HistoryView() {
   const rawPage = Math.floor(Number(searchParams.get("page")));
   const page = Number.isFinite(rawPage) && rawPage > 1 ? rawPage : 1;
   const viewId = searchParams.get("view");
+  const sort = readSort(searchParams.get("sort"));
 
   // What the API is asked for (the open drawer doesn't
   // change the list)
@@ -95,6 +113,7 @@ export default function HistoryView() {
   for (const key of FILTER_KEYS) {
     if (filters[key]) listParams.set(key, filters[key]);
   }
+  if (sort !== "newest") listParams.set("sort", sort);
   listParams.set("page", String(page));
   const listKey = listParams.toString();
 
@@ -209,6 +228,7 @@ export default function HistoryView() {
       model: params.get("model") ?? undefined,
       user: params.get("user") ?? undefined,
       status: (params.get("status") as HistoryStatus) ?? undefined,
+      sort: readSort(params.get("sort")),
       ...rangeInstants(
         isDateRange(params.get("range")) ? (params.get("range") as DateRange) : "",
         params.get("from") ?? "",
@@ -360,7 +380,7 @@ export default function HistoryView() {
 
       {/* Count + pagination summary, and card size */}
       {data && generations.length > 0 && (
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-fg-muted" aria-live="polite">
             Showing{" "}
             <span className="font-medium text-fg">
@@ -369,7 +389,27 @@ export default function HistoryView() {
             of <span className="font-medium text-fg">{total}</span>
             {filtered ? " matching" : ""} generation{total === 1 ? "" : "s"}
           </p>
-          <GridSizeToggle size={gridSize} onChange={setGridSize} />
+          <div className="flex shrink-0 items-center gap-2">
+            <label className="relative flex items-center">
+              <span className="sr-only">Sort generations</span>
+              <Icon name="sort" size={14} className="pointer-events-none absolute left-2.5 text-fg-subtle" />
+              <select
+                value={sort}
+                onChange={(event) =>
+                  updateUrl({ sort: event.target.value === "newest" ? null : event.target.value, page: null }, "replace")
+                }
+                title="Sort generations"
+                className={cx(inputClass, "h-9 w-auto py-0 pl-8 pr-8 text-xs")}
+              >
+                {SORTS.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <GridSizeToggle size={gridSize} onChange={setGridSize} />
+          </div>
         </div>
       )}
 

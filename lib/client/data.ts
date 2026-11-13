@@ -3,6 +3,7 @@ import type { CostAnalytics } from "@/lib/spend/cost-analytics";
 import type { ExpensePage, ExpenseReport } from "@/lib/spend/expenses";
 import type {
   HistoryPage,
+  HistorySort,
   HistoryStatus,
   PublicGeneration,
 } from "@/lib/generations";
@@ -18,6 +19,7 @@ import type { PublicProject } from "@/lib/auth/roles";
 
 export type {
   HistoryPage,
+  HistorySort,
   HistoryStatus,
   PublicGeneration,
 } from "@/lib/generations";
@@ -36,6 +38,8 @@ export type HistoryFilters = {
   provider?: Exclude<Platform, "">;
   // Finished runs with a saved output of this kind
   kind?: "image" | "video" | "audio";
+  // Newest first unless set
+  sort?: HistorySort;
   // false: skip the filter dropdown values (see
   // listGenerations)
   withOptions?: boolean;

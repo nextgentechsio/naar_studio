@@ -236,6 +236,13 @@ export const HISTORY_STATUSES = [
 
 export type HistoryStatus = (typeof HISTORY_STATUSES)[number];
 
+// The orders History can list in. Newest is the default;
+// the others put runs without the value (still running,
+// no cost reported) last.
+export const HISTORY_SORTS = ["newest", "oldest", "longest", "shortest", "costly", "cheap"] as const;
+
+export type HistorySort = (typeof HISTORY_SORTS)[number];
+
 export type HistoryQuery = {
   page?: number;
   pageSize?: number;
@@ -254,6 +261,8 @@ export type HistoryQuery = {
   // browser sends its local midnights
   createdFrom?: Date;
   createdTo?: Date;
+  // Newest first unless set
+  sort?: HistorySort;
   // The filter dropdown values cost three extra queries
   // over all the viewer's runs; skip them when the page
   // already has them
@@ -313,6 +322,62 @@ const STATUS_FILTERS: Record<HistoryStatus, Filter<GenerationDoc>> = {
   hidden: { hiddenAt: { $ne: null } },
 };
 
+// One page in the asked order. By date it walks the
+// indexes; by run time or cost it sorts the matches
+// (run time: the provider's, else start to finish, as
+// History shows it)
+async function listPage(
+  collection: Awaited<ReturnType<typeof generationsCollection>>,
+  filter: Filter<GenerationDoc>,
+  sort: HistorySort,
+  skip: number,
+  limit: number
+): Promise<GenerationDoc[]> {
+  if (sort === "newest" || sort === "oldest") {
+    const direction = sort === "newest" ? -1 : 1;
+    return collection
+      .find(filter, { projection: LIST_PROJECTION })
+      // _id breaks ties so pages never overlap or skip
+      .sort({ createdAt: direction, _id: direction })
+      .skip(skip)
+      .limit(limit)
+      .toArray();
+  }
+
+  const value =
+    sort === "costly" || sort === "cheap"
+      ? { $cond: [{ $isNumber: "$costUsd" }, "$costUsd", null] }
+      : {
+          $cond: [
+            { $and: [{ $isNumber: "$predictTime" }, { $gt: ["$predictTime", 0] }] },
+            "$predictTime",
+            {
+              $cond: [
+                { $and: [{ $eq: [{ $type: "$completedAt" }, "date"] }, { $eq: [{ $type: "$createdAt" }, "date"] }] },
+                { $divide: [{ $subtract: ["$completedAt", "$createdAt"] }, 1000] },
+                null,
+              ],
+            },
+          ],
+        };
+  const direction = sort === "longest" || sort === "costly" ? -1 : 1;
+
+  return collection
+    .aggregate<GenerationDoc>(
+      [
+        { $match: filter },
+        { $addFields: { sortValue: value } },
+        { $addFields: { sortMissing: { $cond: [{ $eq: ["$sortValue", null] }, 1, 0] } } },
+        { $sort: { sortMissing: 1, sortValue: direction, createdAt: -1, _id: -1 } },
+        { $skip: skip },
+        { $limit: limit },
+        { $project: LIST_PROJECTION },
+      ],
+      { allowDiskUse: true }
+    )
+    .toArray();
+}
+
 export async function listGenerations(
   actor: StoredUser,
   query: HistoryQuery = {}
@@ -367,13 +432,7 @@ export async function listGenerations(
   const withOptions = query.withOptions ?? true;
 
   const [docs, total, projects, users, models] = await Promise.all([
-    collection
-      .find(filter, { projection: LIST_PROJECTION })
-      // _id breaks ties so pages never overlap or skip
-      .sort({ createdAt: -1, _id: -1 })
-      .skip((page - 1) * pageSize)
-      .limit(pageSize)
-      .toArray(),
+    listPage(collection, filter, query.sort ?? "newest", (page - 1) * pageSize, pageSize),
     collection.countDocuments(filter),
     withOptions
       ? collection

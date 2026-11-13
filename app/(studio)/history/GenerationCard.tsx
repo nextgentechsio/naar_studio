@@ -110,13 +110,9 @@ export default function GenerationCard({
         </div>
 
         <div className="flex flex-1 flex-col gap-1 p-3.5">
-          {/* The model, and how long its run took */}
-          <div className="flex items-center justify-between gap-2">
-            <p className="min-w-0 truncate text-sm font-semibold text-fg">
-              {modelLabel(generation.model)}
-            </p>
-            <RunTime generation={generation} running={!finished} />
-          </div>
+          <p className="truncate text-sm font-semibold text-fg">
+            {modelLabel(generation.model)}
+          </p>
 
           <p className="line-clamp-2 min-h-10 text-xs leading-5 text-fg-muted">
             {generation.prompt || (
@@ -124,9 +120,11 @@ export default function GenerationCard({
             )}
           </p>
 
-          {/* Meta truncates; the cost always stays visible */}
-          <div className="mt-auto flex items-baseline justify-between gap-2 pt-1">
-            <p className="min-w-0 truncate text-[11px] text-fg-subtle">
+          {/* Where and when (its own line, so the date
+              isn't cut short), then how long it took and
+              what it cost */}
+          <div className="mt-auto pt-1">
+            <p className="truncate text-[11px] text-fg-subtle">
               {[
                 generation.project,
                 showUser ? generation.user : null,
@@ -136,9 +134,12 @@ export default function GenerationCard({
                 .join(" · ")}
             </p>
 
-            <span className="shrink-0 font-mono text-xs text-fg-muted">
-              {formatCost(generation.costUsd)}
-            </span>
+            <div className="mt-2 flex min-h-6 items-center justify-between gap-2 border-t border-line pt-2">
+              <RunTime generation={generation} running={!finished} />
+              <span className="ml-auto shrink-0 font-mono text-xs text-fg-muted">
+                {formatCost(generation.costUsd)}
+              </span>
+            </div>
           </div>
         </div>
       </button>
@@ -318,6 +319,10 @@ export function GenerationCardSkeleton() {
         <div className="h-4 w-2/3 animate-pulse rounded bg-raised" />
         <div className="h-3 w-full animate-pulse rounded bg-raised" />
         <div className="h-3 w-1/2 animate-pulse rounded bg-raised" />
+        <div className="flex justify-between border-t border-line pt-2">
+          <div className="h-4 w-12 animate-pulse rounded-full bg-raised" />
+          <div className="h-4 w-10 animate-pulse rounded bg-raised" />
+        </div>
       </div>
     </div>
   );

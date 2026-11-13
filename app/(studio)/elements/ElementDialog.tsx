@@ -109,11 +109,13 @@ export default function ElementDialog({
   const filesReady = fileCount > 0 && !uploading;
   const detailsReady = Boolean(trimmed) && !nameError;
 
+  // Newest first: the latest upload becomes the cover (and
+  // the first file a model gets); "Make cover" can change it
   const addFiles = (kind: ElementMediaKind, urls: string[]) => {
     const media = elementMedia(kind);
     setLists((previous) => ({
       ...previous,
-      [media.list]: [...previous[media.list], ...urls.filter((url) => !previous[media.list].includes(url))].slice(0, media.max),
+      [media.list]: [...urls.filter((url) => !previous[media.list].includes(url)), ...previous[media.list]].slice(0, media.max),
     }));
   };
 

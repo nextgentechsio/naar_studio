@@ -84,7 +84,8 @@ export async function saveElement(id: string | null, fields: ElementFields): Pro
 }
 
 // One more reference file (image, video or voice clip)
-// on an existing element
+// on an existing element, first in its list (the newest
+// is the cover)
 export async function addFileToElement(element: Element, kind: ElementMediaKind, url: string): Promise<Element> {
   const { list } = elementMedia(kind);
   if (element[list].includes(url)) return element;
@@ -94,7 +95,7 @@ export async function addFileToElement(element: Element, kind: ElementMediaKind,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ [list]: [...element[list], url] }),
+      body: JSON.stringify({ [list]: [url, ...element[list]] }),
     }
   );
 

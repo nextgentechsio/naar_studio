@@ -5,7 +5,8 @@ import { cx } from "@/app/components/ui/primitives";
 // --------------------------------------------------
 // AN ELEMENT'S COVER (lists, chips, cards)
 //
-// Its first image; with no images, the first frame of its
+// Its first image (the newest upload, unless another was
+// made the cover); with no images, the first frame of its
 // first video; with neither, a voice icon. Size and shape
 // come from className.
 // --------------------------------------------------

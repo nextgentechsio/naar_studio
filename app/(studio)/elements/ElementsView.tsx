@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useStudio } from "@/app/(studio)/_components/StudioProvider";
 import { canDeleteAllMedia, canViewAllMedia } from "@/lib/auth/roles";
 import { fetchAllElements, useElements, type Element } from "@/lib/client/elements";
@@ -32,6 +32,78 @@ import ElementViewDialog from "./ElementViewDialog";
 const gridClass = (size: GridSize) =>
   cx("grid", size === "s" ? "gap-3" : "gap-4", size === "m" ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4" : PAGE_GRID[size]);
 
+// --------------------------------------------------
+// SORT (remembered in this browser)
+// --------------------------------------------------
+
+const SORTS = [
+  { value: "updated", label: "Recently updated" },
+  { value: "newest", label: "Newest first" },
+  { value: "oldest", label: "Oldest first" },
+  { value: "name", label: "Name A–Z" },
+  { value: "name-desc", label: "Name Z–A" },
+  { value: "files", label: "Most files" },
+] as const;
+
+type Sort = (typeof SORTS)[number]["value"];
+
+// Name A–Z: the order the list has always had
+const DEFAULT_SORT: Sort = "name";
+const SORT_KEY = "elements:sort";
+const sortListeners = new Set<() => void>();
+
+function readSort(): Sort {
+  try {
+    const saved = localStorage.getItem(SORT_KEY);
+    return SORTS.find((item) => item.value === saved)?.value ?? DEFAULT_SORT;
+  } catch {
+    return DEFAULT_SORT;
+  }
+}
+
+function subscribeSort(listener: () => void) {
+  sortListeners.add(listener);
+  window.addEventListener("storage", listener);
+  return () => {
+    sortListeners.delete(listener);
+    window.removeEventListener("storage", listener);
+  };
+}
+
+function useSort(): [Sort, (sort: Sort) => void] {
+  const sort = useSyncExternalStore(subscribeSort, readSort, () => DEFAULT_SORT);
+  function setSort(next: Sort) {
+    try {
+      localStorage.setItem(SORT_KEY, next);
+    } catch {
+      // Private mode: just this view
+    }
+    sortListeners.forEach((listener) => listener());
+  }
+  return [sort, setSort];
+}
+
+const time = (value: string) => Date.parse(value) || 0;
+const fileCount = (element: Element) => element.images.length + element.videos.length + element.audios.length;
+const byName = (a: Element, b: Element) => a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true });
+
+function compare(sort: Sort): (a: Element, b: Element) => number {
+  switch (sort) {
+    case "updated":
+      return (a, b) => time(b.updatedAt) - time(a.updatedAt) || byName(a, b);
+    case "newest":
+      return (a, b) => time(b.createdAt) - time(a.createdAt) || byName(a, b);
+    case "oldest":
+      return (a, b) => time(a.createdAt) - time(b.createdAt) || byName(a, b);
+    case "name-desc":
+      return (a, b) => byName(b, a);
+    case "files":
+      return (a, b) => fileCount(b) - fileCount(a) || byName(a, b);
+    default:
+      return byName;
+  }
+}
+
 export default function ElementsView() {
   const { currentUser } = useStudio();
   const [gridSize, setGridSize] = useGridSize("elements");
@@ -44,6 +116,7 @@ export default function ElementsView() {
   // Photos open full size, from the one clicked
   const [gallery, setGallery] = useState<{ element: Element; start: number } | null>(null);
   const [query, setQuery] = useState("");
+  const [sort, setSort] = useSort();
 
   // Everyone's elements (the super admin), and whose
   const [scope, setScope] = useState<"mine" | "all">("mine");
@@ -79,7 +152,7 @@ export default function ElementsView() {
       (element.name.toLowerCase().includes(needle) ||
         element.description.toLowerCase().includes(needle) ||
         Boolean(element.addedBy?.name.toLowerCase().includes(needle)))
-  );
+  ).sort(compare(sort));
 
   const isMine = (element: Element) => !element.addedBy || element.addedBy.id === currentUser.id;
 
@@ -146,8 +219,8 @@ export default function ElementsView() {
       )}
 
       {elements && elements.length > 0 && (
-        <div className="flex items-center justify-between gap-3">
-          <div className="relative w-full max-w-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="relative w-full sm:max-w-sm sm:flex-1">
             <Icon name="search" size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-subtle" />
             <input
               type="search"
@@ -158,7 +231,25 @@ export default function ElementsView() {
               className={cx(inputClass, "pl-9")}
             />
           </div>
-          <GridSizeToggle size={gridSize} onChange={setGridSize} />
+          <div className="flex shrink-0 items-center gap-2">
+            <label className="relative flex items-center">
+              <span className="sr-only">Sort elements</span>
+              <Icon name="sort" size={14} className="pointer-events-none absolute left-2.5 text-fg-subtle" />
+              <select
+                value={sort}
+                onChange={(event) => setSort(event.target.value as Sort)}
+                title="Sort elements"
+                className={cx(inputClass, "h-9 w-auto py-0 pl-8 pr-8 text-xs")}
+              >
+                {SORTS.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <GridSizeToggle size={gridSize} onChange={setGridSize} />
+          </div>
         </div>
       )}
 

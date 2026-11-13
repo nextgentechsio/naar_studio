@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import AddToElementDialog from "@/app/(studio)/elements/AddToElementDialog";
 import { Icon, type IconName } from "@/app/components/ui/Icon";
 import { Badge, cx, formatCost, Spinner } from "@/app/components/ui/primitives";
 import type { PublicGeneration } from "@/lib/client/data";
-import { formatDateTime } from "@/lib/client/format";
+import { formatDateTime, formatShortDuration, generationSeconds } from "@/lib/client/format";
 import { errorMessage, logRequestError } from "@/lib/client/http";
 import { saveRunToLibrary } from "@/lib/client/library";
 import { getOutputType } from "@/lib/client/outputs";
@@ -110,9 +110,13 @@ export default function GenerationCard({
         </div>
 
         <div className="flex flex-1 flex-col gap-1 p-3.5">
-          <p className="truncate text-sm font-semibold text-fg">
-            {modelLabel(generation.model)}
-          </p>
+          {/* The model, and how long its run took */}
+          <div className="flex items-center justify-between gap-2">
+            <p className="min-w-0 truncate text-sm font-semibold text-fg">
+              {modelLabel(generation.model)}
+            </p>
+            <RunTime generation={generation} running={!finished} />
+          </div>
 
           <p className="line-clamp-2 min-h-10 text-xs leading-5 text-fg-muted">
             {generation.prompt || (
@@ -232,6 +236,43 @@ export default function GenerationCard({
         />
       )}
     </div>
+  );
+}
+
+// How long the run took (live while it runs), with a
+// clock: a quiet chip beside the model name
+function RunTime({ generation, running }: { generation: PublicGeneration; running: boolean }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!running) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [running]);
+
+  const seconds = running
+    ? Math.max(0, (now - Date.parse(generation.createdAt)) / 1000)
+    : generationSeconds(generation);
+  if (seconds === null || !Number.isFinite(seconds)) return null;
+
+  const measured = typeof generation.predictTime === "number" && generation.predictTime > 0;
+  const label = running
+    ? `Running for ${formatShortDuration(seconds)}`
+    : measured
+      ? `Generation time ${formatShortDuration(seconds)}`
+      : `Took ${formatShortDuration(seconds)}, start to finish (including any wait)`;
+
+  return (
+    <span
+      title={label}
+      aria-label={label}
+      className={cx(
+        "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[11px] tabular-nums",
+        running ? "bg-accent-soft text-accent" : "bg-sunken text-fg-muted",
+      )}
+    >
+      <Icon name="clock" size={11} className={running ? "animate-pulse" : undefined} />
+      {running && seconds < 60 ? `${Math.floor(seconds)}s` : formatShortDuration(seconds)}
+    </span>
   );
 }
 

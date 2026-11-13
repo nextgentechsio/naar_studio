@@ -20,7 +20,7 @@ import {
   type GenerationDetail,
   type PublicGeneration,
 } from "@/lib/client/data";
-import { formatDateTime, formatDuration } from "@/lib/client/format";
+import { formatDateTime, formatDuration, generationSeconds } from "@/lib/client/format";
 import { errorMessage } from "@/lib/client/http";
 import { downloadOutput, getOutputType } from "@/lib/client/outputs";
 import { MediaDetails } from "@/app/(studio)/_generate/MediaCaption";
@@ -232,7 +232,7 @@ export default function GenerationDrawer({
             {formatCost(generation.costUsd)}
           </span>,
         ],
-        ["Run time", formatDuration(generation.predictTime)],
+        ["Run time", formatDuration(generationSeconds(generation))],
         ...(generation.outputUrl && !generation.outputExpired
           ? ([
               [

@@ -64,6 +64,48 @@ const ENDPOINTS: Record<GenerateProviderId, { schema: string; generate: string }
   },
 };
 
+// --------------------------------------------------
+// THE FORM SURVIVES A REFRESH
+//
+// What's entered (project, model and every input,
+// including uploaded files' URLs) is kept in this
+// browser per account and provider, and put back when
+// the page loads again. Clear erases it. Uploads still
+// in progress and the run's result aren't kept.
+// --------------------------------------------------
+
+const draftKey = (provider: GenerateProviderId, userId: string) => `generate-draft:${provider}:${userId}`;
+const SAVE_DELAY_MS = 300;
+
+function readSavedDraft(key: string): Draft | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<Draft>;
+    if (!parsed || typeof parsed !== "object") return null;
+    return {
+      project: typeof parsed.project === "string" ? parsed.project : "",
+      model: typeof parsed.model === "string" ? parsed.model : "",
+      inputs: parsed.inputs && typeof parsed.inputs === "object" && !Array.isArray(parsed.inputs) ? parsed.inputs : {},
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeSavedDraft(key: string, draft: Draft | null) {
+  try {
+    if (draft) localStorage.setItem(key, JSON.stringify(draft));
+    else localStorage.removeItem(key);
+  } catch {
+    // Private mode or full: the form just won't survive a refresh
+  }
+}
+
+// Only local (blob:) file previews can't be kept; inputs
+// hold uploaded URLs, so they can
+const isKeepable = (value: unknown) => !(typeof value === "string" && value.startsWith("blob:"));
+
 const POLL_INTERVAL_MS = 2000;
 const POLL_TIMEOUT_MS = 15 * 60 * 1000;
 const MAX_CONSECUTIVE_POLL_ERRORS = 10;
@@ -174,6 +216,11 @@ type GenerateContextValue = {
   schemaLoading: boolean;
   inputs: Record<string, unknown>;
   updateInput: (key: string, value: unknown) => void;
+  // Back to the model's defaults; what was kept for a
+  // refresh goes too
+  clearForm: () => void;
+  // Something is entered beyond the defaults
+  dirty: boolean;
   // Local previews of uploaded images, by uploaded URL
   filePreviews: Record<string, string>;
   // What happened to an uploaded file on the way (e.g. a
@@ -226,7 +273,7 @@ export function GenerateProvider({
   children: React.ReactNode;
 }) {
   const endpoints = ENDPOINTS[provider];
-  const { projects } = useStudio();
+  const { projects, currentUser } = useStudio();
 
   const [selectedProject, setProject] = useState("");
 
@@ -411,6 +458,56 @@ export function GenerateProvider({
     },
     [chooseModel]
   );
+
+  // ---------- Kept across refreshes ----------
+
+  const savedKey = draftKey(provider, currentUser.id);
+
+  // Put back what was entered last time (once, on load)
+  // (after mount: the server render has no saved form)
+  const restoredRef = useRef("");
+  useEffect(() => {
+    if (restoredRef.current === savedKey) return;
+    const timer = setTimeout(() => {
+      restoredRef.current = savedKey;
+      const saved = readSavedDraft(savedKey);
+      if (!saved) return;
+      if (saved.model) loadDraft(saved);
+      else if (saved.project) setProject(saved.project);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [savedKey, loadDraft]);
+
+  // Save what's entered, a moment after it changes. Not
+  // while a model's settings are still loading (the
+  // inputs are in between), and never an empty form (so
+  // the first render can't wipe a saved one).
+  useEffect(() => {
+    if (schemaLoading) return;
+    if (!model && !selectedProject && !Object.keys(inputs).length) return;
+    const timer = setTimeout(() => {
+      const keepable = Object.fromEntries(Object.entries(inputs).filter(([, value]) => isKeepable(value)));
+      writeSavedDraft(savedKey, { project: selectedProject, model, inputs: keepable });
+    }, SAVE_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [savedKey, selectedProject, model, inputs, schemaLoading]);
+
+  // Back to the model's defaults, and nothing kept
+  const clearForm = useCallback(() => {
+    formEpochRef.current += 1;
+    setInputs(model ? schemaDefaults(model, schema) : {});
+    setUploading({});
+    setPendingUploads({});
+    setError("");
+    clearPreviews();
+    writeSavedDraft(savedKey, null);
+  }, [model, schema, clearPreviews, savedKey]);
+
+  // Anything entered beyond the model's defaults
+  const dirty =
+    Boolean(model) &&
+    !schemaLoading &&
+    JSON.stringify(inputs) !== JSON.stringify(schemaDefaults(model, schema));
 
   // --------------------------------------------------
   // INPUTS + UPLOADS
@@ -902,6 +999,8 @@ export function GenerateProvider({
     schemaLoading,
     inputs,
     updateInput,
+    clearForm,
+    dirty,
     filePreviews,
     fileNotes,
     removeImage,

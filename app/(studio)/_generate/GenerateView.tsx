@@ -115,6 +115,8 @@ export default function GenerateView() {
     schemaLoading,
     inputs,
     updateInput,
+    clearForm,
+    dirty,
     uploading,
     generating,
     preparing,
@@ -128,6 +130,10 @@ export default function GenerateView() {
   } = useGenerate();
 
   const projects = projectList.map((item) => item.name);
+  // Bumped by Clear: the text fields keep their own copy
+  // of what's typed (so the cursor never jumps), so the
+  // form is drawn afresh to show the cleared values
+  const [clears, setClears] = useState(0);
 
   const [browsing, setBrowsing] = useState(false);
   const [addingToElement, setAddingToElement] = useState(false);
@@ -666,7 +672,7 @@ export default function GenerateView() {
             ) : (
               // Remount per model so uncontrolled text areas
               // reset with the new defaults
-              <div key={model} className="flex min-h-0 flex-1 flex-col gap-3">
+              <div key={`${model}:${clears}`} className="flex min-h-0 flex-1 flex-col gap-3">
                 {hasPrompt && (
                   <Field
                     label="Prompt"
@@ -963,24 +969,42 @@ export default function GenerateView() {
                 )}
               </div>
 
-              <Button
-                variant="primary"
-                size="lg"
-                icon={generating ? undefined : "sparkles"}
-                onClick={generate}
-                disabled={!canGenerate}
-                className="shrink-0 sm:w-44"
-              >
-                {generating ? (
-                  <>
-                    <Spinner /> {preparing || "Starting…"}
-                  </>
-                ) : draft ? (
-                  "Generate draft"
-                ) : (
-                  "Generate"
+              <div className="flex shrink-0 items-center gap-2">
+                {/* What's entered is kept across a refresh;
+                    this is the one way to erase it */}
+                {dirty && !generating && (
+                  <Button
+                    variant="ghost"
+                    size="lg"
+                    icon="undo"
+                    onClick={() => {
+                      clearForm();
+                      setClears((count) => count + 1);
+                    }}
+                    title="Back to the model's defaults"
+                  >
+                    Clear
+                  </Button>
                 )}
-              </Button>
+                <Button
+                  variant="primary"
+                  size="lg"
+                  icon={generating ? undefined : "sparkles"}
+                  onClick={generate}
+                  disabled={!canGenerate}
+                  className="shrink-0 sm:w-44"
+                >
+                  {generating ? (
+                    <>
+                      <Spinner /> {preparing || "Starting…"}
+                    </>
+                  ) : draft ? (
+                    "Generate draft"
+                  ) : (
+                    "Generate"
+                  )}
+                </Button>
+              </div>
             </div>
           </div>
         </section>

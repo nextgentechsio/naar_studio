@@ -35,6 +35,7 @@ type FormState = {
   id?: string;
   username: string;
   name: string;
+  email: string;
   role: Role;
   password: string;
   // Create platforms the account may use
@@ -158,6 +159,7 @@ export default function UsersAdmin({
       mode: "create",
       username: "",
       name: "",
+      email: "",
       role: "user",
       password: "",
       // New accounts start with what you have
@@ -173,6 +175,7 @@ export default function UsersAdmin({
       id: user.id,
       username: user.username,
       name: user.name,
+      email: user.email ?? "",
       role: user.role,
       password: "",
       platforms: [...user.platforms],
@@ -197,6 +200,7 @@ export default function UsersAdmin({
           body: JSON.stringify({
             username: form.username,
             name: form.name,
+            email: form.email,
             role: form.role,
             password: form.password,
             platforms: form.platforms,
@@ -209,6 +213,7 @@ export default function UsersAdmin({
           method: "PATCH",
           body: JSON.stringify({
             name: form.name,
+            email: form.email,
             role: form.role,
             ...(platformsEditable(form)
               ? { platforms: form.platforms }
@@ -362,6 +367,29 @@ export default function UsersAdmin({
               placeholder="e.g. Sabina"
               className={inputClass}
             />
+          </label>
+
+          <label className="block space-y-2">
+            <span className="block text-sm text-fg">
+              Email <span className="text-fg-subtle">(optional)</span>
+            </span>
+
+            <input
+              type="email"
+              value={form.email}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+                  email: event.target.value,
+                })
+              }
+              autoComplete="off"
+              placeholder="e.g. sabina@example.com"
+              className={inputClass}
+            />
+            <span className="block text-xs text-fg-subtle">
+              They can sign in with it instead of the username.
+            </span>
           </label>
 
           <label className="block space-y-2">
@@ -599,6 +627,7 @@ export default function UsersAdmin({
 
                         <p className="mt-1 truncate text-xs text-fg-subtle">
                           @{user.username}
+                          {user.email && <> · {user.email}</>}
                           {showPresence && user.presence && (
                             <>
                               {" · "}

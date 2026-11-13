@@ -57,6 +57,7 @@ function fromDoc(doc: UserDoc): StoredUser {
     name: doc.name,
     role: doc.role,
     disabled: doc.disabled,
+    email: doc.email ?? null,
     platforms: resolvePlatforms(doc.role, doc.platforms),
     createdAt: doc.createdAt.toISOString(),
     updatedAt: doc.updatedAt.toISOString(),
@@ -218,6 +219,21 @@ function normalizeUsername(value: unknown): string | null {
     : null;
 }
 
+// One address, lowercased; "" (or null) clears it; null
+// from a wrong value. The check is deliberately loose:
+// something@somewhere.tld
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export function normalizeEmail(value: unknown): { ok: true; email: string | null } | { ok: false } {
+  if (value === null || value === undefined) return { ok: true, email: null };
+  if (typeof value !== "string") return { ok: false };
+  const email = value.trim().toLowerCase();
+  if (!email) return { ok: true, email: null };
+  return email.length <= 254 && EMAIL_PATTERN.test(email) ? { ok: true, email } : { ok: false };
+}
+
+export const EMAIL_ERROR = "Email must look like name@example.com";
+
 function normalizeName(value: unknown): string | null {
   if (typeof value !== "string") return null;
 
@@ -255,6 +271,7 @@ export function toPublicUser(user: StoredUser): PublicUser {
     name: user.name,
     role: user.role,
     disabled: user.disabled,
+    email: user.email,
     platforms: user.platforms,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
@@ -357,19 +374,26 @@ export async function hasAnyUsers(): Promise<boolean> {
   return count > 0;
 }
 
+// `identifier`: the username, or the account's email
 export async function verifyCredentials(
-  username: unknown,
+  identifier: unknown,
   password: unknown
 ): Promise<StoredUser | null> {
-  const normalized = normalizeUsername(username);
   const passwordText =
     typeof password === "string" ? password : "";
 
-  const doc = normalized
-    ? await (await getUsers()).findOne({
-        username: normalized,
-      })
-    : null;
+  let doc: UserDoc | null = null;
+  if (typeof identifier === "string" && identifier.includes("@")) {
+    const parsed = normalizeEmail(identifier);
+    if (parsed.ok && parsed.email) {
+      doc = await (await getUsers()).findOne({ email: parsed.email });
+    }
+  } else {
+    const normalized = normalizeUsername(identifier);
+    if (normalized) {
+      doc = await (await getUsers()).findOne({ username: normalized });
+    }
+  }
 
   const valid = await verifyPassword(
     passwordText,
@@ -390,6 +414,7 @@ export async function createUser(
   input: {
     username?: unknown;
     name?: unknown;
+    email?: unknown;
     password?: unknown;
     role?: unknown;
     platforms?: unknown;
@@ -427,6 +452,9 @@ export async function createUser(
 
   if (passwordError) return fail(400, passwordError);
 
+  const email = normalizeEmail(input.email);
+  if (!email.ok) return fail(400, EMAIL_ERROR);
+
   // Default: what the creator has themselves
   let platforms: PlatformKey[] = actor.platforms;
 
@@ -455,6 +483,7 @@ export async function createUser(
     name,
     role,
     disabled: false,
+    ...(email.email ? { email: email.email } : {}),
     ...storedPlatforms(role, platforms),
     passwordHash: await hashPassword(
       input.password as string
@@ -467,9 +496,9 @@ export async function createUser(
   try {
     await (await getUsers()).insertOne(doc);
   } catch (error) {
-    // Unique index on username
+    // Unique indexes on username and email
     if (isDuplicateKeyError(error)) {
-      return fail(409, "Username already exists");
+      return fail(409, duplicateMessage(error));
     }
 
     throw error;
@@ -483,6 +512,7 @@ export async function updateUser(
   id: string,
   patch: {
     name?: unknown;
+    email?: unknown;
     role?: unknown;
     disabled?: unknown;
     password?: unknown;
@@ -521,6 +551,13 @@ export async function updateUser(
     }
 
     set.name = name;
+  }
+
+  if (patch.email !== undefined) {
+    const email = normalizeEmail(patch.email);
+    if (!email.ok) return fail(400, EMAIL_ERROR);
+    if (email.email) set.email = email.email;
+    else unset.email = "";
   }
 
   if (
@@ -608,17 +645,23 @@ export async function updateUser(
 
   set.updatedAt = new Date();
 
-  const updated = await users.findOneAndUpdate(
-    { _id: id },
-    {
-      $set: set,
-      ...(Object.keys(unset).length ? { $unset: unset } : {}),
-      ...(revokeSessions
-        ? { $inc: { sessionVersion: 1 } }
-        : {}),
-    },
-    { returnDocument: "after" }
-  );
+  let updated: UserDoc | null;
+  try {
+    updated = await users.findOneAndUpdate(
+      { _id: id },
+      {
+        $set: set,
+        ...(Object.keys(unset).length ? { $unset: unset } : {}),
+        ...(revokeSessions
+          ? { $inc: { sessionVersion: 1 } }
+          : {}),
+      },
+      { returnDocument: "after" }
+    );
+  } catch (error) {
+    if (isDuplicateKeyError(error)) return fail(409, duplicateMessage(error));
+    throw error;
+  }
 
   if (!updated) return fail(404, "User not found");
 
@@ -626,6 +669,18 @@ export async function updateUser(
     ok: true,
     user: toPublicUser(fromDoc(updated)),
   };
+}
+
+// Which unique index a duplicate hit
+function duplicateMessage(error: unknown): string {
+  const text = error instanceof Error ? error.message : "";
+  return text.includes("email") ? "That email already belongs to another account" : "Username already exists";
+}
+
+// The signed-in account changing its own email (the
+// Account page); nothing else is self-service here
+export async function updateOwnEmail(actor: StoredUser, email: unknown): Promise<UserResult> {
+  return updateUser(actor, actor.id, { email });
 }
 
 export async function deleteUser(

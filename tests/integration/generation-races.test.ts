@@ -129,6 +129,7 @@ describe("reconcilePending", () => {
     name: "M",
     role: "super_admin" as const,
     disabled: false,
+    email: null,
     sessionVersion: 0,
     passwordHash: "",
     platforms: ["replicate" as const, "higgsfield" as const, "elevenlabs" as const, "catalogue" as const],

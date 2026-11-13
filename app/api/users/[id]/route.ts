@@ -34,6 +34,7 @@ export async function PATCH(
 
     const result = await updateUser(auth.user, id, {
       name: body?.name,
+      email: body?.email,
       role: body?.role,
       disabled: body?.disabled,
       password: body?.password,

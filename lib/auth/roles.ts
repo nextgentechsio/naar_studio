@@ -34,6 +34,8 @@ export type PublicUser = {
   name: string;
   role: Role;
   disabled: boolean;
+  // Another way to sign in; null when not set
+  email: string | null;
   // Create platforms they may use (always all for the
   // super admin)
   platforms: PlatformKey[];

@@ -115,7 +115,7 @@ export default function LoginPage() {
             </h2>
 
             <p className="mt-2 text-sm text-fg-muted">
-              Use the username and password from your admin.
+              Use the username (or email) and password from your admin.
             </p>
 
             <form
@@ -123,7 +123,7 @@ export default function LoginPage() {
               className="mt-8 space-y-5"
               noValidate={false}
             >
-              <Field label="Username">
+              <Field label="Username or email">
                 {(control) => (
                   <input
                     {...control}

@@ -1,18 +1,54 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import {
   signOut,
   useStudio,
 } from "@/app/(studio)/_components/StudioProvider";
+import { Button, Field, inputClass, Spinner } from "@/app/components/ui/primitives";
 import { APP_NAME, APP_COMMIT, APP_VERSION } from "@/lib/app-info";
-import { ROLE_LABELS } from "@/lib/auth/roles";
+import { ROLE_LABELS, type PublicUser } from "@/lib/auth/roles";
+import { errorMessage, fetchJson } from "@/lib/client/http";
 
 // --------------------------------------------------
 // ACCOUNT
+//
+// Who you are, and the one thing you can change here:
+// the email you can also sign in with.
 // --------------------------------------------------
 
 export default function AccountView() {
   const { currentUser } = useStudio();
+  const router = useRouter();
+  const [saved, setSaved] = useState<string | null>(currentUser.email);
+  const [email, setEmail] = useState(currentUser.email ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  async function saveEmail(event: React.FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      const { user } = await fetchJson<{ user: PublicUser }>("/api/account", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      setSaved(user.email);
+      setEmail(user.email ?? "");
+      setNotice(user.email ? `Saved. You can now sign in with ${user.email} too.` : "Email removed.");
+      // The shell's copy of the account
+      router.refresh();
+    } catch (err) {
+      setError(errorMessage(err, "Couldn't save your email."));
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -33,6 +69,7 @@ export default function AccountView() {
           ["Name", currentUser.name],
           ["Username", `@${currentUser.username}`],
           ["Role", ROLE_LABELS[currentUser.role]],
+          ["Email", saved ?? "—"],
         ].map(([title, value]) => (
           <div key={title}>
             <p className="text-[10px] uppercase tracking-wider text-fg-subtle">
@@ -43,6 +80,37 @@ export default function AccountView() {
           </div>
         ))}
       </div>
+
+      <section className="max-w-xl rounded-2xl border border-line bg-surface p-6" aria-labelledby="email-title">
+        <h2 id="email-title" className="text-sm font-semibold text-fg">
+          Email
+        </h2>
+        <p className="mt-1 text-sm text-fg-muted">Add your email to sign in with it instead of your username.</p>
+        <form onSubmit={saveEmail} className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+          <Field label="Email" className="flex-1" error={error || undefined}>
+            {(props) => (
+              <input
+                {...props}
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="you@example.com"
+                autoComplete="email"
+                className={inputClass}
+              />
+            )}
+          </Field>
+          <Button type="submit" variant="primary" disabled={saving || email.trim().toLowerCase() === (saved ?? "")}>
+            {saving && <Spinner />}
+            {saved && !email.trim() ? "Remove email" : "Save email"}
+          </Button>
+        </form>
+        {notice && (
+          <p role="status" className="mt-3 text-sm text-success">
+            {notice}
+          </p>
+        )}
+      </section>
 
       <section className="max-w-xl rounded-2xl border border-line bg-surface p-6" aria-labelledby="about-title">
         <h2 id="about-title" className="text-sm font-semibold text-fg">

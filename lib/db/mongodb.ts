@@ -21,6 +21,8 @@ export type UserDoc = {
   name: string;
   role: Role;
   disabled: boolean;
+  // Lowercased; another way to sign in. Unique when set.
+  email?: string | null;
   // Create platforms this account may use (lib/auth/
   // platforms.ts); missing = all of them
   platforms?: string[];
@@ -263,7 +265,11 @@ async function setupIndexes(db: Db) {
   await Promise.all([
     db
       .collection<UserDoc>("users")
-      .createIndex({ username: 1 }, { unique: true }),
+      .createIndexes([
+        { key: { username: 1 }, unique: true },
+        // Only accounts with an email take part
+        { key: { email: 1 }, unique: true, partialFilterExpression: { email: { $type: "string" } } },
+      ]),
     db
       .collection<ProjectDoc>("projects")
       .createIndex({ nameKey: 1 }, { unique: true }),

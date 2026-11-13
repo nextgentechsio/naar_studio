@@ -37,6 +37,13 @@ export function proxy(request: NextRequest) {
     request.cookies.get(SESSION_COOKIE)?.value
   );
 
+  // The Naar Studio API (/api/v1) is used with an API key
+  // in the Authorization header, never a cookie; every
+  // route there checks the key itself (lib/api-keys/http.ts)
+  if (pathname === "/api/v1" || pathname.startsWith("/api/v1/")) {
+    return NextResponse.next();
+  }
+
   if (PUBLIC_PATHS.has(pathname)) {
     if (session && pathname === "/login") {
       // The app found this session ended (signed in on

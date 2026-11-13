@@ -44,7 +44,7 @@ import type { StoredUser } from "@/lib/auth/users";
 
 // "unknown": Replicate lost the prediction (see
 // reconcilePending); never billed
-const TERMINAL_STATUSES = new Set([
+export const TERMINAL_STATUSES = new Set([
   "succeeded",
   "failed",
   "canceled",
@@ -86,6 +86,9 @@ export type PublicGeneration = {
   // ever receive hidden runs)
   hidden: boolean;
   predictTime: number | null;
+  // Started with a Naar Studio API key, and which
+  apiKeyId: string | null;
+  apiKeyName: string | null;
   createdAt: string;
   completedAt: string | null;
 };
@@ -115,6 +118,8 @@ function toPublicGeneration(
     outputExpired: Boolean(doc.outputExpiredAt),
     hidden: Boolean(doc.hiddenAt),
     predictTime: doc.predictTime,
+    apiKeyId: doc.apiKeyId ?? null,
+    apiKeyName: doc.apiKeyName ?? null,
     createdAt: doc.createdAt.toISOString(),
     completedAt: doc.completedAt?.toISOString() ?? null,
   };
@@ -173,6 +178,8 @@ export async function recordGeneration(input: {
   createdAt?: string;
   provider?: Provider;
   quotedCostUsd?: number | null;
+  // Started with an API key (lib/api-keys)
+  apiKey?: { id: string; name: string } | null;
 }) {
   const now = new Date();
 
@@ -201,6 +208,7 @@ export async function recordGeneration(input: {
     error: null,
     costUsd: null,
     ...(input.quotedCostUsd != null && { quotedCostUsd: input.quotedCostUsd }),
+    ...(input.apiKey && { apiKeyId: input.apiKey.id, apiKeyName: input.apiKey.name }),
     outputUrl: null,
     localOutputUrl: null,
     predictTime: null,
@@ -307,6 +315,8 @@ const LIST_PROJECTION = {
   outputExpiredAt: 1,
   hiddenAt: 1,
   predictTime: 1,
+  apiKeyId: 1,
+  apiKeyName: 1,
   createdAt: 1,
   completedAt: 1,
 } as const;

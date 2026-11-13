@@ -84,6 +84,7 @@ export default function StudioShell({
             label: "Admin",
             items: [
               { href: "/admin/users", label: "Users", icon: "users" as const },
+              { href: "/admin/api-keys", label: "API keys", icon: "key" as const },
               ...(canManageProjects(currentUser)
                 ? [
                     {

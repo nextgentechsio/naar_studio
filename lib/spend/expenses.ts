@@ -111,6 +111,10 @@ export async function recordExpense(
     amountUsd,
     currency: "USD",
     pricingSource: "estimated",
+    ...(generation.apiKeyId && {
+      apiKeyId: generation.apiKeyId,
+      apiKeyName: generation.apiKeyName ?? "",
+    }),
     incurredAt,
     createdAt: new Date(),
   };

@@ -161,6 +161,10 @@ export type GenerationDoc = {
   // (its cost still counts in Expenses)
   hiddenAt?: Date | null;
   predictTime: number | null;
+  // Started with a Naar Studio API key (lib/api-keys):
+  // the key it's tracked to, besides the user it acts as
+  apiKeyId?: string;
+  apiKeyName?: string;
   // Reconcile attempts that found no prediction
   reconcileFailures?: number;
   createdAt: Date;
@@ -187,6 +191,9 @@ export type ExpenseDoc = {
   // "billed": what Higgsfield's usage says it charged
   // (lib/spend/higgsfield-billing.ts)
   pricingSource: "estimated" | "billed";
+  // Copied from the generation: spend by API key
+  apiKeyId?: string;
+  apiKeyName?: string;
   incurredAt: Date;
   createdAt: Date;
 };

@@ -11,12 +11,16 @@
 
 const MAX_REDIRECTS = 3;
 
+// Replicate's output storage: its CDN, and (since Nov
+// 2026, e.g. google/nano-banana-2) signed links to its
+// "ai-gateway-outputs" bucket on Cloudflare R2. Only that
+// bucket name, on R2's own domain, and only a signed link.
+const REPLICATE_R2_HOST = /^ai-gateway-outputs\.[0-9a-f]{32}\.r2\.cloudflarestorage\.com$/;
+
 export function isReplicateDeliveryUrl(url: URL): boolean {
-  return (
-    url.protocol === "https:" &&
-    (url.hostname === "replicate.delivery" ||
-      url.hostname.endsWith(".replicate.delivery"))
-  );
+  if (url.protocol !== "https:") return false;
+  if (url.hostname === "replicate.delivery" || url.hostname.endsWith(".replicate.delivery")) return true;
+  return REPLICATE_R2_HOST.test(url.hostname) && url.searchParams.has("X-Amz-Signature");
 }
 
 // Outputs a run may be saved from: Replicate's CDN, or

@@ -63,6 +63,15 @@ describe("calculateReplicateCost", () => {
     expect(cost(MODEL_IDS.NANO_BANANA_2)).toBe(0.067);
   });
 
+  it("prices Nano Banana 2.1 by resolution (half of Nano Banana 2)", () => {
+    expect(cost(MODEL_IDS.NANO_BANANA_21, { resolution: "1K" })).toBe(0.034);
+    expect(cost(MODEL_IDS.NANO_BANANA_21, { resolution: "2K" })).toBe(0.05);
+    expect(cost(MODEL_IDS.NANO_BANANA_21, { resolution: "4K" })).toBe(0.076);
+    expect(cost(MODEL_IDS.NANO_BANANA_21)).toBe(0.034);
+    // Not mistaken for Nano Banana 2
+    expect(cost(MODEL_IDS.NANO_BANANA_2, { resolution: "2K" })).toBe(0.101);
+  });
+
   it("prices Nano Banana Pro by resolution", () => {
     expect(cost(MODEL_IDS.NANO_BANANA_PRO, { resolution: "2K" })).toBe(0.15);
     expect(cost(MODEL_IDS.NANO_BANANA_PRO, { resolution: "4K" })).toBe(0.3);

@@ -28,6 +28,9 @@ export const MODEL_IDS = {
   NANO_BANANA_2:
     "google/nano-banana-2",
 
+  NANO_BANANA_21:
+    "google/nano-banana-2.1",
+
   NANO_BANANA_PRO:
     "google/nano-banana-pro",
 
@@ -477,6 +480,39 @@ function computeReplicateCost(
 
 
     return 0.067;
+  }
+
+
+/* =========================================================
+   2b. GOOGLE NANO BANANA 2.1
+========================================================= */
+
+  if (
+    normalizedModel ===
+    MODEL_IDS.NANO_BANANA_21
+  ) {
+
+    /*
+      Replicate publishes no price list for it yet. Its
+      dashboard showed a 2K run at about $0.05 (17 Nov
+      2026), half of Nano Banana 2's 2K price, so the
+      other sizes are taken at half too until a price
+      list appears:
+
+      1K = $0.034 (the default)
+      2K = $0.05
+      4K = $0.076
+    */
+
+    const resolution =
+      getResolution(
+        input,
+        "1K"
+      );
+
+    if (resolution.includes("4k")) return 0.076;
+    if (resolution.includes("2k")) return 0.05;
+    return 0.034;
   }
 
 

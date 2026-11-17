@@ -107,7 +107,17 @@ function writeSavedDraft(key: string, draft: Draft | null) {
 const isKeepable = (value: unknown) => !(typeof value === "string" && value.startsWith("blob:"));
 
 const POLL_INTERVAL_MS = 2000;
-const POLL_TIMEOUT_MS = 15 * 60 * 1000;
+// Long videos can sit in a provider's queue for well over
+// 15 minutes (Higgsfield runs of 35–60 minutes have
+// succeeded), so the page keeps watching for an hour,
+// checking less often as the wait grows
+const POLL_TIMEOUT_MS = 60 * 60 * 1000;
+
+function pollDelay(elapsedMs: number): number {
+  if (elapsedMs < 5 * 60 * 1000) return POLL_INTERVAL_MS;
+  if (elapsedMs < 15 * 60 * 1000) return 5000;
+  return 10_000;
+}
 const MAX_CONSECUTIVE_POLL_ERRORS = 10;
 // The form values with @name mentions spelled out
 // (lib/element-mentions.ts)
@@ -710,14 +720,16 @@ export function GenerateProvider({
     }
 
     function scheduleNext() {
-      if (Date.now() - startedAt > POLL_TIMEOUT_MS) {
+      const elapsed = Date.now() - startedAt;
+
+      if (elapsed > POLL_TIMEOUT_MS) {
         stopPolling(
-          "Stopped checking: generation took longer than 15 minutes. Check History for the final result."
+          "Stopped checking here after an hour. The run is still tracked: its result and cost will appear in History when it finishes."
         );
         return;
       }
 
-      setTimeout(poll, POLL_INTERVAL_MS);
+      setTimeout(poll, pollDelay(elapsed));
     }
 
     function handlePollError() {

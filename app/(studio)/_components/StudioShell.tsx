@@ -69,6 +69,7 @@ export default function StudioShell({
       items: [
         { href: "/history", label: "History", icon: "history" },
         { href: "/elements", label: "Elements", icon: "at" },
+        { href: "/boards", label: "Boards", icon: "board" },
       ],
     },
     {

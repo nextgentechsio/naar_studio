@@ -1,0 +1,38 @@
+/* --------------------------------------------------
+   NAAR BOARDS: canvas colours (light, then dark the
+   same two ways the app does it)
+   -------------------------------------------------- */
+
+:root {
+  --board-bg: #f4f4f2;
+  --board-dot: rgb(13 13 13 / 0.13);
+  --board-ink: #141414;
+  --board-frame-fill: #ffffff;
+  --board-frame-line: rgb(13 13 13 / 0.12);
+  --board-frame-title: rgb(13 13 13 / 0.6);
+  --board-select: #0b8fff;
+  --board-guide: #ff3b8d;
+  --board-connector: #3d3d3d;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --board-bg: #141416;
+    --board-dot: rgb(255 255 255 / 0.1);
+    --board-ink: #f2f2f2;
+    --board-frame-fill: #1e1e22;
+    --board-frame-line: rgb(255 255 255 / 0.1);
+    --board-frame-title: rgb(255 255 255 / 0.6);
+    --board-connector: #c9c9c9;
+  }
+}
+
+:root[data-theme="dark"] {
+  --board-bg: #141416;
+  --board-dot: rgb(255 255 255 / 0.1);
+  --board-ink: #f2f2f2;
+  --board-frame-fill: #1e1e22;
+  --board-frame-line: rgb(255 255 255 / 0.1);
+  --board-frame-title: rgb(255 255 255 / 0.6);
+  --board-connector: #c9c9c9;
+}

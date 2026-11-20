@@ -65,6 +65,22 @@ const PATHS = {
   sort: "M7 4v16M3 8l4-4 4 4M17 20V4M13 16l4 4 4-4",
   key: "M21 2l-2 2m-7.6 7.6a5.5 5.5 0 1 1-7.8 7.8 5.5 5.5 0 0 1 7.8-7.8zm0 0L15 7m0 0l3 3L22 6l-3-3",
   shirt: "M20.4 6.6 16 4a4 4 0 0 1-8 0L3.6 6.6a1 1 0 0 0-.4 1.3l1.4 2.8a1 1 0 0 0 1.3.4L8 10v10a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V10l2.1 1.1a1 1 0 0 0 1.3-.4l1.4-2.8a1 1 0 0 0-.4-1.3z",
+  // Naar Boards
+  board: "M3 3h18v18H3zM7 7h4v4H7zM14 7h3M14 10h3M7 15h10",
+  cursor: "M5 3l14 7-6 2-2 6L5 3z",
+  hand: "M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v6M10 10.5V6a2 2 0 0 0-4 0v8M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6-2.4l-3.6-3.6a2 2 0 0 1 2.8-2.8L6 15",
+  sticky: "M15.5 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3zM15 3v6h6",
+  type: "M4 7V4h16v3M9 20h6M12 4v16",
+  shapes: "M3 3h8v8H3zM17 7a4 4 0 1 0 0 .01M12 21l4-7 4 7z",
+  square: "M4 4h16v16H4z",
+  circle: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z",
+  diamond: "M12 2l10 10-10 10L2 12z",
+  connector: "M5 19L19 5M19 5h-6M19 5v6",
+  frame: "M7 3v18M17 3v18M3 7h18M3 17h18",
+  plus: "M12 5v14M5 12h14",
+  redo: "M15 14l5-5-5-5M20 9H9a5 5 0 0 0 0 10h3",
+  bringFront: "M9 9h11v11H9zM4 15V4h11",
+  sendBack: "M4 4h11v11H4zM9 20h11V9",
 } as const;
 
 export type IconName = keyof typeof PATHS;

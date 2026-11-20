@@ -12,6 +12,10 @@ type Prediction = {
     predict_time?: unknown;
     total_time?: unknown;
     cost?: unknown;
+    // Topaz: the billing units Replicate charged
+    unspecified_billing_metric?: unknown;
+    // Seconds of video made (what lip-sync bills)
+    video_output_duration_seconds?: unknown;
   };
 
   costUsd?: unknown;
@@ -30,6 +34,9 @@ export const MODEL_IDS = {
 
   NANO_BANANA_21:
     "google/nano-banana-2.1",
+
+  LIPSYNC_2_PRO:
+    "sync/lipsync-2-pro",
 
   NANO_BANANA_PRO:
     "google/nano-banana-pro",
@@ -172,6 +179,17 @@ function getQuality(
    - Crystal Upscaler
    - Topaz Image
 ========================================================= */
+
+// Topaz image billing units → price (Replicate's table:
+// 1 unit $0.05 … 17 units $0.82)
+const TOPAZ_UNIT_PRICES: Record<number, number> = {
+  1: 0.05, 2: 0.10, 3: 0.15, 4: 0.20, 5: 0.24, 6: 0.29, 11: 0.53, 17: 0.82,
+};
+
+function topazUnitsCost(units: unknown): number | null {
+  const count = numberValue(units);
+  return TOPAZ_UNIT_PRICES[count] ?? null;
+}
 
 function getOutputMegapixels(
   prediction: Prediction
@@ -493,15 +511,12 @@ function computeReplicateCost(
   ) {
 
     /*
-      Replicate publishes no price list for it yet. Its
-      dashboard showed a 2K run at about $0.05 (17 Nov
-      2026), half of Nano Banana 2's 2K price, so the
-      other sizes are taken at half too until a price
-      list appears:
+      Replicate's billing config for the model
+      (20 Nov 2026), per output image:
 
-      1K = $0.034 (the default)
-      2K = $0.05
-      4K = $0.076
+      1K = $0.0336 (the default)
+      2K = $0.0504
+      4K = $0.1134
     */
 
     const resolution =
@@ -510,9 +525,32 @@ function computeReplicateCost(
         "1K"
       );
 
-    if (resolution.includes("4k")) return 0.076;
-    if (resolution.includes("2k")) return 0.05;
-    return 0.034;
+    if (resolution.includes("4k")) return 0.1134;
+    if (resolution.includes("2k")) return 0.0504;
+    return 0.0336;
+  }
+
+
+/* =========================================================
+   2c. SYNC LIPSYNC 2 PRO
+========================================================= */
+
+  if (
+    normalizedModel ===
+    MODEL_IDS.LIPSYNC_2_PRO
+  ) {
+
+    /*
+      $0.08325 per second of output video (Replicate's
+      billing config, 20 Nov 2026), measured by the run:
+      metrics.video_output_duration_seconds
+    */
+
+    const seconds = numberValue(
+      prediction.metrics?.video_output_duration_seconds
+    );
+
+    return seconds > 0 ? seconds * 0.08325 : null;
   }
 
 
@@ -954,10 +992,14 @@ function computeReplicateCost(
       );
 
 
+    // Size unknown (e.g. upscale "None": no new
+    // resolution is logged): the units Replicate billed
     if (
       mp <= 0
     ) {
-      return null;
+      return topazUnitsCost(
+        prediction.metrics?.unspecified_billing_metric
+      );
     }
 
 

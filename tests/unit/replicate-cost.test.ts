@@ -63,13 +63,22 @@ describe("calculateReplicateCost", () => {
     expect(cost(MODEL_IDS.NANO_BANANA_2)).toBe(0.067);
   });
 
-  it("prices Nano Banana 2.1 by resolution (half of Nano Banana 2)", () => {
-    expect(cost(MODEL_IDS.NANO_BANANA_21, { resolution: "1K" })).toBe(0.034);
-    expect(cost(MODEL_IDS.NANO_BANANA_21, { resolution: "2K" })).toBe(0.05);
-    expect(cost(MODEL_IDS.NANO_BANANA_21, { resolution: "4K" })).toBe(0.076);
-    expect(cost(MODEL_IDS.NANO_BANANA_21)).toBe(0.034);
+  it("prices Nano Banana 2.1 by resolution", () => {
+    expect(cost(MODEL_IDS.NANO_BANANA_21, { resolution: "1K" })).toBe(0.0336);
+    expect(cost(MODEL_IDS.NANO_BANANA_21, { resolution: "2K" })).toBe(0.0504);
+    expect(cost(MODEL_IDS.NANO_BANANA_21, { resolution: "4K" })).toBe(0.1134);
+    expect(cost(MODEL_IDS.NANO_BANANA_21)).toBe(0.0336);
     // Not mistaken for Nano Banana 2
     expect(cost(MODEL_IDS.NANO_BANANA_2, { resolution: "2K" })).toBe(0.101);
+  });
+
+  it("prices lipsync-2-pro by seconds of video made", () => {
+    const run = (seconds: unknown) =>
+      calculateReplicateCost(MODEL_IDS.LIPSYNC_2_PRO, ok({}, { metrics: { video_output_duration_seconds: seconds } }));
+    expect(run(5.25)).toBe(0.437063);
+    expect(run(1.5)).toBe(0.124875);
+    expect(run(undefined)).toBeNull();
+    expect(run(0)).toBeNull();
   });
 
   it("prices Nano Banana Pro by resolution", () => {
@@ -108,6 +117,18 @@ describe("calculateReplicateCost", () => {
       )
     ).toBe(0.2);
     expect(cost(MODEL_IDS.TOPAZ_IMAGE, { megapixels: 500 })).toBe(0.82);
+  });
+
+  it("prices Topaz by its billed units when the size isn't known (upscale None)", () => {
+    const run = (units: unknown) =>
+      calculateReplicateCost(
+        MODEL_IDS.TOPAZ_IMAGE,
+        ok({ upscale_factor: "None" }, { metrics: { predict_time: 7, unspecified_billing_metric: units } })
+      );
+    expect(run(1)).toBe(0.05);
+    expect(run(4)).toBe(0.2);
+    expect(run(undefined)).toBeNull();
+    expect(run(7)).toBeNull();
   });
 
   it("prices GPT Image by quality", () => {

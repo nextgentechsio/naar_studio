@@ -7,16 +7,21 @@
 // inverse) and, later, travel to collaborators.
 // --------------------------------------------------
 
-export const ITEM_TYPES = ["sticky", "text", "shape", "image", "video", "frame", "connector"] as const;
+export const ITEM_TYPES = ["sticky", "text", "shape", "image", "video", "frame", "connector", "draw"] as const;
 export type ItemType = (typeof ITEM_TYPES)[number];
 
 export const STICKY_COLORS = ["yellow", "orange", "pink", "violet", "blue", "teal", "green", "gray"] as const;
 export type StickyColor = (typeof STICKY_COLORS)[number];
 
-export const SHAPE_KINDS = ["rect", "ellipse", "diamond"] as const;
+export const SHAPE_KINDS = ["rect", "ellipse", "diamond", "triangle"] as const;
 export type ShapeKind = (typeof SHAPE_KINDS)[number];
 
 export const TEXT_SIZES = ["s", "m", "l", "xl"] as const;
+
+// Marker colours
+export const PEN_COLORS = ["ink", "red", "blue", "green", "violet", "orange"] as const;
+export type PenColor = (typeof PEN_COLORS)[number];
+export const MAX_DRAW_POINTS = 3000;
 export type TextSize = (typeof TEXT_SIZES)[number];
 
 // Where a connector end is: on an item (follows it), or a
@@ -31,6 +36,9 @@ export type ItemData = {
   video: { url: string; name: string; contentType: string };
   frame: { title: string };
   connector: { from: Anchor; to: Anchor; label: string };
+  // A marker stroke: flat [x, y, x, y, …] in a box of
+  // ow × oh (the size it was drawn at), stretched to w × h
+  draw: { points: number[]; color: PenColor; width: number; ow: number; oh: number };
 };
 
 type ItemOf<T extends ItemType> = {
@@ -117,6 +125,21 @@ function cleanData(type: ItemType, raw: unknown): BoardItem["data"] | null {
     }
     case "frame":
       return { title: text(data.title, 200) };
+    case "draw": {
+      const points = Array.isArray(data.points) ? data.points : [];
+      if (points.length < 4 || points.length > MAX_DRAW_POINTS * 2 || points.length % 2) return null;
+      if (!points.every((value) => typeof value === "number" && Number.isFinite(value) && value >= -10 && value <= MAX_SIZE + 10)) return null;
+      const ow = num(data.ow, 1, MAX_SIZE);
+      const oh = num(data.oh, 1, MAX_SIZE);
+      if (ow === null || oh === null) return null;
+      return {
+        points: points.map((value) => Math.round((value as number) * 10) / 10),
+        color: oneOf(PEN_COLORS, data.color, "ink"),
+        width: num(data.width, 1, 40) ?? 4,
+        ow,
+        oh,
+      };
+    }
     case "connector": {
       const from = cleanAnchor(data.from);
       const to = cleanAnchor(data.to);

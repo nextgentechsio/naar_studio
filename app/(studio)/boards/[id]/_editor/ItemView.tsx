@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useEffect, useRef } from "react";
-import type { BoardItem, StickyColor, TextSize } from "@/lib/boards/shared";
+import type { BoardItem, PenColor, StickyColor, TextSize } from "@/lib/boards/shared";
 import { cx } from "@/app/components/ui/primitives";
 
 // --------------------------------------------------
@@ -22,6 +22,29 @@ export const COLORS: Record<StickyColor, { fill: string; stroke: string; label: 
 };
 
 export const TEXT_PX: Record<TextSize, number> = { s: 16, m: 24, l: 40, xl: 64 };
+
+export const PEN: Record<PenColor, { stroke: string; label: string }> = {
+  ink: { stroke: "#1b1b1b", label: "Black" },
+  red: { stroke: "#E5484D", label: "Red" },
+  blue: { stroke: "#2F7CF6", label: "Blue" },
+  green: { stroke: "#2FA160", label: "Green" },
+  violet: { stroke: "#8B5CF6", label: "Violet" },
+  orange: { stroke: "#F2851F", label: "Orange" },
+};
+
+// A marker stroke as an SVG path (smoothed through the
+// midpoints of the points it was drawn through)
+export function strokePath(points: number[]): string {
+  if (points.length < 4) return "";
+  let d = `M${points[0]},${points[1]}`;
+  for (let i = 2; i < points.length - 2; i += 2) {
+    const mx = (points[i] + points[i + 2]) / 2;
+    const my = (points[i + 1] + points[i + 3]) / 2;
+    d += ` Q${points[i]},${points[i + 1]} ${mx},${my}`;
+  }
+  d += ` L${points[points.length - 2]},${points[points.length - 1]}`;
+  return d;
+}
 
 type Props = {
   item: BoardItem;
@@ -81,6 +104,8 @@ function ItemView({ item, editing, onEditDone }: Props) {
         <svg className="absolute inset-0 h-full w-full overflow-visible" viewBox={`0 0 ${item.w} ${item.h}`} preserveAspectRatio="none" aria-hidden>
           {item.data.shape === "ellipse" ? (
             <ellipse cx={item.w / 2} cy={item.h / 2} rx={item.w / 2} ry={item.h / 2} fill={color.fill} stroke={color.stroke} strokeWidth={2} />
+          ) : item.data.shape === "triangle" ? (
+            <polygon points={`${item.w / 2},0 ${item.w},${item.h} 0,${item.h}`} fill={color.fill} stroke={color.stroke} strokeWidth={2} strokeLinejoin="round" />
           ) : item.data.shape === "diamond" ? (
             <polygon points={`${item.w / 2},0 ${item.w},${item.h / 2} ${item.w / 2},${item.h} 0,${item.h / 2}`} fill={color.fill} stroke={color.stroke} strokeWidth={2} />
           ) : (
@@ -94,6 +119,24 @@ function ItemView({ item, editing, onEditDone }: Props) {
             <p className="whitespace-pre-wrap break-words">{item.data.text}</p>
           )}
         </div>
+      </div>
+    );
+  }
+
+  if (item.type === "draw") {
+    return (
+      <div data-item-id={item.id} className="absolute" style={style}>
+        <svg className="h-full w-full overflow-visible" viewBox={`0 0 ${item.data.ow} ${item.data.oh}`} preserveAspectRatio="none" aria-hidden>
+          <path
+            d={strokePath(item.data.points)}
+            fill="none"
+            stroke={PEN[item.data.color].stroke}
+            strokeWidth={item.data.width}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
+          />
+        </svg>
       </div>
     );
   }

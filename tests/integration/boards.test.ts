@@ -211,4 +211,25 @@ describe("boards", () => {
     // Someone else's board
     expect((await api(`/api/boards/${board.id}/assets`, { session: bob.session, json: { remoteUrl: remote } })).status).toBe(404);
   });
+
+  it("serves the board's own files for download, to who may see the board", async () => {
+    const board = await newBoard(alice, "Downloads");
+    const source = await libraryImage(alice, "hero.png");
+    const asset = (await api(`/api/boards/${board.id}/assets`, { session: alice.session, json: { url: source } })).data.asset as { url: string };
+    const file = (download = false) => `/api/boards/${board.id}/file?url=${encodeURIComponent(asset.url)}${download ? "&download=1" : ""}`;
+
+    const own = await api(file(true), { session: alice.session });
+    expect(own.status).toBe(200);
+    expect(own.headers.get("content-type")).toBe("image/png");
+    expect(own.headers.get("content-disposition")).toBe('attachment; filename="hero.png"');
+    expect((await api(file(), { session: alice.session })).headers.get("content-disposition")).toBeNull();
+
+    // The super admin (view only) too; nobody else
+    expect((await api(file(), { session: root })).status).toBe(200);
+    expect((await api(file(), { session: bob.session })).status).toBe(404);
+    expect((await api(file())).status).toBe(401);
+    // Only this board's files: not a library file, not another address
+    expect((await api(`/api/boards/${board.id}/file?url=${encodeURIComponent(source)}`, { session: alice.session })).status).toBe(404);
+    expect((await api(`/api/boards/${board.id}/file?url=${encodeURIComponent("http://169.254.169.254/")}`, { session: alice.session })).status).toBe(404);
+  });
 });

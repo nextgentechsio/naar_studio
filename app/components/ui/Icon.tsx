@@ -75,6 +75,7 @@ const PATHS = {
   square: "M4 4h16v16H4z",
   circle: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z",
   diamond: "M12 2l10 10-10 10L2 12z",
+  triangle: "M12 3l9.5 17h-19z",
   connector: "M5 19L19 5M19 5h-6M19 5v6",
   frame: "M7 3v18M17 3v18M3 7h18M3 17h18",
   plus: "M12 5v14M5 12h14",

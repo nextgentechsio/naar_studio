@@ -16,6 +16,7 @@ import {
   type BoardOp,
   type Guide,
   type ItemPatch,
+  type PenColor,
   type Point,
   type PublicBoard,
   type Rect,
@@ -29,7 +30,10 @@ import { errorMessage } from "@/lib/client/http";
 import MediaLibraryDialog from "@/app/(studio)/_generate/MediaLibraryDialog";
 import { Icon, type IconName } from "@/app/components/ui/Icon";
 import { cx, Spinner } from "@/app/components/ui/primitives";
-import ItemView, { COLORS, EditText } from "./ItemView";
+import ItemView, { COLORS, EditText, PEN, strokePath } from "./ItemView";
+import { boardFileUrl, saveFile, selectionToPng, type ExportOptions } from "./exportPng";
+import { FloatingMenu, MenuList, type MenuEntry } from "./Menu";
+import Toolbar, { type Tool } from "./Toolbar";
 import { useBoard, type BoardStore } from "./useBoard";
 
 // --------------------------------------------------
@@ -43,7 +47,6 @@ import { useBoard, type BoardStore } from "./useBoard";
 // goes back to Select.
 // --------------------------------------------------
 
-type Tool = "select" | "hand" | "sticky" | "text" | "shape" | "connector" | "frame";
 type Camera = { x: number; y: number; zoom: number };
 type Handle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
@@ -54,23 +57,14 @@ const GRID = 24;
 const newId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`).replace(/[^\w-]/g, "");
 const clampZoom = (zoom: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
 
-const TOOLS: { tool: Tool; icon: IconName; label: string; key: string }[] = [
-  { tool: "select", icon: "cursor", label: "Select", key: "V" },
-  { tool: "hand", icon: "hand", label: "Hand", key: "H" },
-  { tool: "sticky", icon: "sticky", label: "Sticky note", key: "S" },
-  { tool: "text", icon: "type", label: "Text", key: "T" },
-  { tool: "shape", icon: "shapes", label: "Shape", key: "R" },
-  { tool: "connector", icon: "connector", label: "Connector", key: "L" },
-  { tool: "frame", icon: "frame", label: "Frame", key: "F" },
-];
-
 type Gesture =
   | { type: "pan"; start: Point; cam: Camera }
   | { type: "move"; start: Point; ids: string[]; origins: Map<string, Rect>; moved: boolean; clickedId: string | null; shift: boolean }
   | { type: "marquee"; start: Point; base: Set<string> }
   | { type: "resize"; handle: Handle; bounds: Rect; origins: Map<string, Rect>; keepAspect: boolean }
   | { type: "create"; tool: Tool; start: Point }
-  | { type: "connector"; from: Anchor; fromPoint: Point };
+  | { type: "connector"; from: Anchor; fromPoint: Point }
+  | { type: "draw"; points: number[] };
 
 export default function BoardEditor({
   board,
@@ -97,9 +91,14 @@ export default function BoardEditor({
   const [createDraft, setCreateDraft] = useState<Rect | null>(null);
   const [spaceDown, setSpaceDown] = useState(false);
   const [mediaKind, setMediaKind] = useState<"image" | "video" | null>(null);
-  const [mediaMenu, setMediaMenu] = useState(false);
+  const [stickyColor, setStickyColor] = useState<StickyColor>("yellow");
+  const [penColor, setPenColor] = useState<PenColor>("ink");
+  // The marker stroke being drawn, in canvas units
+  const [stroke, setStroke] = useState<number[] | null>(null);
   const [adding, setAdding] = useState(0);
   const [notice, setNotice] = useState("");
+  // A notice that reports success (a tick), not a problem
+  const [noticeOk, setNoticeOk] = useState(false);
   const [name, setName] = useState(board.name);
   const gestureRef = useRef<Gesture | null>(null);
   const clipboardRef = useRef<BoardItem[]>([]);
@@ -222,7 +221,6 @@ export default function BoardEditor({
       (document.activeElement as HTMLElement | null)?.blur?.();
       setEditingId(null);
     }
-    setMediaMenu(false);
     rootRef.current?.setPointerCapture(event.pointerId);
     const world = toWorld(event.clientX, event.clientY);
     const screen = { x: event.clientX, y: event.clientY };
@@ -234,6 +232,12 @@ export default function BoardEditor({
     }
 
     const hit = itemAt(event.target);
+
+    if (tool === "draw") {
+      gestureRef.current = { type: "draw", points: [world.x, world.y] };
+      setStroke([world.x, world.y]);
+      return;
+    }
 
     if (tool === "connector") {
       const from: Anchor = hit && hit.type !== "connector" ? { id: hit.id } : { x: world.x, y: world.y };
@@ -272,6 +276,18 @@ export default function BoardEditor({
     const gesture = gestureRef.current;
     if (!gesture) return;
     const world = toWorld(event.clientX, event.clientY);
+
+    if (gesture.type === "draw") {
+      const { points } = gesture;
+      const lastX = points[points.length - 2];
+      const lastY = points[points.length - 1];
+      // Skip points closer than ~2 screen pixels
+      if (Math.hypot(world.x - lastX, world.y - lastY) * cam.zoom >= 2 && points.length < 6000) {
+        points.push(world.x, world.y);
+        setStroke([...points]);
+      }
+      return;
+    }
 
     if (gesture.type === "pan") {
       setCam({ ...gesture.cam, x: gesture.cam.x + event.clientX - gesture.start.x, y: gesture.cam.y + event.clientY - gesture.start.y });
@@ -367,6 +383,32 @@ export default function BoardEditor({
     if (!gesture) return;
     const world = toWorld(event.clientX, event.clientY);
 
+    if (gesture.type === "draw") {
+      setStroke(null);
+      let points = gesture.points;
+      // A tap: a dot
+      if (points.length === 2) points = [points[0], points[1], points[0] + 0.5, points[1] + 0.5];
+      // Long strokes keep every other point
+      while (points.length > 6000) points = points.filter((_, index) => index % 4 < 2);
+      const width = 4;
+      const pad = width;
+      const xs = points.filter((_, index) => index % 2 === 0);
+      const ys = points.filter((_, index) => index % 2 === 1);
+      const minX = Math.min(...xs) - pad;
+      const minY = Math.min(...ys) - pad;
+      const w = Math.max(8, Math.max(...xs) + pad - minX);
+      const h = Math.max(8, Math.max(...ys) + pad - minY);
+      const relative = points.map((value, index) => Math.round((value - (index % 2 === 0 ? minX : minY)) * 10) / 10);
+      store.commit([
+        {
+          kind: "put",
+          item: { id: newId(), type: "draw", x: minX, y: minY, w, h, z: maxZ() + 1, data: { points: relative, color: penColor, width, ow: w, oh: h } },
+        },
+      ]);
+      // The marker stays in hand, like FigJam
+      return;
+    }
+
     if (gesture.type === "move") {
       if (gesture.moved) {
         const ops: BoardOp[] = [];
@@ -398,7 +440,7 @@ export default function BoardEditor({
       const big = dragged.w * cam.zoom > 8 && dragged.h * cam.zoom > 8;
       const z = maxZ() + 1;
       if (gesture.tool === "sticky") {
-        place({ id: newId(), type: "sticky", x: world.x - 110, y: world.y - 110, w: 220, h: 220, z, data: { text: "", color: "yellow" } }, true);
+        place({ id: newId(), type: "sticky", x: world.x - 110, y: world.y - 110, w: 220, h: 220, z, data: { text: "", color: stickyColor } }, true);
       } else if (gesture.tool === "text") {
         place({ id: newId(), type: "text", x: world.x, y: world.y - 20, w: 360, h: 48, z, data: { text: "", size: "m" } }, true);
       } else if (gesture.tool === "shape") {
@@ -483,7 +525,7 @@ export default function BoardEditor({
     if (!hit && tool === "select") {
       // Double-click on empty canvas: a sticky note there
       const world = toWorld(event.clientX, event.clientY);
-      place({ id: newId(), type: "sticky", x: world.x - 110, y: world.y - 110, w: 220, h: 220, z: maxZ() + 1, data: { text: "", color: "yellow" } }, true);
+      place({ id: newId(), type: "sticky", x: world.x - 110, y: world.y - 110, w: 220, h: 220, z: maxZ() + 1, data: { text: "", color: stickyColor } }, true);
     }
   };
 
@@ -517,6 +559,181 @@ export default function BoardEditor({
     },
     [store]
   );
+
+  // ---------- Download (like FigJam's export) ----------
+
+  const [exporting, setExporting] = useState(false);
+
+  // One picture or video: the original file
+  const downloadOriginals = useCallback(
+    (source: BoardItem[]) => {
+      const media = source.filter((item): item is Extract<BoardItem, { type: "image" | "video" }> => item.type === "image" || item.type === "video");
+      // A few at a time, so the browser doesn't drop any
+      media.forEach((item, index) => setTimeout(() => saveFile(boardFileUrl(board.id, item.data.url, true), item.data.name || "file"), index * 350));
+    },
+    [board.id]
+  );
+
+  const fileBase = () => (savedNameRef.current || "board").replace(/[^\w .-]+/g, "").trim().replace(/\s+/g, "-") || "board";
+
+  // The selection (or the whole board) drawn as one image
+  const exportImage = useCallback(
+    async (source: BoardItem[], options: ExportOptions, label: string) => {
+      if (!source.length || exporting) return;
+      setExporting(true);
+      setNotice("");
+      try {
+        const blob = await selectionToPng(board.id, source, store.getStored(), options);
+        const ext = options.type === "image/jpeg" ? "jpg" : "png";
+        const size = options.scale && options.scale !== 2 ? `@${options.scale}x` : "";
+        const clear = options.transparent && ext === "png" ? "-transparent" : "";
+        saveFile(blob, `${fileBase()}${label}${size}${clear}.${ext}`);
+      } catch (error) {
+        setNoticeOk(false);
+        setNotice(errorMessage(error, "Couldn't make the image."));
+      } finally {
+        setExporting(false);
+      }
+    },
+    [board.id, exporting, store]
+  );
+
+  // Straight to the clipboard, to paste anywhere
+  const copyImage = useCallback(
+    async (source: BoardItem[]) => {
+      setNotice("");
+      try {
+        const blob = selectionToPng(board.id, source, store.getStored(), { scale: 2 });
+        await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+        setNoticeOk(true);
+        setNotice("Copied as PNG. Paste it anywhere.");
+        setTimeout(() => setNotice((now) => (now.startsWith("Copied as PNG") ? "" : now)), 3000);
+      } catch (error) {
+        setNoticeOk(false);
+        setNotice(errorMessage(error, "Couldn't copy the image. Your browser may not allow it."));
+      }
+    },
+    [board.id, store]
+  );
+
+  // Every way to download `source` (the selection, or the
+  // whole board when `whole`)
+  const downloadEntries = (source: BoardItem[], whole = false): MenuEntry[] => {
+    const media = source.filter((item) => item.type === "image" || item.type === "video");
+    const onlyMedia = source.length === 1 && media.length === 1 ? media[0] : null;
+    const label = whole ? "" : source.length === 1 ? "-item" : "-selection";
+    const entries: MenuEntry[] = [];
+    if (onlyMedia) {
+      entries.push({
+        kind: "item",
+        icon: "download",
+        label: `Original ${onlyMedia.type === "video" ? "video" : "picture"}`,
+        hint: "Full quality, as it was added",
+        shortcut: "⇧⌘E",
+        onSelect: () => downloadOriginals([onlyMedia]),
+      });
+      entries.push({ kind: "separator" });
+    }
+    entries.push(
+      { kind: "heading", label: whole ? "Whole board" : source.length === 1 ? "This item" : `Selection · ${source.length} items` },
+      { kind: "item", icon: "image", label: "PNG", hint: "2× · sharp on any screen", shortcut: onlyMedia || whole ? undefined : "⇧⌘E", onSelect: () => void exportImage(source, { scale: 2 }, label) },
+      { kind: "item", label: "PNG 1×", hint: "Smaller file", onSelect: () => void exportImage(source, { scale: 1 }, label) },
+      { kind: "item", label: "PNG 4×", hint: "For print and big screens", onSelect: () => void exportImage(source, { scale: 4 }, label) },
+      { kind: "item", label: "PNG, transparent", hint: "No white background", onSelect: () => void exportImage(source, { scale: 2, transparent: true }, label) },
+      { kind: "item", label: "JPG", hint: "Smallest, for sharing", onSelect: () => void exportImage(source, { scale: 2, type: "image/jpeg" }, label) },
+      { kind: "item", icon: "copy", label: "Copy as PNG", hint: "Paste into Slack, email, docs", onSelect: () => void copyImage(source) }
+    );
+    if (media.length && !onlyMedia) {
+      entries.push(
+        { kind: "separator" },
+        {
+          kind: "item",
+          icon: "download",
+          label: `Original files (${media.length})`,
+          hint: "Each picture and video at full quality",
+          onSelect: () => downloadOriginals(media),
+        }
+      );
+    }
+    return entries;
+  };
+
+  const download = (source: BoardItem[]) => {
+    const only = source.length === 1 ? source[0] : null;
+    if (only && (only.type === "image" || only.type === "video")) downloadOriginals(source);
+    else void exportImage(source, { scale: 2 }, source.length === 1 ? "-item" : "-selection");
+  };
+
+  // ---------- Right-click menu ----------
+
+  const [menuAt, setMenuAt] = useState<{ x: number; y: number; entries: MenuEntry[] } | null>(null);
+
+  const onContextMenu = (event: React.MouseEvent) => {
+    event.preventDefault();
+    gestureRef.current = null;
+    const hit = itemAt(document.elementFromPoint(event.clientX, event.clientY));
+    const world = toWorld(event.clientX, event.clientY);
+    const everything = [...store.getStored().values()];
+    const entries: MenuEntry[] = [];
+
+    if (readOnly) {
+      // Viewing: the item under the pointer, or the board
+      if (hit && (hit.type === "image" || hit.type === "video")) entries.push(...downloadEntries([hit]), { kind: "separator" });
+      entries.push(...downloadEntries(everything, true));
+      setMenuAt({ x: event.clientX, y: event.clientY, entries });
+      return;
+    }
+
+    // Right-clicking an item outside the selection selects
+    // it; right-clicking empty canvas clears the selection
+    let source = selectedItems;
+    if (hit && !selected.has(hit.id)) {
+      setSelected(new Set([hit.id]));
+      source = [hit];
+    } else if (!hit) {
+      setSelected(new Set());
+      source = [];
+    }
+
+    if (hit) {
+      entries.push(
+        { kind: "item", icon: "copy", label: "Copy", shortcut: "⌘C", onSelect: () => {
+          clipboardRef.current = source;
+          clipboardMarkRef.current = `naar-board-items:${newId()}`;
+          void navigator.clipboard?.writeText(clipboardMarkRef.current).catch(() => undefined);
+        } },
+        { kind: "item", label: "Duplicate", shortcut: "⌘D", onSelect: () => duplicate(source) },
+        { kind: "item", icon: "bringFront", label: "Bring to front", shortcut: "]", onSelect: () => reorderItems(source, true) },
+        { kind: "item", icon: "sendBack", label: "Send to back", shortcut: "[", onSelect: () => reorderItems(source, false) },
+        { kind: "separator" },
+        ...downloadEntries(source),
+        { kind: "separator" },
+        { kind: "item", icon: "trash", label: "Delete", shortcut: "⌫", danger: true, onSelect: () => deleteIds(source.map((item) => item.id)) }
+      );
+    } else {
+      entries.push(
+        {
+          kind: "item",
+          label: "Paste here",
+          shortcut: "⌘V",
+          disabled: !clipboardRef.current.length,
+          onSelect: () => duplicate(clipboardRef.current.map((item) => store.getStored().get(item.id) ?? item), 40),
+        },
+        { kind: "item", label: "Select all", shortcut: "⌘A", onSelect: () => setSelected(new Set(store.getStored().keys())) },
+        { kind: "item", label: "Zoom to fit", shortcut: "⇧1", onSelect: () => zoomTo(boundsOf(everything.filter((item) => item.type !== "connector")), 1) },
+        { kind: "item", icon: "sticky", label: "Add a sticky note here", onSelect: () => place({ id: newId(), type: "sticky", x: world.x - 110, y: world.y - 110, w: 220, h: 220, z: maxZ() + 1, data: { text: "", color: stickyColor } }, true) },
+        { kind: "separator" },
+        ...(everything.length ? downloadEntries(everything, true) : [])
+      );
+    }
+    setMenuAt({ x: event.clientX, y: event.clientY, entries });
+  };
+
+  const reorderItems = (source: BoardItem[], front: boolean) => {
+    let z = front ? maxZ() : minZ();
+    const ordered = [...source].sort((a, b) => (front ? a.z - b.z : b.z - a.z));
+    store.commit(ordered.map((item) => ({ kind: "patch", id: item.id, set: { z: front ? ++z : --z } })));
+  };
 
   const reorder = (front: boolean) => {
     let z = front ? maxZ() : minZ();
@@ -575,6 +792,7 @@ export default function BoardEditor({
               data: { url: asset.url, name: asset.name, contentType: asset.contentType },
             } as BoardItem;
           } catch (error) {
+            setNoticeOk(false);
             setNotice(errorMessage(error, "Couldn't add a file."));
           } finally {
             setAdding((count) => count - 1);
@@ -597,7 +815,10 @@ export default function BoardEditor({
       setAdding((count) => count + media.length);
       try {
         const urls = (await Promise.all(media.map((file) => uploadToLibrary(file).catch(() => null)))).filter((url): url is string => Boolean(url));
-        if (urls.length < media.length) setNotice("Some files couldn't be uploaded.");
+        if (urls.length < media.length) {
+          setNoticeOk(false);
+          setNotice("Some files couldn't be uploaded.");
+        }
         await addMedia(urls, at);
       } finally {
         setAdding((count) => count - media.length);
@@ -752,6 +973,11 @@ export default function BoardEditor({
         setSelected(new Set([...store.getStored().keys()]));
         return;
       }
+      if (mod && event.shiftKey && key === "e") {
+        event.preventDefault();
+        if (selectedItems.length) download(selectedItems);
+        return;
+      }
       if (mod && key === "d") {
         event.preventDefault();
         duplicate(selectedItems);
@@ -819,7 +1045,7 @@ export default function BoardEditor({
       if (key === "]" && selected.size) return reorder(true);
       if (key === "[" && selected.size) return reorder(false);
       if (mod || event.altKey) return;
-      const shortcuts: Record<string, Tool> = { v: "select", h: "hand", s: "sticky", t: "text", r: "shape", o: "shape", l: "connector", f: "frame" };
+      const shortcuts: Record<string, Tool> = { v: "select", h: "hand", m: "draw", s: "sticky", t: "text", r: "shape", o: "shape", l: "connector", f: "frame" };
       if (shortcuts[key]) {
         if (key === "r") setShapeKind("rect");
         if (key === "o") setShapeKind("ellipse");
@@ -886,6 +1112,7 @@ export default function BoardEditor({
             savedNameRef.current = clean;
           } catch (error) {
             setName(savedNameRef.current);
+            setNoticeOk(false);
             setNotice(errorMessage(error, "Couldn't rename the board."));
           }
         }}
@@ -913,7 +1140,7 @@ export default function BoardEditor({
         onDoubleClick={onDoubleClick}
         onDragOver={(event) => event.preventDefault()}
         onDrop={onDrop}
-        onContextMenu={(event) => event.preventDefault()}
+        onContextMenu={onContextMenu}
       >
         {/* The world: everything in canvas units */}
         <div className="absolute left-0 top-0 origin-top-left" style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.zoom})` }}>
@@ -949,6 +1176,9 @@ export default function BoardEditor({
                 </g>
               );
             })}
+            {stroke && stroke.length >= 4 && (
+              <path d={strokePath(stroke)} fill="none" stroke={PEN[penColor].stroke} strokeWidth={4} strokeLinecap="round" strokeLinejoin="round" />
+            )}
             {linkDraft && (
               <line x1={linkDraft[0].x} y1={linkDraft[0].y} x2={linkDraft[1].x} y2={linkDraft[1].y} stroke="var(--board-select)" strokeWidth={2 / cam.zoom} strokeDasharray={`${6 / cam.zoom} ${4 / cam.zoom}`} markerEnd="url(#board-arrow-selected)" />
             )}
@@ -1025,6 +1255,8 @@ export default function BoardEditor({
               onShape={(shape) => patchSelected((item) => (item.type === "shape" ? { data: { shape } } : null))}
               onSize={(size) => patchSelected((item) => (item.type === "text" ? { data: { size } } : null))}
               onDuplicate={() => duplicate(selectedItems)}
+              downloadEntries={() => downloadEntries(selectedItems)}
+              exporting={exporting}
               onFront={() => reorder(true)}
               onBack={() => reorder(false)}
               onDelete={() => deleteIds([...selected])}
@@ -1059,7 +1291,7 @@ export default function BoardEditor({
 
       {/* Bottom: zoom, tools */}
       <div className="pointer-events-none fixed inset-x-0 bottom-4 z-[41] flex items-end justify-between px-4">
-        <div className="pointer-events-auto glass flex items-center gap-0.5 rounded-xl p-1 text-xs shadow-lg">
+        <div className="pointer-events-auto board-glass flex items-center gap-0.5 rounded-xl p-1 text-xs">
           <IconButton icon="minus" label="Zoom out (⌘−)" onClick={() => zoomAt(1 / 1.2)} />
           <button type="button" onClick={() => zoomTo(boundsOf([...items.values()].filter((item) => item.type !== "connector")), 1)} className="min-w-14 rounded-lg px-2 py-1.5 font-mono tabular-nums text-fg-muted hover:bg-raised hover:text-fg" title="Zoom to fit (⇧1)">
             {Math.round(cam.zoom * 100)}%
@@ -1068,50 +1300,20 @@ export default function BoardEditor({
         </div>
 
         {readOnly ? (
-          <div className="pointer-events-auto glass rounded-2xl px-4 py-2.5 text-xs text-fg-muted shadow-xl">Drag to look around · pinch or ⌘-scroll to zoom</div>
+          <div className="pointer-events-auto board-glass rounded-2xl px-4 py-2.5 text-xs text-fg-muted">Drag to look around · pinch or ⌘-scroll to zoom</div>
         ) : (
-        <div className="pointer-events-auto glass relative flex items-center gap-1 rounded-2xl p-1.5 shadow-xl">
-          {TOOLS.map((item) => (
-            <IconButton
-              key={item.tool}
-              icon={item.tool === "shape" ? (shapeKind === "ellipse" ? "circle" : shapeKind === "diamond" ? "diamond" : "square") : item.icon}
-              label={`${item.label} (${item.key})`}
-              active={tool === item.tool}
-              size="lg"
-              onClick={() => setTool(item.tool)}
-            />
-          ))}
-          <span className="mx-1 h-6 w-px bg-line" aria-hidden />
-          <div className="relative">
-            <IconButton icon="image" label="Add pictures or videos" size="lg" active={mediaMenu} onClick={() => setMediaMenu((open) => !open)} />
-            {mediaMenu && (
-              <div className="glass-menu absolute bottom-full left-1/2 mb-2 w-52 -translate-x-1/2 rounded-xl border border-line p-1 shadow-xl" role="menu">
-                {(["image", "video"] as const).map((kind) => (
-                  <button
-                    key={kind}
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      setMediaMenu(false);
-                      setMediaKind(kind);
-                    }}
-                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-fg hover:bg-raised"
-                  >
-                    <Icon name={kind} size={15} />
-                    {kind === "image" ? "Pictures" : "Videos"}
-                    <span className="ml-auto text-[11px] text-fg-subtle">History · library</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          {tool === "shape" && (
-            <div className="glass absolute bottom-full left-1/2 mb-2 flex -translate-x-1/2 gap-1 rounded-xl p-1 shadow-lg">
-              {(["rect", "ellipse", "diamond"] as const).map((kind) => (
-                <IconButton key={kind} icon={kind === "rect" ? "square" : kind === "ellipse" ? "circle" : "diamond"} label={kind === "rect" ? "Rectangle" : kind === "ellipse" ? "Ellipse" : "Diamond"} active={shapeKind === kind} onClick={() => setShapeKind(kind)} />
-              ))}
-            </div>
-          )}
+        <div className="pointer-events-auto">
+          <Toolbar
+            tool={tool}
+            onTool={setTool}
+            shapeKind={shapeKind}
+            onShapeKind={setShapeKind}
+            stickyColor={stickyColor}
+            onStickyColor={setStickyColor}
+            penColor={penColor}
+            onPenColor={setPenColor}
+            onMedia={setMediaKind}
+          />
         </div>
         )}
 
@@ -1120,14 +1322,14 @@ export default function BoardEditor({
 
       {(adding > 0 || notice) && (
         <div className="fixed left-1/2 top-16 z-[41] -translate-x-1/2">
-          <div className="glass flex items-center gap-2 rounded-full px-4 py-2 text-sm shadow-lg" role="status">
+          <div className="board-glass flex items-center gap-2 rounded-full px-4 py-2 text-sm" role="status">
             {adding > 0 ? (
               <>
                 <Spinner /> Adding {adding} file{adding === 1 ? "" : "s"}…
               </>
             ) : (
               <>
-                <Icon name="alert" size={14} className="text-danger" />
+                <Icon name={noticeOk ? "check" : "alert"} size={14} className={noticeOk ? "text-success" : "text-danger"} />
                 {notice}
                 <button type="button" onClick={() => setNotice("")} className="ml-1 text-fg-subtle hover:text-fg" aria-label="Dismiss">
                   <Icon name="close" size={13} />
@@ -1137,6 +1339,8 @@ export default function BoardEditor({
           </div>
         </div>
       )}
+
+      {menuAt && <FloatingMenu at={menuAt} entries={menuAt.entries} onClose={() => setMenuAt(null)} />}
 
       {mediaKind && (
         <MediaLibraryDialog
@@ -1179,7 +1383,7 @@ function TopBar({
   const [draft, setDraft] = useState(name);
   const [editing, setEditing] = useState(false);
   return (
-    <header className="z-[41] flex h-14 shrink-0 items-center gap-3 border-b border-line bg-[var(--board-bg)]/90 px-3 backdrop-blur">
+    <header className="board-glass absolute inset-x-3 top-3 z-[41] flex h-12 items-center gap-3 rounded-2xl px-2">
       <Link href="/boards" className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-fg-muted hover:bg-raised hover:text-fg">
         <Icon name="chevronLeft" size={16} />
         Boards
@@ -1263,6 +1467,8 @@ function ContextBar({
   onShape,
   onSize,
   onDuplicate,
+  downloadEntries,
+  exporting,
   onFront,
   onBack,
   onDelete,
@@ -1274,6 +1480,9 @@ function ContextBar({
   onShape: (shape: ShapeKind) => void;
   onSize: (size: TextSize) => void;
   onDuplicate: () => void;
+  // Built when the menu opens
+  downloadEntries: () => MenuEntry[];
+  exporting: boolean;
   onFront: () => void;
   onBack: () => void;
   onDelete: () => void;
@@ -1282,9 +1491,10 @@ function ContextBar({
   const shapes = items.every((item) => item.type === "shape");
   const texts = items.every((item) => item.type === "text");
   const media = single && (single.type === "image" || single.type === "video") ? single : null;
+  const [menu, setMenu] = useState<MenuEntry[] | null>(null);
   return (
     <div
-      className="glass absolute z-10 flex -translate-x-1/2 -translate-y-full items-center gap-0.5 rounded-xl p-1 shadow-lg"
+      className="board-glass absolute z-10 flex -translate-x-1/2 -translate-y-full items-center gap-0.5 rounded-xl p-1"
       style={{ left: at.x, top: at.y - 14 }}
       onPointerDown={(event) => event.stopPropagation()}
     >
@@ -1326,6 +1536,21 @@ function ContextBar({
           <Icon name="eye" size={14} /> Open
         </a>
       )}
+      {/* Download: every option, as in the right-click menu */}
+      <div className="relative">
+        <IconButton
+          icon={exporting ? "clock" : "download"}
+          label={media ? `Download ${media.type === "video" ? "video" : "picture"}` : "Download"}
+          active={Boolean(menu)}
+          disabled={exporting}
+          onClick={() => setMenu((open) => (open ? null : downloadEntries()))}
+        />
+        {menu && (
+          <div className="absolute left-1/2 top-full z-20 mt-2 -translate-x-1/2">
+            <MenuList entries={menu} onDone={() => setMenu(null)} />
+          </div>
+        )}
+      </div>
       <IconButton icon="copy" label="Duplicate (⌘D)" onClick={onDuplicate} />
       <IconButton icon="bringFront" label="Bring to front (])" onClick={onFront} />
       <IconButton icon="sendBack" label="Send to back ([)" onClick={onBack} />

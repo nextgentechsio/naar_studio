@@ -61,6 +61,17 @@ describe("cleaning what the network sends", () => {
     expect((huge?.data as { text: string }).text).toHaveLength(5000);
   });
 
+  it("keeps marker strokes and refuses broken ones", () => {
+    const stroke = { id: "d", type: "draw", x: 0, y: 0, w: 100, h: 50, z: 1, data: { points: [0, 0, 50.04, 25, 100, 50], color: "blue", width: 4, ow: 100, oh: 50 } };
+    expect(cleanItem(stroke)?.data).toEqual({ points: [0, 0, 50, 25, 100, 50], color: "blue", width: 4, ow: 100, oh: 50 });
+    expect(cleanItem({ ...stroke, data: { ...stroke.data, points: [1, 2, 3] } })).toBeNull();
+    expect(cleanItem({ ...stroke, data: { ...stroke.data, points: [0, 0] } })).toBeNull();
+    expect(cleanItem({ ...stroke, data: { ...stroke.data, points: [0, 0, Number.NaN, 1] } })).toBeNull();
+    expect(cleanItem({ ...stroke, data: { ...stroke.data, points: Array(7000).fill(1) } })).toBeNull();
+    expect((cleanItem({ ...stroke, data: { ...stroke.data, color: "gold", width: 999 } })?.data as { color: string; width: number })).toMatchObject({ color: "ink", width: 40 });
+    expect(cleanItem({ id: "t", type: "shape", x: 0, y: 0, w: 50, h: 50, z: 0, data: { shape: "triangle", color: "blue", text: "" } })?.data).toMatchObject({ shape: "triangle" });
+  });
+
   it("checks operations", () => {
     expect(cleanOp({ kind: "delete", id: "a" })).toEqual({ kind: "delete", id: "a" });
     expect(cleanOp({ kind: "patch", id: "a", set: { x: 5, evil: 1 } })).toEqual({ kind: "patch", id: "a", set: { x: 5 } });

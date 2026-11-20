@@ -364,4 +364,25 @@ export async function addRemoteAsset(actor: StoredUser, id: string, remoteUrl: u
   return { ok: true, value: toAsset(asset) };
 }
 
+// One of the board's own files, for downloading or for
+// drawing into a PNG of a selection: its owner, or the
+// super admin (who can view every board)
+export async function openBoardFile(
+  actor: StoredUser,
+  id: string,
+  url: unknown
+): Promise<Result<{ body: ReadableStream<Uint8Array>; contentType: string; name: string; size: number | null }>> {
+  if (!ObjectId.isValid(id) || typeof url !== "string") return fail(404, "File not found");
+  const board = await (await boardsCollection()).findOne({ _id: new ObjectId(id) });
+  if (!board || (board.ownerId !== actor.id && !canViewAllBoards(actor))) return fail(404, "File not found");
+  const asset = await (await boardAssetsCollection()).findOne({ boardId: id, url });
+  if (!asset) return fail(404, "File not found");
+  const response = await fetch(asset.url, { cache: "no-store" });
+  if (!response.ok || !response.body) {
+    await response.body?.cancel();
+    return fail(502, "Couldn't read that file");
+  }
+  return { ok: true, value: { body: response.body, contentType: asset.contentType, name: asset.name, size: asset.size ?? null } };
+}
+
 const toAsset = (doc: BoardAssetDoc): BoardAsset => ({ url: doc.url, contentType: doc.contentType, name: doc.name, size: doc.size });

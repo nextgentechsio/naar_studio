@@ -185,4 +185,30 @@ describe("boards", () => {
       expect((await api(`/api/boards/${board.id}`, { session })).status).toBe(404);
     }
   });
+
+  it("downloads a picture pasted from another website, and refuses anything else", async () => {
+    const board = await newBoard(alice, "From the web");
+    const remote = `${replicateUrl}/__control/output.png`;
+    const added = await api(`/api/boards/${board.id}/assets`, { session: alice.session, json: { remoteUrl: remote } });
+    expect(added.status).toBe(200);
+    const asset = added.data.asset as { url: string; contentType: string };
+    expect(asset.url).toContain(`/boards/${board.id}/`);
+    expect(asset.contentType).toBe("image/png");
+    // Same address twice: one copy
+    expect(((await api(`/api/boards/${board.id}/assets`, { session: alice.session, json: { remoteUrl: remote } })).data.asset as { url: string }).url).toBe(asset.url);
+    // It can be placed like any picture
+    const image = { id: "web", type: "image", x: 0, y: 0, w: 300, h: 300, z: 1, data: { url: asset.url, name: "output.png", contentType: "image/png" } };
+    expect((await save(board.id, [{ kind: "put", item: image }])).status).toBe(200);
+
+    // Not a picture, internal addresses, other schemes, not an address
+    const refuse = async (remoteUrl: string) => (await api(`/api/boards/${board.id}/assets`, { session: alice.session, json: { remoteUrl } })).status;
+    expect(await refuse(`${replicateUrl}/__control/predictions/nothing`)).toBe(422);
+    expect(await refuse("http://127.0.0.1:1/secret.png")).toBe(422);
+    expect(await refuse("http://169.254.169.254/latest/meta-data")).toBe(422);
+    expect(await refuse("http://10.0.0.5/x.png")).toBe(422);
+    expect(await refuse("file:///etc/passwd")).toBe(422);
+    expect(await refuse("not a url")).toBe(422);
+    // Someone else's board
+    expect((await api(`/api/boards/${board.id}/assets`, { session: bob.session, json: { remoteUrl: remote } })).status).toBe(404);
+  });
 });

@@ -23,7 +23,7 @@ import {
   type StickyColor,
   type TextSize,
 } from "@/lib/boards/shared";
-import { addBoardAsset, renameBoard } from "@/lib/client/boards";
+import { addBoardAsset, addRemoteBoardAsset, renameBoard } from "@/lib/client/boards";
 import { uploadToLibrary } from "@/lib/client/library";
 import { errorMessage } from "@/lib/client/http";
 import MediaLibraryDialog from "@/app/(studio)/_generate/MediaLibraryDialog";
@@ -103,6 +103,10 @@ export default function BoardEditor({
   const [name, setName] = useState(board.name);
   const gestureRef = useRef<Gesture | null>(null);
   const clipboardRef = useRef<BoardItem[]>([]);
+  // The mouse's last place on the canvas (pastes land there)
+  const lastPointerRef = useRef<Point | null>(null);
+  const pasteCountRef = useRef(0);
+  const clipboardMarkRef = useRef("");
   const camRef = useRef(cam);
   useEffect(() => {
     camRef.current = cam;
@@ -264,6 +268,7 @@ export default function BoardEditor({
   };
 
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    lastPointerRef.current = toWorld(event.clientX, event.clientY);
     const gesture = gestureRef.current;
     if (!gesture) return;
     const world = toWorld(event.clientX, event.clientY);
@@ -347,6 +352,10 @@ export default function BoardEditor({
     if (gesture.type === "connector") {
       setLinkDraft([gesture.fromPoint, world]);
     }
+  };
+
+  const forgetPointer = () => {
+    lastPointerRef.current = null;
   };
 
   const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -533,8 +542,9 @@ export default function BoardEditor({
       }
     });
 
+  // Library files (by URL) or web addresses ({ remote })
   const addMedia = useCallback(
-    async (sourceUrls: string[], at?: Point) => {
+    async (sourceUrls: (string | { remote: string })[], at?: Point) => {
       if (!sourceUrls.length) return;
       setAdding((count) => count + sourceUrls.length);
       setNotice("");
@@ -547,7 +557,7 @@ export default function BoardEditor({
       await Promise.all(
         sourceUrls.map(async (sourceUrl, index) => {
           try {
-            const asset = await addBoardAsset(board.id, sourceUrl);
+            const asset = typeof sourceUrl === "string" ? await addBoardAsset(board.id, sourceUrl) : await addRemoteBoardAsset(board.id, sourceUrl.remote);
             const size = await measure(asset.url, asset.contentType);
             const scale = Math.min(1, 400 / Math.max(size.w, size.h));
             const w = Math.round(size.w * scale);
@@ -596,12 +606,111 @@ export default function BoardEditor({
     [addMedia]
   );
 
-  // Files dropped on the canvas or pasted
+  // Text pasted or dropped: a text item where it lands
+  const addText = useCallback(
+    (text: string, at?: Point) => {
+      const clean = text.trim().slice(0, 5000);
+      if (!clean) return;
+      const view = viewportWorld();
+      const origin = at ?? { x: view.x + view.w / 2, y: view.y + view.h / 2 };
+      const lines = clean.split("\n").length;
+      const longest = Math.max(...clean.split("\n").map((line) => line.length));
+      const w = Math.min(640, Math.max(160, longest * 13));
+      const h = Math.min(2000, Math.max(48, Math.ceil((longest * 13) / w) * lines * 30 + 18));
+      const item: BoardItem = {
+        id: newId(),
+        type: "text",
+        x: origin.x - w / 2,
+        y: origin.y - h / 2,
+        w,
+        h,
+        z: Math.max(0, ...[...store.getStored().values()].map((entry) => entry.z)) + 1,
+        data: { text: clean, size: "m" },
+      };
+      store.commit([{ kind: "put", item }]);
+      setSelected(new Set([item.id]));
+    },
+    [store, viewportWorld]
+  );
+
+  // What another website (or app) put on the clipboard or
+  // in a drag: files, pictures in a bit of the page, a
+  // link, or text
+  const addFromTransfer = useCallback(
+    async (data: DataTransfer, at?: Point) => {
+      const files = [...data.files].filter((file) => /^(image|video)\//.test(file.type));
+      if (files.length) return uploadAndAdd(files, at);
+
+      const html = data.getData("text/html");
+      const uriList = data.getData("text/uri-list");
+      const text = data.getData("text/plain");
+
+      // Pictures inside a copied bit of a web page
+      if (html) {
+        const doc = new DOMParser().parseFromString(html, "text/html");
+        const sources = [...doc.querySelectorAll("img[src], video[src], video source[src]")]
+          .map((element) => element.getAttribute("src") ?? "")
+          .filter(Boolean)
+          .slice(0, 12);
+        if (sources.length) {
+          const dataUrls = sources.filter((src) => src.startsWith("data:"));
+          const remote = sources.filter((src) => /^https?:\/\//i.test(src));
+          if (dataUrls.length) {
+            const blobs = await Promise.all(dataUrls.map((src) => fetch(src).then((response) => response.blob()).catch(() => null)));
+            const asFiles = blobs.flatMap((blob, index) => (blob && /^(image|video)\//.test(blob.type) ? [new File([blob], `pasted-${index + 1}.${blob.type.split("/")[1]}`, { type: blob.type })] : []));
+            if (asFiles.length) await uploadAndAdd(asFiles, at);
+          }
+          if (remote.length) await addMedia(remote.map((url) => ({ remote: url })), at);
+          if (dataUrls.length || remote.length) return;
+        }
+      }
+
+      // A link: a picture or video if it is one, else the link as text
+      const link = (uriList.split("\n").find((line) => line && !line.startsWith("#")) || text).trim();
+      if (/^https?:\/\/\S+$/i.test(link)) {
+        setAdding((count) => count + 1);
+        try {
+          await addMediaOrText(link, at);
+        } finally {
+          setAdding((count) => count - 1);
+        }
+        return;
+      }
+
+      if (text.trim()) addText(text, at);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [uploadAndAdd, addMedia, addText]
+  );
+
+  // A pasted address: the picture or video at it, or (if
+  // it's a web page) the link as text
+  const addMediaOrText = async (link: string, at?: Point) => {
+    try {
+      await addRemoteBoardAsset(board.id, link);
+    } catch {
+      addText(link, at);
+      return;
+    }
+    // Saved once; this places it (the same address isn't downloaded twice)
+    await addMedia([{ remote: link }], at);
+  };
+
+
+  // Where a paste lands: under the mouse, or (with the
+  // mouse off the canvas) the middle of the view, each
+  // paste a little lower so they don't pile up
+  const pastePoint = (): Point => {
+    if (lastPointerRef.current) return lastPointerRef.current;
+    const view = viewportWorld();
+    const step = (pasteCountRef.current++ % 8) * 48;
+    return { x: view.x + view.w / 2 + step, y: view.y + view.h / 2 + step };
+  };
+
   const onDrop = (event: React.DragEvent) => {
     event.preventDefault();
     if (readOnly) return;
-    const files = [...event.dataTransfer.files];
-    if (files.length) void uploadAndAdd(files, toWorld(event.clientX, event.clientY));
+    void addFromTransfer(event.dataTransfer, toWorld(event.clientX, event.clientY));
   };
 
   // ---------- Keyboard ----------
@@ -648,13 +757,13 @@ export default function BoardEditor({
         duplicate(selectedItems);
         return;
       }
-      if (mod && key === "c") {
+      if (mod && key === "c" && selectedItems.length) {
+        // The system clipboard says "these board items", so a
+        // later copy elsewhere (another website) wins
         clipboardRef.current = selectedItems;
-        return;
-      }
-      if (mod && key === "v" && clipboardRef.current.length) {
+        clipboardMarkRef.current = `naar-board-items:${newId()}`;
+        void navigator.clipboard?.writeText(clipboardMarkRef.current).catch(() => undefined);
         event.preventDefault();
-        duplicate(clipboardRef.current.map((item) => store.getStored().get(item.id) ?? item), 40);
         return;
       }
       if ((key === "backspace" || key === "delete") && selected.size) {
@@ -721,12 +830,17 @@ export default function BoardEditor({
       if (event.key === " ") setSpaceDown(false);
     };
     const onPaste = (event: ClipboardEvent) => {
-      if (readOnly || typing(event.target)) return;
-      const files = [...(event.clipboardData?.files ?? [])];
-      if (files.length) {
-        event.preventDefault();
-        void uploadAndAdd(files);
+      if (readOnly || typing(event.target) || mediaKind || document.querySelector("[role=dialog]")) return;
+      const data = event.clipboardData;
+      if (!data) return;
+      event.preventDefault();
+      // Board items copied here (⌘C)
+      const text = data.getData("text/plain");
+      if (clipboardRef.current.length && (text === clipboardMarkRef.current || (!text && !data.files.length && !data.getData("text/html")))) {
+        duplicate(clipboardRef.current.map((item) => store.getStored().get(item.id) ?? item), 40);
+        return;
       }
+      void addFromTransfer(data, pastePoint());
     };
     window.addEventListener("keydown", onKey);
     window.addEventListener("keyup", onKeyUp);
@@ -795,6 +909,7 @@ export default function BoardEditor({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
+        onPointerLeave={forgetPointer}
         onDoubleClick={onDoubleClick}
         onDragOver={(event) => event.preventDefault()}
         onDrop={onDrop}

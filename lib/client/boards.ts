@@ -45,3 +45,8 @@ export async function saveBoardOps(id: string, ops: BoardOp[], keepalive = false
 export async function addBoardAsset(id: string, url: string): Promise<BoardAsset> {
   return (await fetchJson<{ asset: BoardAsset }>(path(id, "/assets"), { method: "POST", ...json({ url }) })).asset;
 }
+
+// A picture or video from another website, by its address
+export async function addRemoteBoardAsset(id: string, remoteUrl: string): Promise<BoardAsset> {
+  return (await fetchJson<{ asset: BoardAsset }>(path(id, "/assets"), { method: "POST", ...json({ remoteUrl }) })).asset;
+}

@@ -120,6 +120,9 @@ async function start(
     OPENAI_API_KEY: FAKE_OPENAI_KEY,
     OPENAI_BASE_URL: `${replicate.url}/openai`,
     BLOB_READ_WRITE_TOKEN: FAKE_BLOB_TOKEN,
+    // Boards may download pasted pictures from this one
+    // local stand-in only (never the real internet)
+    BOARDS_TEST_REMOTE_ORIGIN: replicate.url,
     VERCEL_BLOB_API_URL: `${replicate.url}/blob`,
     // Browser side (inlined into the test build only)
     NEXT_PUBLIC_VERCEL_BLOB_API_URL: `${replicate.url}/blob`,

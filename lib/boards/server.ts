@@ -5,6 +5,7 @@ import type { StoredUser } from "@/lib/auth/users";
 import { libraryFilesCollection } from "@/lib/db/mongodb";
 import { currentNames } from "@/lib/names";
 import { blobUploadsEnabled } from "@/lib/storage/input-uploads";
+import { fetchRemoteMedia, RemoteError } from "./remote";
 import {
   boardAssetsCollection,
   boardItemsCollection,
@@ -313,6 +314,50 @@ export async function addBoardAsset(actor: StoredUser, id: string, sourceUrl: un
     // Added twice at once: keep the first, drop this copy
     await del(blob.url).catch(() => undefined);
     const first = await assets.findOne({ boardId: id, sourceUrl });
+    if (first) return { ok: true, value: toAsset(first) };
+    throw new Error("Board asset save failed");
+  }
+  return { ok: true, value: toAsset(asset) };
+}
+
+// A picture or video from another website (pasted or
+// dropped onto the board), saved into the board's folder
+export async function addRemoteAsset(actor: StoredUser, id: string, remoteUrl: unknown): Promise<Result<BoardAsset>> {
+  const doc = await ownBoard(actor, id);
+  if (!doc) return fail(404, "Board not found");
+  if (!blobUploadsEnabled()) return fail(501, "File storage isn't set up on the server");
+  if (typeof remoteUrl !== "string" || remoteUrl.length > 4000) return fail(400, "A web address is required");
+
+  const assets = await boardAssetsCollection();
+  const existing = await assets.findOne({ boardId: id, sourceUrl: remoteUrl });
+  if (existing) return { ok: true, value: toAsset(existing) };
+
+  let file: Awaited<ReturnType<typeof fetchRemoteMedia>>;
+  try {
+    file = await fetchRemoteMedia(remoteUrl);
+  } catch (error) {
+    if (error instanceof RemoteError) return fail(422, error.message);
+    return fail(502, "Couldn't download that picture. The website may not allow it.");
+  }
+
+  const blob = await put(`${folderOf(id)}${file.name}`, file.bytes, { access: "public", addRandomSuffix: true, contentType: file.contentType });
+  const asset: BoardAssetDoc = {
+    _id: new ObjectId(),
+    boardId: id,
+    sourceUrl: remoteUrl,
+    url: blob.url,
+    pathname: blob.pathname,
+    contentType: file.contentType,
+    size: file.bytes.length,
+    name: file.name,
+    createdBy: actor.id,
+    createdAt: new Date(),
+  };
+  try {
+    await assets.insertOne(asset);
+  } catch {
+    await del(blob.url).catch(() => undefined);
+    const first = await assets.findOne({ boardId: id, sourceUrl: remoteUrl });
     if (first) return { ok: true, value: toAsset(first) };
     throw new Error("Board asset save failed");
   }

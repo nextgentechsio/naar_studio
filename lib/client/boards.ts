@@ -34,6 +34,11 @@ export async function duplicateBoard(id: string): Promise<PublicBoard> {
   return (await fetchJson<{ board: PublicBoard }>(path(id, "/duplicate"), { method: "POST" })).board;
 }
 
+// A new board from a FigJam or Figma link
+export async function importFigmaBoard(url: string): Promise<{ board: PublicBoard; items: number; pictures: number; skipped: number }> {
+  return fetchJson("/api/boards/import-figma", { method: "POST", ...json({ url }) });
+}
+
 export async function deleteBoard(id: string): Promise<void> {
   await fetchJson(path(id), { method: "DELETE" });
 }

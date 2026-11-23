@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { useStudio } from "@/app/(studio)/_components/StudioProvider";
 import { Icon } from "@/app/components/ui/Icon";
 import { Alert, Button, cx, EmptyState, inputClass, PageHeader, Spinner } from "@/app/components/ui/primitives";
-import { createBoard, deleteBoard, duplicateBoard, fetchBoards, renameBoard, type PublicBoard } from "@/lib/client/boards";
+import { createBoard, deleteBoard, duplicateBoard, fetchBoards, importFigmaBoard, renameBoard, type PublicBoard } from "@/lib/client/boards";
 import { formatDateTime } from "@/lib/client/format";
 import { errorMessage } from "@/lib/client/http";
 
@@ -26,6 +26,7 @@ export default function BoardsView() {
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
   const [query, setQuery] = useState("");
+  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,12 +66,19 @@ export default function BoardsView() {
         title="Boards"
         description="Moodboards, shot plans and brainstorms. Put outputs, elements and notes side by side on an endless canvas."
         actions={
-          <Button variant="primary" icon={creating ? undefined : "plus"} onClick={() => void create()} disabled={creating}>
-            {creating && <Spinner />}
-            New board
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button icon="upload" onClick={() => setImporting((open) => !open)} aria-expanded={importing}>
+              Import from Figma
+            </Button>
+            <Button variant="primary" icon={creating ? undefined : "plus"} onClick={() => void create()} disabled={creating}>
+              {creating && <Spinner />}
+              New board
+            </Button>
+          </div>
         }
       />
+
+      {importing && <FigmaImport onClose={() => setImporting(false)} onDone={(id) => router.push(`/boards/${id}`)} />}
 
       {error && <Alert>{error}</Alert>}
 
@@ -162,6 +170,65 @@ export default function BoardsView() {
         </ul>
       )}
     </div>
+  );
+}
+
+// A new board from a FigJam or Figma link: sticky notes,
+// shapes, text, connectors, sections and pictures come
+// across; anything else arrives as a picture of itself
+function FigmaImport({ onClose, onDone }: { onClose: () => void; onDone: (boardId: string) => void }) {
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function run(event: React.FormEvent) {
+    event.preventDefault();
+    if (!url.trim() || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const result = await importFigmaBoard(url.trim());
+      onDone(result.board.id);
+    } catch (err) {
+      setError(errorMessage(err, "Couldn't import that board."));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={(event) => void run(event)} className="ui-rise space-y-3 rounded-2xl border border-line bg-surface p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-fg">Import from Figma</h2>
+          <p className="mt-0.5 text-xs text-fg-muted">
+            Paste a FigJam or Figma link. View access is enough. Sticky notes, shapes, text, connectors, sections and pictures come across as
+            board items; anything else arrives as a picture of itself. It&rsquo;s a copy: later changes in Figma don&rsquo;t sync.
+          </p>
+        </div>
+        <button type="button" onClick={onClose} disabled={busy} aria-label="Close" className="rounded-lg p-1 text-fg-subtle hover:bg-raised hover:text-fg">
+          <Icon name="close" size={16} />
+        </button>
+      </div>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <input
+          type="url"
+          required
+          autoFocus
+          value={url}
+          onChange={(event) => setUrl(event.target.value)}
+          placeholder="https://www.figma.com/board/…"
+          aria-label="Figma link"
+          disabled={busy}
+          className={cx(inputClass, "flex-1")}
+        />
+        <Button type="submit" variant="primary" disabled={busy || !url.trim()}>
+          {busy && <Spinner />}
+          {busy ? "Importing…" : "Import"}
+        </Button>
+      </div>
+      {busy && <p className="text-xs text-fg-muted">Copying the board and its pictures. A big board can take a minute.</p>}
+      {error && <Alert>{error}</Alert>}
+    </form>
   );
 }
 

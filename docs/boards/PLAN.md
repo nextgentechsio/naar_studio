@@ -139,3 +139,13 @@ Both use the same operations, so switching on Liveblocks is configuration, not a
 - **Where the code lives:** `lib/boards/`, `app/(studio)/boards/`, `app/api/boards/`, and `tests/*/boards-*`.
 - **Small edits elsewhere:** outside those folders, only a nav item and icons change.
 - **Reuse:** start functions, the model lists and the media pickers are reused by import.
+
+## Import from Figma (done, 23 Nov 2026)
+
+"Import from Figma" on the Boards page makes a new board from a FigJam or Figma link (view access is enough), read with the studio's read-only token `FIGMA_ACCESS_TOKEN` (scope: File content, Read-only).
+
+- Sticky notes, shapes with text (rectangle, ellipse, diamond, triangle), text, connectors (still attached) and sections become board items, with the nearest board colour.
+- Pictures are copied from their original files into the board's storage.
+- Anything else (stamps, emoji, widgets, tables, drawings, other shapes, design frames) is rendered by Figma as a PNG and placed as a picture.
+- A one-time copy: later changes in Figma don't sync. Comments, votes and cursors aren't brought across.
+- Code: `lib/boards/figma.ts` (reading and planning), `importFigmaBoard` in `lib/boards/server.ts`, `app/api/boards/import-figma/route.ts`.

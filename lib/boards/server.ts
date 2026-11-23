@@ -6,6 +6,7 @@ import { libraryFilesCollection } from "@/lib/db/mongodb";
 import { currentNames } from "@/lib/names";
 import { blobUploadsEnabled } from "@/lib/storage/input-uploads";
 import { fetchRemoteMedia, RemoteError } from "./remote";
+import { FigmaError, figmaConfigured, imageFillUrls, parseFigmaLink, planImport, readFigmaFile, renderNodes } from "./figma";
 import {
   boardAssetsCollection,
   boardItemsCollection,
@@ -15,6 +16,7 @@ import {
   type BoardItemDoc,
 } from "./db";
 import {
+  cleanItem,
   cleanOp,
   MAX_BOARD_NAME,
   MAX_ITEMS,
@@ -332,36 +334,135 @@ export async function addRemoteAsset(actor: StoredUser, id: string, remoteUrl: u
   const existing = await assets.findOne({ boardId: id, sourceUrl: remoteUrl });
   if (existing) return { ok: true, value: toAsset(existing) };
 
-  let file: Awaited<ReturnType<typeof fetchRemoteMedia>>;
   try {
-    file = await fetchRemoteMedia(remoteUrl);
+    return { ok: true, value: await downloadToBoard(id, remoteUrl, remoteUrl, actor.id) };
   } catch (error) {
     if (error instanceof RemoteError) return fail(422, error.message);
     return fail(502, "Couldn't download that picture. The website may not allow it.");
   }
+}
 
-  const blob = await put(`${folderOf(id)}${file.name}`, file.bytes, { access: "public", addRandomSuffix: true, contentType: file.contentType });
+// Downloads a public file into the board's folder, once
+// per source (sourceKey) per board. Throws RemoteError
+// when the address or file isn't allowed.
+async function downloadToBoard(boardId: string, sourceKey: string, downloadUrl: string, actorId: string, name?: string): Promise<BoardAsset> {
+  const assets = await boardAssetsCollection();
+  const existing = await assets.findOne({ boardId, sourceUrl: sourceKey });
+  if (existing) return toAsset(existing);
+
+  const file = await fetchRemoteMedia(downloadUrl);
+  const fileName = name ? `${name.replace(/[^\w.-]+/g, "_").slice(0, 60) || "figma"}.${file.contentType.split("/")[1] ?? "png"}` : file.name;
+  const blob = await put(`${folderOf(boardId)}${fileName}`, file.bytes, { access: "public", addRandomSuffix: true, contentType: file.contentType });
   const asset: BoardAssetDoc = {
     _id: new ObjectId(),
-    boardId: id,
-    sourceUrl: remoteUrl,
+    boardId,
+    sourceUrl: sourceKey,
     url: blob.url,
     pathname: blob.pathname,
     contentType: file.contentType,
     size: file.bytes.length,
-    name: file.name,
-    createdBy: actor.id,
+    name: fileName,
+    createdBy: actorId,
     createdAt: new Date(),
   };
   try {
     await assets.insertOne(asset);
   } catch {
     await del(blob.url).catch(() => undefined);
-    const first = await assets.findOne({ boardId: id, sourceUrl: remoteUrl });
-    if (first) return { ok: true, value: toAsset(first) };
+    const first = await assets.findOne({ boardId, sourceUrl: sourceKey });
+    if (first) return toAsset(first);
     throw new Error("Board asset save failed");
   }
-  return { ok: true, value: toAsset(asset) };
+  return toAsset(asset);
+}
+
+// --------------------------------------------------
+// IMPORT FROM FIGMA: a new board from a FigJam or Figma
+// link (lib/boards/figma.ts plans the items)
+// --------------------------------------------------
+
+export type FigmaImport = { board: PublicBoard; items: number; pictures: number; skipped: number };
+
+const DOWNLOADS_AT_ONCE = 6;
+
+export async function importFigmaBoard(actor: StoredUser, link: unknown): Promise<Result<FigmaImport>> {
+  const parsed = parseFigmaLink(link);
+  if (!parsed) return fail(400, "Paste a Figma or FigJam link, like https://www.figma.com/board/…");
+  if (!figmaConfigured()) return fail(501, "Figma import isn't set up on the server (FIGMA_ACCESS_TOKEN).");
+  if (!blobUploadsEnabled()) return fail(501, "File storage isn't set up on the server");
+
+  try {
+    const file = await readFigmaFile(parsed.fileKey, parsed.nodeId);
+    const plan = planImport(file.root, { figjam: file.figjam });
+    if (!plan.items.length) return fail(422, "There's nothing on that Figma page to import.");
+
+    const created = await createBoard(actor, file.name.slice(0, MAX_BOARD_NAME).trim() || "Figma board");
+    if (!created.ok) return created;
+    const boardId = created.value.id;
+
+    // Where each picture comes from: an original picture
+    // fill, or a PNG Figma renders of the node
+    const fills = plan.pending.some((job) => job.kind === "image") ? await imageFillUrls(parsed.fileKey) : {};
+    const renderIds = plan.pending.flatMap((job) => (job.kind === "render" ? [job.nodeId] : []));
+    const renders = renderIds.length ? await renderNodes(parsed.fileKey, renderIds) : {};
+
+    const urls = new Map<string, { url: string; contentType: string }>();
+    const queue = [...plan.pending];
+    const worker = async () => {
+      for (let job = queue.shift(); job; job = queue.shift()) {
+        const source = job.kind === "image" ? fills[job.imageRef] : renders[job.nodeId];
+        if (!source) continue;
+        const key = job.kind === "image" ? `figma:${parsed.fileKey}:image:${job.imageRef}` : `figma:${parsed.fileKey}:node:${job.nodeId}`;
+        try {
+          const asset = await downloadToBoard(boardId, key, source, actor.id, job.name);
+          urls.set(job.itemId, { url: asset.url, contentType: asset.contentType });
+        } catch (error) {
+          console.error("Figma import: picture skipped", job.kind, error instanceof Error ? error.message : error);
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: DOWNLOADS_AT_ONCE }, worker));
+
+    // Pictures that couldn't be fetched are left out, with
+    // any connector that pointed at them
+    const items = plan.items.flatMap((item): BoardItem[] => {
+      if (item.type !== "image") return [item];
+      const got = urls.get(item.id);
+      return got ? [{ ...item, data: { ...item.data, url: got.url, contentType: got.contentType } }] : [];
+    });
+    const ids = new Set(items.map((item) => item.id));
+    const kept = items.filter(
+      (item) => item.type !== "connector" || [item.data.from, item.data.to].every((anchor) => !("id" in anchor) || ids.has(anchor.id))
+    );
+    const clean = kept.map((item) => cleanItem(item)).filter((item): item is BoardItem => item !== null);
+
+    const now = new Date();
+    if (clean.length) {
+      await (await boardItemsCollection()).insertMany(
+        clean.map((item) => ({ ...item, _id: itemKey(boardId, item.id), boardId, rev: 1, updatedAt: now, updatedBy: actor.id }))
+      );
+    }
+    const cover = clean.filter((item) => item.type === "image").sort((a, b) => a.z - b.z)[0];
+    const boards = await boardsCollection();
+    await boards.updateOne(
+      { _id: new ObjectId(boardId) },
+      { $set: { itemCount: clean.length, rev: 1, coverUrl: cover?.type === "image" ? cover.data.url : null, updatedAt: now } }
+    );
+    const board = await boards.findOne({ _id: new ObjectId(boardId) });
+
+    return {
+      ok: true,
+      value: {
+        board: (await present([board!]))[0],
+        items: clean.length,
+        pictures: urls.size,
+        skipped: plan.skipped + (plan.items.length - clean.length),
+      },
+    };
+  } catch (error) {
+    if (error instanceof FigmaError) return fail(error.status, error.message);
+    throw error;
+  }
 }
 
 // One of the board's own files, for downloading or for

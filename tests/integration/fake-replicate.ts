@@ -193,6 +193,43 @@ const HF_MODELS = [
 // Format: vercel_blob_rw_<storeId>_<secret>
 export const FAKE_BLOB_TOKEN = "vercel_blob_rw_teststore_secret123";
 
+// Fake Figma (never the real API): a token, and a FigJam
+// file with one of each kind of thing a board can hold
+export const FAKE_FIGMA_TOKEN = "figd_fake_test_token";
+export const FAKE_FIGMA_FILE_KEY = "FakeFigJamFile0001";
+const at = (x: number, y: number, width = 200, height = 200) => ({ absoluteBoundingBox: { x, y, width, height } });
+export const FAKE_FIGMA_FILE = {
+  name: "TMBC x IPL AD",
+  editorType: "figjam",
+  document: {
+    id: "0:0",
+    type: "DOCUMENT",
+    children: [
+      {
+        id: "0:1",
+        type: "CANVAS",
+        name: "Page 1",
+        children: [
+          {
+            id: "1:1",
+            type: "SECTION",
+            name: "Ideas",
+            ...at(100, 100, 900, 600),
+            children: [
+              { id: "1:2", type: "STICKY", characters: "Introduce stats", fills: [{ type: "SOLID", color: { r: 1, g: 0.78, b: 0.55, a: 1 } }], ...at(150, 150) },
+              { id: "1:3", type: "SHAPE_WITH_TEXT", shapeType: "ELLIPSE", characters: "Decide", ...at(500, 150) },
+            ],
+          },
+          { id: "2:1", type: "CONNECTOR", connectorStart: { endpointNodeId: "1:2" }, connectorEnd: { endpointNodeId: "1:3" }, ...at(350, 250, 150, 10) },
+          { id: "2:2", type: "TEXT", characters: "How might we improve user profiles?", style: { fontSize: 40 }, ...at(100, 0, 900, 50) },
+          { id: "2:3", type: "RECTANGLE", name: "Hero shot", fills: [{ type: "IMAGE", imageRef: "ref-hero" }], ...at(1100, 100, 640, 360) },
+          { id: "2:4", type: "STAMP", name: "thumbs up", ...at(900, 600, 60, 60) },
+        ],
+      },
+    ],
+  },
+};
+
 // A minimal MP4: ftyp, mdat, then moov (mvhd and one
 // video track's tkhd), enough for the app to read the
 // video's size and length
@@ -300,6 +337,26 @@ export async function startFakeReplicate() {
       res.writeHead(status, { "content-type": "application/json" });
       res.end(JSON.stringify(data));
     };
+
+    // ---------- fake Figma REST API (/figma) ----------
+    // One FigJam file (FAKE_FIGMA_FILE_KEY) the token can
+    // open; any other key answers as Figma does for a file
+    // the account can't see
+
+    if (path.startsWith("/figma/")) {
+      if (req.headers["x-figma-token"] !== FAKE_FIGMA_TOKEN) return send(403, { status: 403, err: "Invalid token" });
+      const self = `http://${req.headers.host}`;
+      const file = path.match(/^\/figma\/v1\/files\/([^/]+)(\/images)?$/);
+      if (file && file[1] !== FAKE_FIGMA_FILE_KEY) return send(404, { status: 404, err: "Not found" });
+      if (file && file[2]) return send(200, { meta: { images: { "ref-hero": `${self}/__control/output.png` } } });
+      if (file) return send(200, FAKE_FIGMA_FILE);
+      const render = path.match(/^\/figma\/v1\/images\/([^/]+)$/);
+      if (render && render[1] === FAKE_FIGMA_FILE_KEY) {
+        const ids = (url.searchParams.get("ids") ?? "").split(",").filter(Boolean);
+        return send(200, { err: null, images: Object.fromEntries(ids.map((id) => [id, `${self}/__control/output.png`])) });
+      }
+      return send(404, { status: 404, err: "Not found" });
+    }
 
     // ---------- fake Vercel Blob API (/blob) ----------
 

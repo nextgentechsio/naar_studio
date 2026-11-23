@@ -7,6 +7,7 @@ import type { TestProject } from "vitest/node";
 import {
   FAKE_BLOB_TOKEN,
   FAKE_ELEVENLABS_KEY,
+  FAKE_FIGMA_TOKEN,
   FAKE_GOOGLE_KEY,
   FAKE_HF_CREDENTIALS,
   FAKE_OPENAI_KEY,
@@ -123,6 +124,9 @@ async function start(
     // Boards may download pasted pictures from this one
     // local stand-in only (never the real internet)
     BOARDS_TEST_REMOTE_ORIGIN: replicate.url,
+    // Never the real Figma API
+    FIGMA_ACCESS_TOKEN: FAKE_FIGMA_TOKEN,
+    FIGMA_API_URL: `${replicate.url}/figma`,
     VERCEL_BLOB_API_URL: `${replicate.url}/blob`,
     // Browser side (inlined into the test build only)
     NEXT_PUBLIC_VERCEL_BLOB_API_URL: `${replicate.url}/blob`,

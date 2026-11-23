@@ -1,6 +1,6 @@
 # Naar Studio API keys: plan
 
-**Status (13 Nov 2026):** phases 1 and 2 are built and verified (keys, all three platforms through `/api/v1`, file uploads, usage, cap and alerts, Admin → API keys). The API reference is in `API.md`. Phases 3–4 are not started.
+**Status (13 Nov 2026):** phases 1 and 2 are built and verified (keys, all three platforms through `/api/v1`, file uploads, usage, cap and alerts, Admin → API keys). The API reference is in `API.md`. Phase 3 has started: the billing API (`/api/v1/billing/*`, in `API.md`) is done (23 Nov 2026); the rest of phase 3 and phase 4 are not started.
 
 Naar Studio issues its own API keys, the way Replicate and Higgsfield do. A script, an app or a client's system calls our API with a key, and we run the generation on Replicate, Higgsfield or ElevenLabs through our own provider accounts. Every run, and its cost, is tracked to the key that started it.
 
@@ -67,6 +67,10 @@ Every request sends `Authorization: Bearer naar_live_…`. No cookies are used.
 | `POST` | `/api/v1/generations/:id/cancel` | Stop a running run |
 | `GET` | `/api/v1/generations?limit=&cursor=` | This key's runs, newest first |
 | `GET` | `/api/v1/usage?month=2026-11` | Spend this month (or another month), the cap and what's left, plus totals by model and project |
+| `GET` | `/api/v1/billing?month=` or `?from=&to=` | Billing summary: total, runs, unpriced runs, by platform, model, project and day *(phase 3, done)* |
+| `GET` | `/api/v1/billing/charges` | Itemized charges (one per succeeded run), paged, filterable *(phase 3, done)* |
+| `GET` | `/api/v1/billing/months?count=12` | Total for each recent month *(phase 3, done)* |
+| `GET` | `/api/v1/billing/statement?format=csv\|json` | The period's statement, to keep or invoice from *(phase 3, done)* |
 | `POST` | `/api/v1/files` | *(phase 2)* Upload an input image, video or audio file and get back a URL to use in `input` |
 
 **Rules on every call:**

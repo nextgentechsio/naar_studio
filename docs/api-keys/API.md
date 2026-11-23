@@ -81,6 +81,86 @@ Image, video or audio, up to 100 MB. Use `url` in a generation's input (`image_i
 
 Spend is what the platform charges, with no markup. Months are calendar months in UTC.
 
+## Billing
+
+Itemized billing for the key: what each run cost, totals for any period, month by month, and a statement to keep or invoice from. A key only ever sees its own charges. There is one charge per succeeded run; failed and canceled runs cost nothing.
+
+**Periods** (every billing endpoint): `?month=2026-11` (this month when nothing is given), or `?from=2026-11-01&to=2026-11-15` with both days included, at most 366 days. All dates are UTC.
+
+A run whose model has no known price is listed with `"amountUsd": null, "priced": false`, and counted in `unpricedRuns`. It is never counted as $0 without saying so.
+
+### Summary
+
+`GET /api/v1/billing?month=2026-11`
+
+```
+{
+  "object": "billing_summary",
+  "key": { "id": "…", "name": "Acme website" },
+  "period": { "label": "2026-11", "from": "2026-11-01T00:00:00.000Z", "to": "2026-12-01T00:00:00.000Z" },
+  "currency": "USD",
+  "totalUsd": 12.4, "runs": 318, "unpricedRuns": 0,
+  "inFlight": { "runs": 2, "estimatedUsd": 0.08 },                     // this month only, else null
+  "cap": { "monthlyUsd": 25, "remainingUsd": 12.52, "state": "ok" },   // this month and a capped key only, else null
+  "byPlatform": [ { "id": "replicate", "amountUsd": 12.4, "runs": 318, "unpricedRuns": 0 } ],
+  "byModel":    [ { "id": "google/nano-banana", "amountUsd": 12.4, "runs": 318, "unpricedRuns": 0 } ],
+  "byProject":  [ { "id": "…", "name": "Acme spring campaign", "amountUsd": 12.4, "runs": 318, "unpricedRuns": 0 } ],
+  "byDay":      [ { "date": "2026-11-02", "amountUsd": 0.39, "runs": 10, "unpricedRuns": 0 } ]
+}
+```
+
+### Charges
+
+`GET /api/v1/billing/charges?month=2026-11&limit=50&cursor=…`: the charges, newest first, up to 200 a page. Pass `nextCursor` back for the next page; it is `null` on the last one. You can filter with `platform=`, `model=` and `project=` (a project id).
+
+```
+{
+  "object": "list",
+  "period": "2026-11",
+  "data": [
+    {
+      "id": "…",
+      "object": "charge",
+      "generationId": "…",              // GET /api/v1/generations/:id
+      "platform": "replicate",
+      "model": "google/nano-banana",
+      "project": { "id": "…", "name": "Acme spring campaign" },
+      "amountUsd": 0.039,
+      "currency": "USD",
+      "priced": true,
+      "pricingSource": "estimated",     // our price table or the platform's quote; "billed": what the platform reported
+      "incurredAt": "2026-11-13T15:22:15.000Z"
+    }
+  ],
+  "nextCursor": "…"
+}
+```
+
+### Month by month
+
+`GET /api/v1/billing/months?count=12` returns each of the last `count` months (1 to 36), newest first. Months with no runs are included at $0.
+
+```
+{ "object": "list", "currency": "USD", "data": [ { "month": "2026-11", "totalUsd": 12.4, "runs": 318, "unpricedRuns": 0 } ] }
+```
+
+### Statement
+
+`GET /api/v1/billing/statement?month=2026-11` returns a CSV file of every charge in the period, oldest first. It has these columns:
+
+```
+incurred_at,charge_id,generation_id,platform,model,project_id,project,amount_usd,priced,pricing_source
+```
+
+`&format=json` gives the same charges with the totals: `{ "object": "statement", "totalUsd", "runs", "unpricedRuns", "truncated", "charges": [...] }`.
+
+A statement holds up to 50,000 charges. When a period has more, the header `X-Statement-Truncated: true` is set, and you should ask for shorter periods.
+
+```
+curl -H "Authorization: Bearer $NAAR_KEY" -o statement.csv \
+  "https://<your-studio>/api/v1/billing/statement?month=2026-11"
+```
+
 ## Limits
 
 - **Monthly cap:** when billed spend plus the estimated cost of runs in flight reaches the key's cap, a start is refused with `402 spend_cap_reached`. The key's owner and the admins are notified at 80% and at 100%.

@@ -72,9 +72,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         {children}
         {/* Tracelumo real-user monitoring, on every page. Loaded
             by Next after hydration, so it never delays the page
-            or shows up as a hydration mismatch. The key is the
-            public browser (RUM) key, not a secret. */}
-        <Script src="https://tracelumo.naar.io/rum.js" data-key="tl_rum_s30-WdMjQ8Q4-vIYjsyMOiCD" strategy="afterInteractive" />
+            or shows up as a hydration mismatch. */}
+        <Script src="https://tracelumo.naar.io/rum.js" strategy="afterInteractive" />
       </body>
     </html>
   );

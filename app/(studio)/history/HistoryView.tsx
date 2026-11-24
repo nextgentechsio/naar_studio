@@ -36,6 +36,9 @@ import GenerationCard, { GenerationCardSkeleton } from "./GenerationCard";
 import GenerationDrawer from "./GenerationDrawer";
 import HistoryFilters, { type FilterValues } from "./HistoryFilters";
 import { isRunningStatus } from "./OutputPreview";
+import MediaPreviewDialog, { type MediaPreview, type PreviewItem } from "@/app/(studio)/_generate/MediaPreviewDialog";
+import { previewOf } from "@/app/(studio)/_generate/OutputMedia";
+import { downloadOutput, getOutputType } from "@/lib/client/outputs";
 
 // --------------------------------------------------
 // HISTORY
@@ -279,6 +282,35 @@ export default function HistoryView() {
   // Keep running generations fresh without a manual reload
   const hasRunning = generations.some((item) => isRunningStatus(item.status));
 
+  // Full screen, from a card: every picture and video on
+  // this page, stepped with ‹ › and the arrow keys
+  const [viewing, setViewing] = useState<{ preview: MediaPreview; index: number; items: (PreviewItem & { id: string; predictionId: string })[] } | null>(null);
+  const viewableOutputs = () =>
+    generations.flatMap((item) => {
+      if (item.status !== "succeeded" || !item.outputUrl || item.outputExpired) return [];
+      const kind = getOutputType(item.outputUrl, item.outputContentType);
+      if (kind !== "image" && kind !== "video") return [];
+      return [
+        {
+          id: item.id,
+          predictionId: item.predictionId,
+          src: item.outputUrl,
+          kind,
+          alt: item.prompt ? item.prompt.slice(0, 120) : "Generated output",
+          origin: () => document.querySelector(`[data-card-media="${CSS.escape(item.id)}"]`)?.getBoundingClientRect() ?? null,
+        },
+      ];
+    });
+  function viewFromCard(id: string, element: HTMLImageElement | HTMLVideoElement) {
+    const items = viewableOutputs();
+    const index = items.findIndex((item) => item.id === id);
+    if (index < 0) return;
+    const preview = previewOf(element, items[index].src, items[index].kind, items[index].alt);
+    // Grow out of the whole card square, not the letterboxed media
+    const square = document.querySelector(`[data-card-media="${CSS.escape(id)}"]`);
+    setViewing({ preview: { ...preview, origin: square?.getBoundingClientRect() ?? preview.origin }, index, items });
+  }
+
   useEffect(() => {
     if (!hasRunning) return;
 
@@ -476,6 +508,7 @@ export default function HistoryView() {
                 canHide ? () => toggleHidden(generation.id, !generation.hidden) : undefined
               }
               onDelete={canDelete ? () => removeRun(generation.id) : undefined}
+              onView={(element) => viewFromCard(generation.id, element)}
             />
           ))}
         </div>
@@ -509,6 +542,20 @@ export default function HistoryView() {
             <Icon name="chevronRight" size={16} />
           </Button>
         </nav>
+      )}
+
+      {viewing && (
+        <MediaPreviewDialog
+          preview={viewing.preview}
+          gallery={viewing.items}
+          startIndex={viewing.index}
+          onClose={() => setViewing(null)}
+          onDownload={(item, index) =>
+            downloadOutput(item.src, `generation-${viewing.items[index].predictionId}`).catch((err) =>
+              setActionError(errorMessage(err, "Download failed"))
+            )
+          }
+        />
       )}
 
       {viewId && (

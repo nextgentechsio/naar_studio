@@ -30,6 +30,8 @@ import { useDialog } from "@/app/(studio)/_components/useDialog";
 import AddToElementDialog from "@/app/(studio)/elements/AddToElementDialog";
 import SaveToLibraryButton from "@/app/(studio)/_generate/SaveToLibraryButton";
 import UpscaleDraft, { isUpscalableDraft } from "@/app/(studio)/_generate/UpscaleDraft";
+import MediaPreviewDialog, { type MediaPreview } from "@/app/(studio)/_generate/MediaPreviewDialog";
+import { previewOf } from "@/app/(studio)/_generate/OutputMedia";
 import OutputPreview, { isRunningStatus } from "./OutputPreview";
 
 // --------------------------------------------------
@@ -75,6 +77,8 @@ export default function GenerationDrawer({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [addingToElement, setAddingToElement] = useState(false);
+  // The output open full screen
+  const [viewing, setViewing] = useState<MediaPreview | null>(null);
   const [canceling, setCanceling] = useState(false);
   // "Run again" goes back to the provider that ran it
   const stores = {
@@ -306,7 +310,7 @@ export default function GenerationDrawer({
             )
           ) : (
             <>
-              <div className="relative flex min-h-48 items-center justify-center overflow-hidden rounded-lg border border-line bg-black">
+              <div className="group relative flex min-h-48 items-center justify-center overflow-hidden rounded-lg border border-line bg-black">
                 <OutputPreview
                   key={generation.outputUrl ?? "none"}
                   url={generation.outputUrl}
@@ -314,8 +318,15 @@ export default function GenerationDrawer({
                   status={generation.status}
                   variant="full"
                   expired={generation.outputExpired}
+                  onView={(element) => {
+                    const kind = element instanceof HTMLVideoElement ? "video" : "image";
+                    if (generation.outputUrl) setViewing(previewOf(element, generation.outputUrl, kind, `${modelLabel(generation.model)} output`));
+                  }}
                 />
               </div>
+              {viewing && (
+                <MediaPreviewDialog preview={viewing} onClose={() => setViewing(null)} onDownload={() => download()} />
+              )}
 
               {generation.hidden && (
                 <p className="flex items-center gap-2 rounded-lg border border-line bg-sunken px-3 py-2 text-xs text-fg-muted">

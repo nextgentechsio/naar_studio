@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { Icon } from "@/app/components/ui/Icon";
 import { Spinner, cx } from "@/app/components/ui/primitives";
 import { getOutputType } from "@/lib/client/outputs";
+import OutputMedia from "@/app/(studio)/_generate/OutputMedia";
 import { OUTPUT_RETENTION_DAYS } from "@/lib/storage/output-retention-days";
 
 // --------------------------------------------------
@@ -24,6 +25,7 @@ export default function OutputPreview({
   status,
   variant,
   expired = false,
+  onView,
 }: {
   url: string | null;
   contentType?: string | null;
@@ -31,6 +33,9 @@ export default function OutputPreview({
   variant: "thumb" | "full";
   // Deleted by the retention cleanup
   expired?: boolean;
+  // Full size (drawer): a picture or video opens in the
+  // full-screen preview from here
+  onView?: (element: HTMLImageElement | HTMLVideoElement) => void;
 }) {
   // Replicate URLs expire; show a placeholder instead of
   // a broken image
@@ -86,6 +91,20 @@ export default function OutputPreview({
         <Icon name="image" size={20} />
         <span>{url ? "Preview unavailable" : "No output saved"}</span>
       </Placeholder>
+    );
+  }
+
+  if (!thumb && onView && (type === "video" || type === "image")) {
+    return (
+      <OutputMedia
+        src={url}
+        kind={type}
+        alt="Generated output"
+        viewLabel="View output full size"
+        onView={onView}
+        onError={() => setBroken(true)}
+        className="max-h-[60vh]"
+      />
     );
   }
 

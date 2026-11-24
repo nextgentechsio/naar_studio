@@ -23,10 +23,14 @@ export default function GenerationCard({
   onOpen,
   onToggleHidden,
   onDelete,
+  onView,
 }: {
   generation: PublicGeneration;
   showUser: boolean;
   onOpen: () => void;
+  // A finished picture or video: open it full screen
+  // (from the shown image or video)
+  onView?: (element: HTMLImageElement | HTMLVideoElement) => void;
   // Given only to the super admin
   onToggleHidden?: () => Promise<void>;
   onDelete?: () => Promise<void>;
@@ -87,7 +91,7 @@ export default function GenerationCard({
         onClick={onOpen}
         className="flex w-full flex-col overflow-hidden rounded-xl border border-line bg-surface text-left shadow-card transition-[border-color,box-shadow] duration-300 hover:border-line-strong group-hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       >
-        <div className="relative aspect-square overflow-hidden bg-sunken">
+        <div data-card-media={generation.id} className="relative aspect-square overflow-hidden bg-sunken">
           <OutputPreview
             url={generation.outputUrl}
             contentType={generation.outputContentType}
@@ -185,6 +189,18 @@ export default function GenerationCard({
                   : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100",
               )}
             >
+              {onView && (mediaKind === "image" || mediaKind === "video") && (
+                <CardIcon
+                  icon="expand"
+                  label="View full size"
+                  onClick={() => {
+                    const shown = document.querySelector<HTMLImageElement | HTMLVideoElement>(
+                      `[data-card-media="${CSS.escape(generation.id)}"] :is(img:not([aria-hidden]), video)`
+                    );
+                    if (shown) onView(shown);
+                  }}
+                />
+              )}
               {mediaKind && (
                 <>
                   <CardIcon

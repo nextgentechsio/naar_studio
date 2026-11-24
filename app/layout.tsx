@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist_Mono } from "next/font/google";
 import localFont from "next/font/local";
+import Script from "next/script";
 import { APP_NAME, COMPANY } from "@/lib/app-info";
 import "./globals.css";
 
@@ -69,6 +70,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       </head>
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
         {children}
+        {/* Tracelumo real-user monitoring, on every page. Loaded
+            by Next after hydration, so it never delays the page
+            or shows up as a hydration mismatch. The key is the
+            public browser (RUM) key, not a secret. */}
+        <Script src="https://tracelumo.naar.io/rum.js" data-key="tl_rum_s30-WdMjQ8Q4-vIYjsyMOiCD" strategy="afterInteractive" />
       </body>
     </html>
   );

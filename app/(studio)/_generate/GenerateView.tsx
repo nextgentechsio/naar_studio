@@ -63,6 +63,8 @@ import AddToElementDialog from "@/app/(studio)/elements/AddToElementDialog";
 import SaveToLibraryButton from "./SaveToLibraryButton";
 import ModelBrowserDialog from "./ModelBrowserDialog";
 import { MediaDetails } from "./MediaCaption";
+import MediaPreviewDialog, { type MediaPreview } from "./MediaPreviewDialog";
+import OutputMedia from "./OutputMedia";
 import PastAudio from "./PastAudio";
 import UpscaleDraft, { DRAFT_RESOLUTION, isUpscalableDraft } from "./UpscaleDraft";
 import PromptInput from "./PromptInput";
@@ -137,6 +139,9 @@ export default function GenerateView() {
 
   const [browsing, setBrowsing] = useState(false);
   const [addingToElement, setAddingToElement] = useState(false);
+  // The output open full size, and which one
+  const [viewing, setViewing] = useState<{ preview: MediaPreview; index: number } | null>(null);
+  const outputTiles = useRef<(HTMLDivElement | null)[]>([]);
   // When a run succeeds, the loader's balls land on the n
   // and rest there before the output appears. A run that finished before
   // this page opened counts as landed (no replay on return).
@@ -454,6 +459,34 @@ export default function GenerateView() {
     downloadOutput(url, filename).catch((err) => {
       console.error("DOWNLOAD ERROR:", err);
       setError(errorMessage(err, "Download failed"));
+    });
+  }
+
+  const outputFilename = (index: number) =>
+    outputUrls.length > 1
+      ? `generation-${result!.prediction.id}-${index + 1}`
+      : `generation-${result!.prediction.id}`;
+
+  // Pictures and videos open full size, growing out of
+  // their tile; a run's several outputs step with ‹ ›
+  const viewable = outputUrls.flatMap((url, index) => {
+    const kind = getOutputType(url, outputHint);
+    return kind === "image" || kind === "video"
+      ? [{ src: url, kind, alt: `Generated output ${index + 1}`, at: index, origin: () => outputTiles.current[index]?.getBoundingClientRect() ?? null }]
+      : [];
+  });
+
+  function openOutput(index: number) {
+    const tile = outputTiles.current[index];
+    const item = viewable.find((entry) => entry.at === index);
+    if (!tile || !item) return;
+    const element = tile.querySelector<HTMLImageElement | HTMLVideoElement>("img, video");
+    const width = element instanceof HTMLVideoElement ? element.videoWidth : (element?.naturalWidth ?? 0);
+    const height = element instanceof HTMLVideoElement ? element.videoHeight : (element?.naturalHeight ?? 0);
+    if (element instanceof HTMLVideoElement) element.pause();
+    setViewing({
+      preview: { src: item.src, kind: item.kind, alt: item.alt, origin: tile.getBoundingClientRect(), width: width || 16, height: height || 9 },
+      index: viewable.indexOf(item),
     });
   }
 
@@ -1046,14 +1079,7 @@ export default function GenerateView() {
                     variant="secondary"
                     size="sm"
                     icon="download"
-                    onClick={() =>
-                      download(
-                        url,
-                        outputUrls.length > 1
-                          ? `generation-${result!.prediction.id}-${index + 1}`
-                          : `generation-${result!.prediction.id}`,
-                      )
-                    }
+                    onClick={() => download(url, outputFilename(index))}
                   >
                     Download{outputUrls.length > 1 ? ` ${index + 1}` : ""}
                   </Button>
@@ -1119,24 +1145,20 @@ export default function GenerateView() {
                   return (
                     <div
                       key={`${url}-${index}`}
-                      className="flex min-h-0 items-center justify-center overflow-hidden rounded-lg"
+                      ref={(element) => {
+                        outputTiles.current[index] = element;
+                      }}
+                      className="group relative flex min-h-0 items-center justify-center overflow-hidden rounded-lg"
                     >
-                      {outputType === "video" ? (
-                        <video
-                          src={url}
-                          className="h-full w-full object-contain"
-                          controls
-                          muted
-                          playsInline
-                        />
-                      ) : outputType === "audio" ? (
+                      {outputType === "audio" ? (
                         <audio src={url} controls className="w-full" />
                       ) : (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
+                        <OutputMedia
                           src={url}
+                          kind={outputType === "video" ? "video" : "image"}
                           alt={`Generated output ${index + 1}`}
-                          className="h-full w-full object-contain"
+                          viewLabel={`View output ${outputUrls.length > 1 ? `${index + 1} ` : ""}full size`}
+                          onView={() => openOutput(index)}
                         />
                       )}
                     </div>
@@ -1231,6 +1253,16 @@ export default function GenerateView() {
         ) : (
           <ModelBrowserDialog onClose={() => setBrowsing(false)} />
         ))}
+
+      {viewing && (
+        <MediaPreviewDialog
+          preview={viewing.preview}
+          gallery={viewable}
+          startIndex={viewing.index}
+          onClose={() => setViewing(null)}
+          onDownload={(item, index) => download(item.src, outputFilename(viewable[index].at))}
+        />
+      )}
 
       {addingToElement && result && outputUrls[0] && (readyType === "image" || readyType === "video" || readyType === "audio") && (
         <AddToElementDialog

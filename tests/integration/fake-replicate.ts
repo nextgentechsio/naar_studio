@@ -1,5 +1,6 @@
 import http from "http";
 import type { AddressInfo } from "net";
+import zlib from "zlib";
 
 // --------------------------------------------------
 // FAKE REPLICATE API
@@ -192,6 +193,49 @@ const HF_MODELS = [
 
 // Format: vercel_blob_rw_<storeId>_<secret>
 export const FAKE_BLOB_TOKEN = "vercel_blob_rw_teststore_secret123";
+
+// A w × h RGB PNG: a diagonal gradient from hue to hue+60
+function gradientPng(w: number, h: number, hue: number): Buffer {
+  const rgb = (deg: number, light: number) => {
+    const c = (1 - Math.abs(2 * light - 1)) * 0.7;
+    const x = c * (1 - Math.abs(((deg / 60) % 2) - 1));
+    const m = light - c / 2;
+    const [r, g, b] = deg < 60 ? [c, x, 0] : deg < 120 ? [x, c, 0] : deg < 180 ? [0, c, x] : deg < 240 ? [0, x, c] : deg < 300 ? [x, 0, c] : [c, 0, x];
+    return [r, g, b].map((v) => Math.round((v + m) * 255));
+  };
+  const raw = Buffer.alloc((w * 3 + 1) * h);
+  for (let y = 0; y < h; y++) {
+    raw[y * (w * 3 + 1)] = 0;
+    for (let x = 0; x < w; x++) {
+      const t = (x / w + y / h) / 2;
+      const [r, g, b] = rgb((hue + t * 60) % 360, 0.35 + t * 0.3);
+      raw.set([r, g, b], y * (w * 3 + 1) + 1 + x * 3);
+    }
+  }
+  const crcTable = Array.from({ length: 256 }, (_, n) => {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  });
+  const crc = (buf: Buffer) => {
+    let c = 0xffffffff;
+    for (const byte of buf) c = crcTable[(c ^ byte) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type: string, data: Buffer) => {
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type), data]);
+    const sum = Buffer.alloc(4);
+    sum.writeUInt32BE(crc(body));
+    return Buffer.concat([length, body, sum]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(w, 0);
+  header.writeUInt32BE(h, 4);
+  header.set([8, 2, 0, 0, 0], 8);
+  return Buffer.concat([Buffer.from("89504e470d0a1a0a", "hex"), chunk("IHDR", header), chunk("IDAT", zlib.deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
+}
 
 // Fake Figma (never the real API): a token, and a FigJam
 // file with one of each kind of thing a board can hold
@@ -755,6 +799,15 @@ export async function startFakeReplicate() {
       res.write(Buffer.alloc(1024));
       setTimeout(() => res.destroy(), 50);
       return;
+    }
+
+    // A real-sized picture (w × h, a gradient around hue),
+    // for looking at outputs in a browser
+    if (path === "/__control/picture.png") {
+      const w = Math.min(2400, Number(url.searchParams.get("w")) || 1200);
+      const h = Math.min(2400, Number(url.searchParams.get("h")) || 800);
+      res.writeHead(200, { "content-type": "image/png" });
+      return res.end(gradientPng(w, h, Number(url.searchParams.get("hue")) || 200));
     }
 
     if (path === "/__control/output.png") {

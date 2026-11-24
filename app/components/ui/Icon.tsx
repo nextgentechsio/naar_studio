@@ -25,6 +25,7 @@ const PATHS = {
   menu: "M3 6h18M3 12h18M3 18h18",
   sidebar: "M3 4h18v16H3zM9 4v16",
   close: "M18 6L6 18M6 6l12 12",
+  expand: "M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7",
   search: "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3",
   upload: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12",
   check: "M20 6L9 17l-5-5",

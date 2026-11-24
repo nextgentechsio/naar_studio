@@ -72,6 +72,8 @@ export type PublicBoard = {
   ownerName: string;
   coverUrl: string | null;
   itemCount: number;
+  // Made by "Import from Figma" (or a copy of one)
+  importedFrom: "figma" | null;
   createdAt: string;
   updatedAt: string;
 };

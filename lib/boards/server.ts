@@ -54,6 +54,12 @@ function cleanName(value: unknown): string | null {
 
 async function present(docs: BoardDoc[]): Promise<PublicBoard[]> {
   const { users } = await currentNames([], docs.map((doc) => doc.ownerId));
+  // Boards imported before importedFrom was stored: known
+  // by their imported items' ids (lib/boards/figma.ts)
+  const unmarked = docs.filter((doc) => !doc.importedFrom && doc.itemCount > 0).map((doc) => doc._id.toHexString());
+  const fromFigma = new Set(
+    unmarked.length ? ((await (await boardItemsCollection()).distinct("boardId", { boardId: { $in: unmarked }, id: /^fg-/ })) as string[]) : []
+  );
   return docs.map((doc) => ({
     id: doc._id.toHexString(),
     name: doc.name,
@@ -61,6 +67,7 @@ async function present(docs: BoardDoc[]): Promise<PublicBoard[]> {
     ownerName: users.get(doc.ownerId) ?? "Deleted user",
     coverUrl: doc.coverUrl,
     itemCount: doc.itemCount,
+    importedFrom: doc.importedFrom ?? (fromFigma.has(doc._id.toHexString()) ? "figma" : null),
     createdAt: doc.createdAt.toISOString(),
     updatedAt: doc.updatedAt.toISOString(),
   }));
@@ -381,7 +388,7 @@ async function downloadToBoard(boardId: string, sourceKey: string, downloadUrl: 
 // link (lib/boards/figma.ts plans the items)
 // --------------------------------------------------
 
-export type FigmaImport = { board: PublicBoard; items: number; pictures: number; skipped: number };
+export type FigmaImport = { board: PublicBoard; items: number; pictures: number; skipped: number; notice: string | null };
 
 const DOWNLOADS_AT_ONCE = 6;
 
@@ -396,15 +403,29 @@ export async function importFigmaBoard(actor: StoredUser, link: unknown): Promis
     const plan = planImport(file.root, { figjam: file.figjam });
     if (!plan.items.length) return fail(422, "There's nothing on that Figma page to import.");
 
+    // Where each picture comes from: an original picture
+    // fill, or a PNG Figma renders of the node. Asked
+    // before the board exists, so a refusal leaves nothing
+    // behind. The file itself is already read (the costly
+    // part of Figma's allowance), so if Figma refuses the
+    // pictures now, the rest still comes across.
+    let notice: string | null = null;
+    const ask = async (job: () => Promise<Record<string, string>>): Promise<Record<string, string>> => {
+      try {
+        return await job();
+      } catch (error) {
+        if (!(error instanceof FigmaError) || error.status !== 429) throw error;
+        notice = `Some pictures were left out. ${error.message}`;
+        return {};
+      }
+    };
+    const fills = plan.pending.some((job) => job.kind === "image") ? await ask(() => imageFillUrls(parsed.fileKey)) : {};
+    const renderIds = plan.pending.flatMap((job) => (job.kind === "render" ? [job.nodeId] : []));
+    const renders = renderIds.length ? await ask(() => renderNodes(parsed.fileKey, renderIds)) : {};
+
     const created = await createBoard(actor, file.name.slice(0, MAX_BOARD_NAME).trim() || "Figma board");
     if (!created.ok) return created;
     const boardId = created.value.id;
-
-    // Where each picture comes from: an original picture
-    // fill, or a PNG Figma renders of the node
-    const fills = plan.pending.some((job) => job.kind === "image") ? await imageFillUrls(parsed.fileKey) : {};
-    const renderIds = plan.pending.flatMap((job) => (job.kind === "render" ? [job.nodeId] : []));
-    const renders = renderIds.length ? await renderNodes(parsed.fileKey, renderIds) : {};
 
     const urls = new Map<string, { url: string; contentType: string }>();
     const queue = [...plan.pending];
@@ -446,7 +467,7 @@ export async function importFigmaBoard(actor: StoredUser, link: unknown): Promis
     const boards = await boardsCollection();
     await boards.updateOne(
       { _id: new ObjectId(boardId) },
-      { $set: { itemCount: clean.length, rev: 1, coverUrl: cover?.type === "image" ? cover.data.url : null, updatedAt: now } }
+      { $set: { itemCount: clean.length, rev: 1, coverUrl: cover?.type === "image" ? cover.data.url : null, importedFrom: "figma", updatedAt: now } }
     );
     const board = await boards.findOne({ _id: new ObjectId(boardId) });
 
@@ -457,6 +478,7 @@ export async function importFigmaBoard(actor: StoredUser, link: unknown): Promis
         items: clean.length,
         pictures: urls.size,
         skipped: plan.skipped + (plan.items.length - clean.length),
+        notice,
       },
     };
   } catch (error) {

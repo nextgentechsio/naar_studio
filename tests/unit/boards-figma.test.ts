@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { itemIdFor, nearestColor, parseFigmaLink, planImport, textSize, type FigmaNode } from "@/lib/boards/figma";
+import { itemIdFor, nearestColor, parseFigmaLink, planImport, rateLimitMessage, textSize, waitText, type FigmaNode } from "@/lib/boards/figma";
 import { cleanItem } from "@/lib/boards/shared";
 
 // --------------------------------------------------
@@ -114,5 +114,17 @@ describe("planning the items", () => {
     const design = planImport({ id: "0:1", type: "CANVAS", children: [{ id: "3:1", type: "FRAME", name: "Home", ...box(0, 0, 1440, 900), children: [] }] }, { figjam: false });
     expect(design.items).toEqual([expect.objectContaining({ type: "image" })]);
     expect(design.pending).toEqual([{ kind: "render", itemId: itemIdFor("3:1"), nodeId: "3:1", name: "Home" }]);
+  });
+});
+
+describe("Figma's limits", () => {
+  it("says how long to wait in plain words", () => {
+    expect([30, 600, 7200, 259_200].map(waitText)).toEqual(["1 minute", "10 minutes", "2 hours", "3 days"]);
+  });
+
+  it("explains the monthly allowance when Figma says the limit is low", () => {
+    expect(rateLimitMessage(259_200, "low")).toMatch(/try again in 3 days.*View or Collab seat/);
+    expect(rateLimitMessage(60, "high")).not.toMatch(/seat/);
+    expect(rateLimitMessage(null, null)).toMatch(/Try again later/);
   });
 });

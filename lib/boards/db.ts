@@ -18,6 +18,8 @@ export type BoardDoc = {
   itemCount: number;
   // Bumped on every save (collaborators' "changes since")
   rev: number;
+  // Made by "Import from Figma" (copies keep it)
+  importedFrom?: "figma";
   createdAt: Date;
   updatedAt: Date;
 };

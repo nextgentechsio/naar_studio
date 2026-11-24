@@ -31,18 +31,44 @@ import {
 
 const API = () => (process.env.FIGMA_API_URL || "https://api.figma.com").replace(/\/+$/, "");
 const TIMEOUT_MS = 60_000;
-// Figma renders up to this many nodes per request
-const RENDER_BATCH = 50;
+// Nodes rendered per request. Figma counts file reads and
+// renders against a small monthly allowance on most
+// accounts (developers.figma.com/docs/rest-api/rate-limits),
+// so an import asks as few times as it can: one read of
+// the file, one list of picture fills, and as few render
+// requests as possible
+const RENDER_BATCH = 200;
 // Pictures Figma renders for one import, at most
 export const MAX_RENDERED = 400;
 
 export class FigmaError extends Error {
   constructor(
     message: string,
-    readonly status: number
+    readonly status: number,
+    // Seconds Figma said to wait (a 429)
+    readonly retryAfter: number | null = null
   ) {
     super(message);
   }
+}
+
+// "3 days", "2 hours", "5 minutes"
+export function waitText(seconds: number): string {
+  const unit = (count: number, name: string) => `${count} ${name}${count === 1 ? "" : "s"}`;
+  if (seconds >= 36 * 3600) return unit(Math.ceil(seconds / 86_400), "day");
+  if (seconds >= 90 * 60) return unit(Math.ceil(seconds / 3600), "hour");
+  return unit(Math.max(1, Math.ceil(seconds / 60)), "minute");
+}
+
+// What to say when Figma says "too many": how long, and
+// why it can be days (the account's monthly allowance)
+export function rateLimitMessage(retryAfter: number | null, limitType: string | null): string {
+  const wait = retryAfter && retryAfter > 0 ? ` Figma says to try again in ${waitText(retryAfter)}.` : " Try again later.";
+  const why =
+    limitType === "low" || (retryAfter ?? 0) > 3600
+      ? " The studio's Figma account has a View or Collab seat, which Figma allows only a few file reads a month. A Dev or Full seat on a paid Figma plan raises that to many a minute."
+      : "";
+  return `Figma has paused imports for the studio's Figma account.${wait}${why}`;
 }
 
 export function figmaConfigured(): boolean {
@@ -97,7 +123,11 @@ async function figmaGet<T>(path: string): Promise<T> {
   if (response.ok) return body as T;
 
   const message = String(body.err ?? body.message ?? "");
-  if (response.status === 429) throw new FigmaError("Figma is limiting requests right now. Wait a minute and try again.", 429);
+  if (response.status === 429) {
+    const retry = Number(response.headers.get("retry-after"));
+    const retryAfter = Number.isFinite(retry) && retry > 0 ? retry : null;
+    throw new FigmaError(rateLimitMessage(retryAfter, response.headers.get("x-figma-rate-limit-type")), 429, retryAfter);
+  }
   if (/scope/i.test(message)) {
     throw new FigmaError("The Figma token can't read files. Make a new token with File content set to Read-only.", 502);
   }

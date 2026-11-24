@@ -197,6 +197,8 @@ export const FAKE_BLOB_TOKEN = "vercel_blob_rw_teststore_secret123";
 // file with one of each kind of thing a board can hold
 export const FAKE_FIGMA_TOKEN = "figd_fake_test_token";
 export const FAKE_FIGMA_FILE_KEY = "FakeFigJamFile0001";
+export const FAKE_FIGMA_LIMITED_KEY = "LimitedFigJam00001";
+export const FAKE_FIGMA_RENDER_LIMITED_KEY = "RenderLimited00001";
 const at = (x: number, y: number, width = 200, height = 200) => ({ absoluteBoundingBox: { x, y, width, height } });
 export const FAKE_FIGMA_FILE = {
   name: "TMBC x IPL AD",
@@ -346,8 +348,16 @@ export async function startFakeReplicate() {
     if (path.startsWith("/figma/")) {
       if (req.headers["x-figma-token"] !== FAKE_FIGMA_TOKEN) return send(403, { status: 403, err: "Invalid token" });
       const self = `http://${req.headers.host}`;
+      // Over the account's monthly allowance (a View seat):
+      // the whole file, or only the renders
+      const limited = () => {
+        res.writeHead(429, { "content-type": "application/json", "retry-after": "259200", "x-figma-rate-limit-type": "low" });
+        return res.end(JSON.stringify({ status: 429, err: "Rate limit exceeded" }));
+      };
+      if (path.includes(FAKE_FIGMA_LIMITED_KEY)) return limited();
+      if (path === `/figma/v1/images/${FAKE_FIGMA_RENDER_LIMITED_KEY}`) return limited();
       const file = path.match(/^\/figma\/v1\/files\/([^/]+)(\/images)?$/);
-      if (file && file[1] !== FAKE_FIGMA_FILE_KEY) return send(404, { status: 404, err: "Not found" });
+      if (file && file[1] !== FAKE_FIGMA_FILE_KEY && file[1] !== FAKE_FIGMA_RENDER_LIMITED_KEY) return send(404, { status: 404, err: "Not found" });
       if (file && file[2]) return send(200, { meta: { images: { "ref-hero": `${self}/__control/output.png` } } });
       if (file) return send(200, FAKE_FIGMA_FILE);
       const render = path.match(/^\/figma\/v1\/images\/([^/]+)$/);

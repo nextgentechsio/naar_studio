@@ -180,6 +180,8 @@ function FigmaImport({ onClose, onDone }: { onClose: () => void; onDone: (boardI
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // Imported, but Figma refused some pictures
+  const [partial, setPartial] = useState<{ boardId: string; notice: string } | null>(null);
 
   async function run(event: React.FormEvent) {
     event.preventDefault();
@@ -188,6 +190,11 @@ function FigmaImport({ onClose, onDone }: { onClose: () => void; onDone: (boardI
     setError("");
     try {
       const result = await importFigmaBoard(url.trim());
+      if (result.notice) {
+        setPartial({ boardId: result.board.id, notice: result.notice });
+        setBusy(false);
+        return;
+      }
       onDone(result.board.id);
     } catch (err) {
       setError(errorMessage(err, "Couldn't import that board."));
@@ -228,6 +235,14 @@ function FigmaImport({ onClose, onDone }: { onClose: () => void; onDone: (boardI
       </div>
       {busy && <p className="text-xs text-fg-muted">Copying the board and its pictures. A big board can take a minute.</p>}
       {error && <Alert>{error}</Alert>}
+      {partial && (
+        <div className="flex flex-col gap-2 rounded-xl border border-line bg-raised p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-fg-muted">The board is imported. {partial.notice}</p>
+          <Button type="button" variant="primary" size="sm" onClick={() => onDone(partial.boardId)}>
+            Open board
+          </Button>
+        </div>
+      )}
     </form>
   );
 }
@@ -324,7 +339,7 @@ function BoardCard({
         </div>
 
         {owner ? null : confirming ? (
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="flex shrink-0 items-center gap-1" role="group" aria-label={`Delete ${board.name}?`}>
             <Button
               size="sm"
               variant="danger"
@@ -356,6 +371,14 @@ function BoardCard({
           </div>
         )}
       </div>
+      {confirming && board.importedFrom === "figma" && (
+        <p role="alert" className="mx-3 mb-3 flex gap-2 rounded-lg border border-warning/40 bg-warning/10 px-2.5 py-2 text-xs text-fg">
+          <Icon name="alert" size={14} className="mt-0.5 shrink-0 text-warning" />
+          <span>
+            Imported from Figma. Importing it again uses another of the few imports Figma allows a month.
+          </span>
+        </p>
+      )}
     </div>
   );
 }

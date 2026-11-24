@@ -1,5 +1,6 @@
+import { ObjectId } from "mongodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { FAKE_FIGMA_FILE_KEY } from "./fake-replicate";
+import { FAKE_FIGMA_FILE_KEY, FAKE_FIGMA_LIMITED_KEY, FAKE_FIGMA_RENDER_LIMITED_KEY } from "./fake-replicate";
 import { api, closeDb, createUser, db, loginRoot } from "./helpers";
 
 // --------------------------------------------------
@@ -27,7 +28,7 @@ describe("import from Figma", () => {
   it("makes a new board with everything on the FigJam page", async () => {
     const imported = await importBoard(alice.session, link());
     expect(imported.status).toBe(201);
-    expect(imported.data).toMatchObject({ items: 7, pictures: 2, skipped: 0, board: { name: "TMBC x IPL AD", itemCount: 7 } });
+    expect(imported.data).toMatchObject({ items: 7, pictures: 2, skipped: 0, notice: null, board: { name: "TMBC x IPL AD", itemCount: 7, importedFrom: "figma" } });
     const boardId = (imported.data.board as { id: string }).id;
 
     const board = await api(`/api/boards/${boardId}`, { session: alice.session });
@@ -60,6 +61,20 @@ describe("import from Figma", () => {
     });
     expect(saved.status).toBe(200);
     expect((await api(`/api/boards/${boardId}`, { session: bob.session })).status).toBe(404);
+
+    // The list marks it (for the warning on delete), and
+    // a copy keeps the mark; a plain board has none
+    const list = (await api("/api/boards", { session: alice.session })).data.boards as { id: string; importedFrom: string | null }[];
+    expect(list.find((item) => item.id === boardId)?.importedFrom).toBe("figma");
+    const copy = await api(`/api/boards/${boardId}/duplicate`, { session: alice.session, method: "POST" });
+    expect((copy.data.board as { importedFrom: string }).importedFrom).toBe("figma");
+    const plain = await api("/api/boards", { session: alice.session, json: { name: "Plain" } });
+    expect((plain.data.board as { importedFrom: string | null }).importedFrom).toBeNull();
+
+    // Imported before the mark was stored: still known
+    await (await db()).collection("boards").updateOne({ _id: new ObjectId(boardId) }, { $unset: { importedFrom: "" } });
+    const again = (await api("/api/boards", { session: alice.session })).data.boards as { id: string; importedFrom: string | null }[];
+    expect(again.find((item) => item.id === boardId)?.importedFrom).toBe("figma");
   });
 
   it("refuses links that aren't Figma files", async () => {
@@ -73,6 +88,23 @@ describe("import from Figma", () => {
     const response = await importBoard(alice.session, link("SomeoneElsesFile01"));
     expect(response.status).toBe(403);
     expect(response.data.error).toMatch(/Anyone with the link can view/);
+  });
+
+  it("says how long Figma wants us to wait, and leaves no empty board", async () => {
+    const before = await (await db()).collection("boards").countDocuments();
+    const response = await importBoard(alice.session, link(FAKE_FIGMA_LIMITED_KEY));
+    expect(response.status).toBe(429);
+    expect(response.data.error).toMatch(/try again in 3 days/);
+    expect(response.data.error).toMatch(/View or Collab seat/);
+    expect(await (await db()).collection("boards").countDocuments()).toBe(before);
+  });
+
+  it("still imports the board when Figma refuses only the pictures it renders", async () => {
+    const imported = await importBoard(alice.session, link(FAKE_FIGMA_RENDER_LIMITED_KEY));
+    expect(imported.status).toBe(201);
+    // Everything but the stamp (a render), with a note why
+    expect(imported.data).toMatchObject({ items: 6, pictures: 1, skipped: 1 });
+    expect(imported.data.notice).toMatch(/Some pictures were left out/);
   });
 
   it("needs a signed-in user", async () => {

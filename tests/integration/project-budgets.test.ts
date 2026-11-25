@@ -77,9 +77,57 @@ beforeAll(async () => {
   alice = await createUser(root, "user");
   bob = await createUser(root, "user");
   project = await createProject(root);
+  // The super admin makes this admin the budget manager
+  expect((await api("/api/project-budgets/managers", { session: root, method: "PUT", json: { userIds: [admin.id] } })).status).toBe(200);
 });
 
 afterAll(closeDb);
+
+describe("who can set budgets", () => {
+  it("only the budget managers the super admin chose; others only see them", async () => {
+    const other = await createUser(root, "admin");
+
+    // Not the super admin, nor another admin
+    expect((await setBudget(root, { totalUsd: 10 })).status).toBe(403);
+    const refused = await setBudget(other.session, { totalUsd: 10 });
+    expect(refused.status).toBe(403);
+    expect(refused.data.error).toMatch(/Only the budget manager/);
+
+    // Everyone on the page sees who it is, and whether they may
+    const asOther = await api("/api/project-budgets", { session: other.session });
+    expect(asOther.data).toMatchObject({ canEdit: false, managers: [{ id: admin.id }] });
+    expect(asOther.data.candidates).toBeUndefined();
+    const asManager = await api("/api/project-budgets", { session: admin.session });
+    expect(asManager.data.canEdit).toBe(true);
+    const asRoot = await api("/api/project-budgets", { session: root });
+    expect(asRoot.data.canEdit).toBe(false);
+    expect((asRoot.data.candidates as { id: string }[]).map((c) => c.id)).toEqual(expect.arrayContaining([admin.id, other.id]));
+  });
+
+  it("are chosen by the super admin only, from active admins", async () => {
+    const managers = (session: Session, userIds: unknown) =>
+      api("/api/project-budgets/managers", { session, method: "PUT", json: { userIds } });
+    expect((await managers(admin.session, [admin.id])).status).toBe(403);
+    expect((await managers(root, [alice.id])).status).toBe(400);
+    expect((await managers(root, ["no-such-user"])).status).toBe(400);
+    expect((await managers(root, "everyone")).status).toBe(400);
+
+    // Handing over: the old manager can't any more
+    const next = await createUser(root, "admin");
+    expect((await managers(root, [next.id])).status).toBe(200);
+    expect((await setBudget(admin.session, { totalUsd: 10 })).status).toBe(403);
+    expect((await setBudget(next.session, { totalUsd: 10 })).status).toBe(200);
+
+    // A disabled manager can't either
+    expect((await api(`/api/users/${next.id}`, { session: root, method: "PATCH", json: { disabled: true } })).status).toBe(200);
+    expect((await api("/api/project-budgets", { session: admin.session })).data.managers).toEqual([]);
+
+    // Back to the first one (the tests below)
+    const saved = await managers(root, [admin.id]);
+    expect(saved.data.managers).toEqual([expect.objectContaining({ id: admin.id })]);
+    expect((await setBudget(admin.session, { totalUsd: null, monthlyUsd: null })).status).toBe(200);
+  });
+});
 
 describe("setting a budget", () => {
   it("is for admins, with amounts in dollars", async () => {

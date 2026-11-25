@@ -6,10 +6,14 @@ import { BudgetForm, BudgetUsage } from "@/app/components/ProjectBudget";
 import type { PublicProject } from "@/lib/auth/roles";
 import { budgetState, type PublicProjectBudget } from "@/lib/project-budgets/shared";
 
+type Manager = { id: string; name: string; username: string };
+
 // --------------------------------------------------
 // BUDGETS (Admin → Budgets): every project with its
-// budget and spend. Each project's budget opens under
-// it and saves on its own.
+// budget and spend. Only the budget managers (chosen by
+// the super admin) set or change budgets: each project's
+// opens under it and saves on its own. Everyone else here
+// sees them only.
 // --------------------------------------------------
 
 async function getJson(url: string) {
@@ -38,6 +42,11 @@ export default function ProjectBudgetsAdmin() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
+  const [managers, setManagers] = useState<Manager[]>([]);
+  const [canEdit, setCanEdit] = useState(false);
+  // Only for the super admin: who they can choose from
+  const [candidates, setCandidates] = useState<Manager[] | null>(null);
+  const [choosing, setChoosing] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,6 +55,9 @@ export default function ProjectBudgetsAdmin() {
         if (cancelled) return;
         setProjects((projectData.projects as PublicProject[]) ?? []);
         setBudgets(new Map(((budgetData.budgets as PublicProjectBudget[]) ?? []).map((b) => [b.projectId, b])));
+        setManagers((budgetData.managers as Manager[]) ?? []);
+        setCanEdit(Boolean(budgetData.canEdit));
+        setCandidates((budgetData.candidates as Manager[] | undefined) ?? null);
       })
       .catch((err) => !cancelled && setError(err instanceof Error ? err.message : "Unable to load budgets"))
       .finally(() => !cancelled && setLoading(false));
@@ -75,6 +87,25 @@ export default function ProjectBudgetsAdmin() {
         <div role="status" className="rounded-xl border border-line bg-surface px-4 py-3 text-sm text-fg-muted">
           {notice}
         </div>
+      )}
+
+      {!loading && (
+        <ManagersBar
+          managers={managers}
+          canEdit={canEdit}
+          candidates={candidates}
+          choosing={choosing}
+          onChoose={() => {
+            setError("");
+            setNotice("");
+            setChoosing(!choosing);
+          }}
+          onSaved={(saved) => {
+            setManagers(saved);
+            setChoosing(false);
+            setNotice(saved.length ? "Saved the budget managers." : "Removed the budget managers: no one can change budgets now.");
+          }}
+        />
       )}
 
       {!loading && projects.length > 0 && (
@@ -111,6 +142,7 @@ export default function ProjectBudgetsAdmin() {
                         )}
                       </div>
                     </div>
+                    {canEdit && (
                     <div className="flex justify-end">
                       <button
                         type="button"
@@ -127,9 +159,10 @@ export default function ProjectBudgetsAdmin() {
                         {hasBudget ? "Change budget" : "Set budget"}
                       </button>
                     </div>
+                    )}
                   </div>
 
-                  {open && (
+                  {open && canEdit && (
                     <div className="px-5 pb-5">
                       <BudgetForm
                         key={project.id}
@@ -151,5 +184,152 @@ export default function ProjectBudgetsAdmin() {
         )}
       </div>
     </div>
+  );
+}
+
+// Who may change budgets; the super admin chooses them
+function ManagersBar({
+  managers,
+  canEdit,
+  candidates,
+  choosing,
+  onChoose,
+  onSaved,
+}: {
+  managers: Manager[];
+  canEdit: boolean;
+  candidates: Manager[] | null;
+  choosing: boolean;
+  onChoose: () => void;
+  onSaved: (managers: Manager[]) => void;
+}) {
+  const names = managers.map((manager) => manager.name).join(", ");
+  return (
+    <div className="rounded-2xl border border-line bg-surface px-5 py-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-fg">Budget managers</p>
+          <p className="mt-1 text-xs text-fg-subtle">
+            {managers.length
+              ? `${names} ${managers.length === 1 ? "is the only person who" : "are the only people who"} can set and change budgets.`
+              : "No one yet. Until the super admin chooses a budget manager, budgets can't be set or changed."}
+            {canEdit && " That includes you."}
+            {!canEdit && managers.length > 0 && " You can see budgets here, but not change them."}
+          </p>
+        </div>
+        {candidates && (
+          <button
+            type="button"
+            aria-expanded={choosing}
+            onClick={onChoose}
+            className={`rounded-lg border px-3 py-1.5 text-xs hover:bg-raised ${
+              choosing ? "border-accent text-accent" : "border-line-strong text-fg"
+            }`}
+          >
+            {managers.length ? "Change managers" : "Choose a manager"}
+          </button>
+        )}
+      </div>
+      {choosing && candidates && (
+        <ManagersForm candidates={candidates} current={managers} onSaved={onSaved} onCancel={onChoose} />
+      )}
+    </div>
+  );
+}
+
+function ManagersForm({
+  candidates,
+  current,
+  onSaved,
+  onCancel,
+}: {
+  candidates: Manager[];
+  current: Manager[];
+  onSaved: (managers: Manager[]) => void;
+  onCancel: () => void;
+}) {
+  const [chosen, setChosen] = useState(() => new Set(current.map((manager) => manager.id)));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function save(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      const response = await fetch("/api/project-budgets/managers", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userIds: [...chosen] }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `Save failed (${response.status})`);
+      onSaved(data.managers as Manager[]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form onSubmit={save} className="mt-4 space-y-4 border-t border-line pt-4">
+      <fieldset>
+        <legend className="text-sm text-fg">Who can set and change budgets?</legend>
+        <p className="mt-1 text-xs text-fg-subtle">
+          Choose from the admins. Not even the super admin can change budgets without being chosen.
+        </p>
+        {candidates.length ? (
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {candidates.map((candidate) => (
+              <label
+                key={candidate.id}
+                className="flex cursor-pointer items-center gap-3 rounded-xl border border-line px-3 py-2.5 text-sm hover:bg-raised"
+              >
+                <input
+                  type="checkbox"
+                  checked={chosen.has(candidate.id)}
+                  onChange={(event) =>
+                    setChosen((current) => {
+                      const next = new Set(current);
+                      if (event.target.checked) next.add(candidate.id);
+                      else next.delete(candidate.id);
+                      return next;
+                    })
+                  }
+                  className="h-4 w-4 accent-[var(--accent)]"
+                />
+                <span className="min-w-0">
+                  <span className="block truncate text-fg">{candidate.name}</span>
+                  <span className="block truncate text-xs text-fg-subtle">@{candidate.username}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-3 text-sm text-fg-muted">There are no active admins yet. Add one under Admin &rarr; Users first.</p>
+        )}
+      </fieldset>
+      {error && (
+        <div role="alert" className="rounded-xl border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger">
+          {error}
+        </div>
+      )}
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          disabled={saving}
+          className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-on-accent hover:bg-accent-hover disabled:bg-raised disabled:text-fg-subtle"
+        >
+          {saving ? "Saving..." : "Save managers"}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-xl border border-line-strong px-4 py-2 text-sm text-fg hover:bg-raised"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }

@@ -5,11 +5,10 @@ import { listUsers } from "@/lib/auth/users";
 // BUDGET MANAGERS (MongoDB "budgetSettings", one doc
 // "managers")
 //
-// The super admin chooses who may set and change project
-// budgets: one or more admins. Only they can; the super
-// admin only chooses them, and every other admin sees
-// budgets without changing them. No managers chosen: no
-// one can change budgets (existing ones still apply).
+// The super admin chooses who else may set and change
+// project budgets: one or more admins. The super admin
+// always can; every other admin sees budgets without
+// changing them.
 // --------------------------------------------------
 
 type ManagersDoc = {
@@ -38,8 +37,11 @@ export async function listBudgetManagers(): Promise<BudgetManager[]> {
     .map((user) => ({ id: user.id, name: user.name, username: user.username }));
 }
 
+// The super admin, or a chosen admin
 export async function isBudgetManager(user: { id: string; role: string; disabled?: boolean }): Promise<boolean> {
-  if (user.role !== "admin" || user.disabled) return false;
+  if (user.disabled) return false;
+  if (user.role === "super_admin") return true;
+  if (user.role !== "admin") return false;
   return (await storedIds()).includes(user.id);
 }
 

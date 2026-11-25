@@ -84,14 +84,15 @@ beforeAll(async () => {
 afterAll(closeDb);
 
 describe("who can set budgets", () => {
-  it("only the budget managers the super admin chose; others only see them", async () => {
+  it("the super admin and the budget managers they chose; other admins only see them", async () => {
     const other = await createUser(root, "admin");
 
-    // Not the super admin, nor another admin
-    expect((await setBudget(root, { totalUsd: 10 })).status).toBe(403);
+    // The super admin can; another admin can't
+    expect((await setBudget(root, { totalUsd: 10 })).status).toBe(200);
     const refused = await setBudget(other.session, { totalUsd: 10 });
     expect(refused.status).toBe(403);
-    expect(refused.data.error).toMatch(/Only the budget manager/);
+    expect(refused.data.error).toMatch(/Only the super admin and the budget managers/);
+    expect((await setBudget(root, { totalUsd: null, monthlyUsd: null })).status).toBe(200);
 
     // Everyone on the page sees who it is, and whether they may
     const asOther = await api("/api/project-budgets", { session: other.session });
@@ -100,7 +101,7 @@ describe("who can set budgets", () => {
     const asManager = await api("/api/project-budgets", { session: admin.session });
     expect(asManager.data.canEdit).toBe(true);
     const asRoot = await api("/api/project-budgets", { session: root });
-    expect(asRoot.data.canEdit).toBe(false);
+    expect(asRoot.data.canEdit).toBe(true);
     expect((asRoot.data.candidates as { id: string }[]).map((c) => c.id)).toEqual(expect.arrayContaining([admin.id, other.id]));
   });
 
@@ -210,6 +211,45 @@ describe("the total budget", () => {
     const started = await run(alice.session);
     expect(started.status).toBe(200);
     await finish((started.data.tracking as { predictionId: string }).predictionId);
+  });
+});
+
+describe("the alert level", () => {
+  it("is 80% unless changed, a whole percent from 1 to 99", async () => {
+    const list = await api("/api/project-budgets", { session: admin.session });
+    expect((list.data.budgets as { projectId: string }[]).find((item) => item.projectId === project.id)).toMatchObject({ alertPercent: 80 });
+    for (const alertPercent of [0, 100, 12.5, "lots"]) {
+      expect((await setBudget(admin.session, { alertPercent })).status, String(alertPercent)).toBe(400);
+    }
+  });
+
+  it("sends the early alert at the chosen level, and again when the level changes", async () => {
+    // Spent so far (all-time) on this project
+    const before = await api("/api/project-budgets", { session: admin.session });
+    const spent = (before.data.budgets as { projectId: string; usage: { totalSpentUsd: number } }[]).find(
+      (item) => item.projectId === project.id
+    )!.usage.totalSpentUsd;
+
+    // A budget where spend is about 30%: nothing at 80%...
+    const budget = Math.round((spent / 0.3) * 100) / 100;
+    const saved = await setBudget(admin.session, { totalUsd: budget, alertPercent: 80 });
+    expect(saved.data.budget).toMatchObject({ alertPercent: 80 });
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const quiet = (await alerts(alice.session, 3)).filter((title) => /29%|30%/.test(title));
+    expect(quiet).toEqual([]);
+
+    // ...but at 25%, the early alert goes out
+    expect((await setBudget(admin.session, { alertPercent: 25 })).data.budget).toMatchObject({ alertPercent: 25, totalUsd: budget });
+    const titles = await alerts(alice.session, 3);
+    expect(titles.filter((title) => /has used (29|30)% of its total budget/.test(title))).toHaveLength(1);
+
+    // The same level again: nothing new
+    await setBudget(admin.session, { alertPercent: 25 });
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect((await alerts(alice.session, 4)).filter((title) => /has used (29|30)%/.test(title))).toHaveLength(1);
+
+    // Back to the default (for the tests below)
+    expect((await setBudget(admin.session, { totalUsd: 5, alertPercent: "" })).data.budget).toMatchObject({ alertPercent: 80 });
   });
 });
 

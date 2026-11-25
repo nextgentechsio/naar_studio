@@ -7,8 +7,8 @@ export const runtime = "nodejs";
 
 // --------------------------------------------------
 // Set a project's budgets: { totalUsd, monthlyUsd }, each
-// an amount in dollars, or null for none. Only the
-// budget managers the super admin chose.
+// an amount in dollars, or null for none. The super
+// admin and the budget managers they chose.
 // --------------------------------------------------
 
 export async function PUT(request: Request, context: { params: Promise<{ projectId: string }> }) {
@@ -16,7 +16,7 @@ export async function PUT(request: Request, context: { params: Promise<{ project
   if (auth.response) return auth.response;
   if (!(await isBudgetManager(auth.user))) {
     return NextResponse.json(
-      { error: "Only the budget manager can set budgets. The super admin chooses who that is." },
+      { error: "Only the super admin and the budget managers can set budgets." },
       { status: 403 }
     );
   }

@@ -27,8 +27,8 @@ async function getJson(url: string) {
 function urgency(budget: PublicProjectBudget | undefined): number {
   if (!budget) return 0;
   const states = [
-    budgetState(budget.usage.totalSpentUsd, budget.usage.inFlightUsd, budget.totalUsd),
-    budgetState(budget.usage.monthSpentUsd, budget.usage.inFlightUsd, budget.monthlyUsd),
+    budgetState(budget.usage.totalSpentUsd, budget.usage.inFlightUsd, budget.totalUsd, budget.alertPercent),
+    budgetState(budget.usage.monthSpentUsd, budget.usage.inFlightUsd, budget.monthlyUsd, budget.alertPercent),
   ];
   if (states.includes("reached")) return 3;
   if (states.includes("warning")) return 2;
@@ -103,7 +103,7 @@ export default function ProjectBudgetsAdmin() {
           onSaved={(saved) => {
             setManagers(saved);
             setChoosing(false);
-            setNotice(saved.length ? "Saved the budget managers." : "Removed the budget managers: no one can change budgets now.");
+            setNotice(saved.length ? "Saved the budget managers." : "Removed the budget managers: only the super admin can change budgets now.");
           }}
         />
       )}
@@ -111,7 +111,7 @@ export default function ProjectBudgetsAdmin() {
       {!loading && projects.length > 0 && (
         <p className="text-sm text-fg-muted">
           {withBudget} of {projects.length} projects have a budget
-          {needAttention > 0 && <span className="text-warning"> · {needAttention} at 80% or more</span>}
+          {needAttention > 0 && <span className="text-warning"> · {needAttention} past {needAttention === 1 ? "its" : "their"} alert level</span>}
         </p>
       )}
 
@@ -211,10 +211,10 @@ function ManagersBar({
           <p className="text-sm font-medium text-fg">Budget managers</p>
           <p className="mt-1 text-xs text-fg-subtle">
             {managers.length
-              ? `${names} ${managers.length === 1 ? "is the only person who" : "are the only people who"} can set and change budgets.`
-              : "No one yet. Until the super admin chooses a budget manager, budgets can't be set or changed."}
-            {canEdit && " That includes you."}
-            {!canEdit && managers.length > 0 && " You can see budgets here, but not change them."}
+              ? `The super admin and ${names} can set and change budgets.`
+              : "Only the super admin can set and change budgets. The super admin can choose admins to help."}
+            {!candidates && canEdit && " That includes you."}
+            {!canEdit && " You can see budgets here, but not change them."}
           </p>
         </div>
         {candidates && (
@@ -276,7 +276,7 @@ function ManagersForm({
       <fieldset>
         <legend className="text-sm text-fg">Who can set and change budgets?</legend>
         <p className="mt-1 text-xs text-fg-subtle">
-          Choose from the admins. Not even the super admin can change budgets without being chosen.
+          Choose from the admins. The super admin can always set and change budgets.
         </p>
         {candidates.length ? (
           <div className="mt-3 grid gap-2 sm:grid-cols-2">

@@ -8,12 +8,13 @@ import { monthKey, monthRange } from "@/lib/api-keys/shared";
 import {
   type BudgetKind,
   budgetRefusal,
+  DEFAULT_ALERT_PERCENT,
+  parseAlertPercent,
   parseBudgetUsd,
   type ProjectBudget,
   type ProjectBudgetUsage,
   type PublicProjectBudget,
   usd,
-  WARNING_SHARE,
 } from "./shared";
 
 // --------------------------------------------------
@@ -29,11 +30,15 @@ import {
 // checked whenever a run's cost is recorded.
 // --------------------------------------------------
 
-type AlertMarks = { forUsd: number; at80: boolean; at100: boolean };
+// at80: the early alert (at the project's alert level,
+// forPercent; 80 when missing), at100: budget reached
+type AlertMarks = { forUsd: number; forPercent?: number; at80: boolean; at100: boolean };
 
 type ProjectBudgetDoc = ProjectBudget & {
   // The project id
   _id: string;
+  // The early alert, 1–99% (missing: 80)
+  alertPercent?: number;
   // Which alerts went out, for which budget amount (and
   // month): changing the amount sends them again
   alerts?: {
@@ -128,6 +133,7 @@ function toPublic(doc: ProjectBudgetDoc | null, projectId: string, usage: Projec
     projectId,
     totalUsd: doc?.totalUsd ?? null,
     monthlyUsd: doc?.monthlyUsd ?? null,
+    alertPercent: doc?.alertPercent ?? DEFAULT_ALERT_PERCENT,
     usage,
     updatedAt: doc?.updatedAt.toISOString() ?? null,
   };
@@ -148,7 +154,7 @@ export type SetBudgetResult = { ok: true; budget: PublicProjectBudget } | { ok: 
 
 export async function setProjectBudget(
   projectId: string,
-  input: { totalUsd?: unknown; monthlyUsd?: unknown },
+  input: { totalUsd?: unknown; monthlyUsd?: unknown; alertPercent?: unknown },
   actorId: string
 ): Promise<SetBudgetResult> {
   const project = await (await projectsCollection()).findOne({ _id: projectId }, { projection: { _id: 1 } });
@@ -162,20 +168,27 @@ export async function setProjectBudget(
   if (totalUsd === undefined || monthlyUsd === undefined) {
     return { ok: false, status: 400, error: "A budget must be an amount in dollars above $0 (or empty for none)" };
   }
+  const alertPercent =
+    input.alertPercent === undefined
+      ? (existing?.alertPercent ?? DEFAULT_ALERT_PERCENT)
+      : parseAlertPercent(input.alertPercent);
+  if (alertPercent === undefined) {
+    return { ok: false, status: 400, error: "The alert must be a whole percent from 1 to 99" };
+  }
 
   if (totalUsd === null && monthlyUsd === null) {
     await collection.deleteOne({ _id: projectId });
   } else {
     await collection.updateOne(
       { _id: projectId },
-      { $set: { totalUsd, monthlyUsd, updatedBy: actorId, updatedAt: new Date() } },
+      { $set: { totalUsd, monthlyUsd, alertPercent, updatedBy: actorId, updatedAt: new Date() } },
       { upsert: true }
     );
   }
 
   const doc = await collection.findOne({ _id: projectId });
   const usage = (await projectUsage([projectId])).get(projectId)!;
-  // A lower budget may already be past 80% or 100%
+  // A lower budget (or alert level) may already be passed
   void checkProjectBudgetAlerts(projectId).catch(() => undefined);
   return { ok: true, budget: toPublic(doc, projectId, usage) };
 }
@@ -209,10 +222,11 @@ export async function checkProjectBudget(
 }
 
 // --------------------------------------------------
-// ALERTS AT 80% AND 100%
+// ALERTS AT THE PROJECT'S LEVEL (80% unless changed)
+// AND AT 100%
 //
-// Of billed spend, once per budget amount (and month, for
-// the monthly one). To the admins and everyone who has
+// Of billed spend, once per budget amount and alert level
+// (and month, for the monthly one). To the admins and everyone who has
 // run something in the project, as a notification in the
 // bell (and its pop-up).
 // --------------------------------------------------
@@ -225,6 +239,7 @@ export async function checkProjectBudgetAlerts(projectId: string, now = new Date
   if (!doc) return;
 
   const usage = (await projectUsage([projectId], now)).get(projectId)!;
+  const percent = doc.alertPercent ?? DEFAULT_ALERT_PERCENT;
   const due: { kind: BudgetKind; level: "at80" | "at100"; limit: number; spent: number }[] = [];
 
   for (const kind of ["total", "monthly"] as const) {
@@ -232,13 +247,16 @@ export async function checkProjectBudgetAlerts(projectId: string, now = new Date
     if (limit === null) continue;
     const spent = kind === "total" ? usage.totalSpentUsd : usage.monthSpentUsd;
     const share = spent / limit;
-    const level = share >= 1 ? "at100" : share >= WARNING_SHARE ? "at80" : null;
+    const level = share >= 1 ? "at100" : share >= percent / 100 ? "at80" : null;
     if (!level) continue;
 
-    // Already sent for this amount (and month)?
+    // Already sent for this amount, level (and month)?
     const marks = doc.alerts?.[kind];
     const current =
-      marks && marks.forUsd === limit && (kind === "total" || (marks as { month?: string }).month === usage.month)
+      marks &&
+      marks.forUsd === limit &&
+      (marks.forPercent ?? DEFAULT_ALERT_PERCENT) === percent &&
+      (kind === "total" || (marks as { month?: string }).month === usage.month)
         ? marks
         : null;
     if (current?.[level]) continue;
@@ -246,6 +264,7 @@ export async function checkProjectBudgetAlerts(projectId: string, now = new Date
     // Claim it first, so two finishing runs send one
     const next = {
       forUsd: limit,
+      forPercent: percent,
       at80: true,
       at100: level === "at100",
       ...(kind === "monthly" ? { month: usage.month } : {}),
@@ -256,6 +275,7 @@ export async function checkProjectBudgetAlerts(projectId: string, now = new Date
         _id: projectId,
         $or: [
           { [`${field}.forUsd`]: { $ne: limit } },
+          { [`${field}.forPercent`]: { $ne: percent } },
           ...(kind === "monthly" ? [{ [`${field}.month`]: { $ne: usage.month } }] : []),
           { [`${field}.${level}`]: { $ne: true } },
         ],

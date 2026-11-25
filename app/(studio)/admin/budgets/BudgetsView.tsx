@@ -9,7 +9,7 @@ export default function BudgetsView() {
       <PageHeader
         eyebrow="Admin"
         title="Budgets"
-        description="Every project's total and monthly budget. Runs that would go over are refused, and everyone working in the project is told at 80% and 100%. Only the budget managers chosen by the super admin can change them."
+        description="Every project's total and monthly budget. Runs that would go over are refused, and everyone working in the project is told at its alert level (80% unless changed) and at 100%. Only the super admin and the budget managers they choose can change them."
       />
       <ProjectBudgetsAdmin />
     </div>

@@ -11,13 +11,22 @@
 
 export const MAX_BUDGET_USD = 1_000_000;
 
-// Where alerts go out
-export const WARNING_SHARE = 0.8;
+// The early alert, as a share of a budget: 80% unless
+// the budget manager picks another level for the project
+// (1–99%). The second alert is always at 100%.
+export const DEFAULT_ALERT_PERCENT = 80;
+export const WARNING_SHARE = DEFAULT_ALERT_PERCENT / 100;
 
 export type ProjectBudget = {
   // null: no budget of that kind
   totalUsd: number | null;
   monthlyUsd: number | null;
+};
+
+// The early alert's level for one project
+export type BudgetAlertSetting = {
+  // 1–99
+  alertPercent: number;
 };
 
 export type ProjectBudgetUsage = {
@@ -31,7 +40,7 @@ export type ProjectBudgetUsage = {
   inFlight: number;
 };
 
-export type PublicProjectBudget = ProjectBudget & {
+export type PublicProjectBudget = ProjectBudget & BudgetAlertSetting & {
   projectId: string;
   usage: ProjectBudgetUsage;
   updatedAt: string | null;
@@ -43,12 +52,27 @@ export type BudgetState = "none" | "ok" | "warning" | "reached";
 // How one budget is doing. Billed spend plus what's in
 // flight: a budget is "reached" once nothing more can
 // start without going over.
-export function budgetState(spentUsd: number, inFlightUsd: number, budgetUsd: number | null): BudgetState {
+export function budgetState(
+  spentUsd: number,
+  inFlightUsd: number,
+  budgetUsd: number | null,
+  alertPercent: number = DEFAULT_ALERT_PERCENT
+): BudgetState {
   if (budgetUsd === null) return "none";
   const committed = spentUsd + inFlightUsd;
   if (committed >= budgetUsd) return "reached";
-  if (committed >= budgetUsd * WARNING_SHARE) return "warning";
+  if (committed >= budgetUsd * (alertPercent / 100)) return "warning";
   return "ok";
+}
+
+// The alert level from a form or the API: a whole
+// percent from 1 to 99 (blank or null: the default).
+// undefined when it isn't one.
+export function parseAlertPercent(value: unknown): number | undefined {
+  if (value === null || value === undefined || value === "") return DEFAULT_ALERT_PERCENT;
+  const amount = typeof value === "string" ? Number(value.trim().replace(/%$/, "")) : value;
+  if (typeof amount !== "number" || !Number.isInteger(amount)) return undefined;
+  return amount >= 1 && amount <= 99 ? amount : undefined;
 }
 
 // A budget amount from a form or the API: blank or null

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { budgetRefusal, budgetState, parseBudgetUsd } from "@/lib/project-budgets/shared";
+import { budgetRefusal, budgetState, parseAlertPercent, parseBudgetUsd } from "@/lib/project-budgets/shared";
 
 // --------------------------------------------------
 // Project budgets: amounts, states, and when a run is
@@ -23,6 +23,19 @@ describe("states", () => {
     expect(budgetState(79, 0, 100)).toBe("ok");
     expect(budgetState(70, 10, 100)).toBe("warning");
     expect(budgetState(90, 10, 100)).toBe("reached");
+  });
+
+  it("warns at the project's own alert level", () => {
+    expect(budgetState(49, 0, 100, 50)).toBe("ok");
+    expect(budgetState(50, 0, 100, 50)).toBe("warning");
+    expect(budgetState(85, 0, 100, 90)).toBe("ok");
+    expect(budgetState(100, 0, 100, 90)).toBe("reached");
+  });
+
+  it("reads an alert level: a whole percent from 1 to 99, blank for 80", () => {
+    expect(["", null, undefined].map(parseAlertPercent)).toEqual([80, 80, 80]);
+    expect([1, 50, "75", " 90% ", 99].map(parseAlertPercent)).toEqual([1, 50, 75, 90, 99]);
+    expect([0, 100, -5, 12.5, "abc", {}, NaN].map(parseAlertPercent)).toEqual(Array(7).fill(undefined));
   });
 });
 

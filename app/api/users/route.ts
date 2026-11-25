@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/auth";
 import { createUser, listUsers } from "@/lib/auth/users";
+import { mailConfigured, sendMailLater } from "@/lib/mail/graph";
+import { createPasswordToken } from "@/lib/mail/password-tokens";
+import { appUrl, welcomeEmail } from "@/lib/mail/templates";
 
 export const runtime = "nodejs";
 
@@ -41,6 +44,29 @@ export async function POST(request: Request) {
         { error: result.error },
         { status: result.status }
       );
+    }
+
+    // A welcome email when the account has an address
+    const created = result.user;
+    if (created.email && mailConfigured()) {
+      const origin = appUrl(new URL(request.url).origin)!;
+      const createdBy = auth.user.name;
+      sendMailLater(async () => {
+        const token = await createPasswordToken(created.id, "welcome");
+        return [
+          {
+            to: created.email!,
+            ...welcomeEmail({
+              name: created.name,
+              username: created.username,
+              email: created.email!,
+              createdBy,
+              signInUrl: `${origin}/login`,
+              setPasswordUrl: `${origin}/reset-password?token=${token}&welcome=1`,
+            }),
+          },
+        ];
+      }, "welcome");
     }
 
     return NextResponse.json(

@@ -5,8 +5,6 @@ import ProjectAvatar from "@/app/components/ProjectAvatar";
 import { useFileDrop } from "@/app/components/ui/useFileDrop";
 import { prepareProjectPhoto } from "@/lib/storage/prepare-image";
 import type { PublicProject } from "@/lib/auth/roles";
-import { BudgetForm, BudgetUsage } from "@/app/components/ProjectBudget";
-import type { PublicProjectBudget } from "@/lib/project-budgets/shared";
 
 // --------------------------------------------------
 // PROJECT MANAGEMENT (admins and the super admin;
@@ -29,17 +27,6 @@ type FormState = {
   photoPreview: string | null;
   removePhoto: boolean;
 };
-
-// Every project's budget and spend, by project id
-async function loadBudgets(): Promise<Map<string, PublicProjectBudget>> {
-  const data = await callApi("/api/project-budgets");
-  return new Map(
-    ((data.budgets as PublicProjectBudget[]) ?? []).map((budget) => [
-      budget.projectId,
-      budget,
-    ])
-  );
-}
 
 const PHOTO_ACCEPT = "image/png,image/jpeg,image/webp,image/gif";
 const PHOTO_MAX_BYTES = 5 * 1024 * 1024;
@@ -117,12 +104,6 @@ export default function ProjectsAdmin({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [form, setForm] = useState<FormState | null>(null);
-  const [budgets, setBudgets] = useState<Map<string, PublicProjectBudget>>(
-    new Map()
-  );
-  // The project whose budget is open (its own form, under
-  // that project in the list)
-  const [budgetFor, setBudgetFor] = useState<PublicProject | null>(null);
   const photoInput = useRef<HTMLInputElement>(null);
 
   // Free the preview's object URL when it's replaced or
@@ -138,12 +119,8 @@ export default function ProjectsAdmin({
   // `loading` starts true; reloads refresh in place
   const loadProjects = useCallback(async () => {
     try {
-      const [data, loadedBudgets] = await Promise.all([
-        callApi("/api/projects?all=1"),
-        loadBudgets(),
-      ]);
+      const data = await callApi("/api/projects?all=1");
       setProjects((data.projects as PublicProject[]) ?? []);
-      setBudgets(loadedBudgets);
     } catch (err) {
       setError(
         err instanceof Error
@@ -159,13 +136,12 @@ export default function ProjectsAdmin({
   useEffect(() => {
     let cancelled = false;
 
-    Promise.all([callApi("/api/projects?all=1"), loadBudgets()])
-      .then(([data, loadedBudgets]) => {
+    callApi("/api/projects?all=1")
+      .then((data) => {
         if (!cancelled) {
           setProjects(
             (data.projects as PublicProject[]) ?? []
           );
-          setBudgets(loadedBudgets);
         }
       })
       .catch((err) => {
@@ -195,7 +171,6 @@ export default function ProjectsAdmin({
   function openCreate() {
     setError("");
     setNotice("");
-    setBudgetFor(null);
     setForm({
       mode: "create",
       name: "",
@@ -210,7 +185,6 @@ export default function ProjectsAdmin({
   function openEdit(project: PublicProject) {
     setError("");
     setNotice("");
-    setBudgetFor(null);
     setForm({
       mode: "edit",
       id: project.id,
@@ -574,8 +548,10 @@ export default function ProjectsAdmin({
         ) : (
           <div className="divide-y divide-line">
             {projects.map((project) => (
-              <div key={project.id}>
-              <div className="grid items-center gap-3 px-5 py-4 md:grid-cols-[minmax(0,1fr)_90px_290px]">
+              <div
+                key={project.id}
+                className="grid items-center gap-3 px-5 py-4 md:grid-cols-[minmax(0,1fr)_90px_220px]"
+              >
                 <div className="flex min-w-0 items-center gap-3">
                   <ProjectAvatar
                     name={project.name}
@@ -590,8 +566,6 @@ export default function ProjectsAdmin({
                     <p className="mt-1 line-clamp-2 text-xs text-fg-subtle">
                       {project.description || "No description"}
                     </p>
-
-                    <BudgetUsage budget={budgets.get(project.id)} />
                   </div>
                 </div>
 
@@ -618,26 +592,6 @@ export default function ProjectsAdmin({
 
                   <button
                     type="button"
-                    onClick={() => {
-                      setForm(null);
-                      setError("");
-                      setNotice("");
-                      setBudgetFor(
-                        budgetFor?.id === project.id ? null : project
-                      );
-                    }}
-                    aria-expanded={budgetFor?.id === project.id}
-                    className={`rounded-lg border px-3 py-1.5 text-xs hover:bg-raised ${
-                      budgetFor?.id === project.id
-                        ? "border-accent text-accent"
-                        : "border-line-strong text-fg"
-                    }`}
-                  >
-                    Budget
-                  </button>
-
-                  <button
-                    type="button"
                     onClick={() => toggleArchived(project)}
                     className="rounded-lg border border-line-strong px-3 py-1.5 text-xs text-fg hover:bg-raised"
                   >
@@ -656,27 +610,6 @@ export default function ProjectsAdmin({
                     </button>
                   )}
                 </div>
-              </div>
-
-              {/* This project's budget, right under it */}
-              {budgetFor?.id === project.id && (
-                <div className="px-5 pb-5">
-                  <BudgetForm
-                    key={project.id}
-                    project={project}
-                    budget={budgets.get(project.id)}
-                    onCancel={() => setBudgetFor(null)}
-                    onSaved={(budget) => {
-                      setBudgets((current) =>
-                        new Map(current).set(budget.projectId, budget)
-                      );
-                      setBudgetFor(null);
-                      setError("");
-                      setNotice(`Saved the budget for ${project.name}.`);
-                    }}
-                  />
-                </div>
-              )}
               </div>
             ))}
           </div>

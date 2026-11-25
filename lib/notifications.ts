@@ -1,6 +1,7 @@
 import { ObjectId, type Collection } from "mongodb";
 import { getDb, usersCollection } from "@/lib/db/mongodb";
 import type { StoredUser } from "@/lib/auth/users";
+import { emailNotificationCopies } from "@/lib/mail/notification-copies";
 import {
   BODY_MAX,
   MAX_RECIPIENTS,
@@ -195,6 +196,9 @@ export async function sendNotification(
     createdAt: new Date(),
   };
   await notifications.insertOne(doc);
+
+  // A copy by email to the recipients who have one
+  emailNotificationCopies({ title: doc.title, body: doc.body, level: doc.level, recipients: doc.recipients ?? null, senderId: sender.id });
 
   // The sender has seen their own message
   const id = doc._id.toHexString();

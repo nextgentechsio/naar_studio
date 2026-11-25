@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useSyncExternalStore } from "react";
 import ThemeToggle from "@/app/components/ThemeToggle";
 import { NaarLogo } from "@/app/components/ui/NaarLogo";
@@ -169,6 +170,15 @@ export default function LoginPage() {
               )}
 
               {error && <Alert>{error}</Alert>}
+
+              <p className="-mt-1 text-right text-sm">
+                <Link
+                  href="/forgot-password"
+                  className="text-fg-muted underline-offset-4 hover:text-fg hover:underline"
+                >
+                  Forgot password?
+                </Link>
+              </p>
 
               <Button
                 type="submit"

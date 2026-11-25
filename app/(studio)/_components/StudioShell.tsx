@@ -93,6 +93,11 @@ export default function StudioShell({
                       label: "Projects",
                       icon: "folder" as const,
                     },
+                    {
+                      href: "/admin/budgets",
+                      label: "Budgets",
+                      icon: "gauge" as const,
+                    },
                   ]
                 : []),
             ],

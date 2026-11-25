@@ -727,3 +727,44 @@ export async function startNewSession(userId: string): Promise<number> {
 
   return updated.sessionVersion;
 }
+
+// --------------------------------------------------
+// PASSWORD LINKS (lib/mail/password-tokens.ts): find the
+// account someone asks about, and set a new password
+// from a one-time link (signs out its other sessions)
+// --------------------------------------------------
+
+export async function findUserByIdentifier(identifier: unknown): Promise<StoredUser | null> {
+  let doc: UserDoc | null = null;
+  if (typeof identifier === "string" && identifier.includes("@")) {
+    const parsed = normalizeEmail(identifier);
+    if (parsed.ok && parsed.email) doc = await (await getUsers()).findOne({ email: parsed.email });
+  } else {
+    const normalized = normalizeUsername(identifier);
+    if (normalized) doc = await (await getUsers()).findOne({ username: normalized });
+  }
+  return doc ? fromDoc(doc) : null;
+}
+
+export async function setPasswordFromLink(
+  userId: string,
+  password: unknown
+): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  const passwordError = validatePassword(password);
+  if (passwordError) return { ok: false, status: 400, error: passwordError };
+
+  const updated = await (await getUsers()).findOneAndUpdate(
+    { _id: userId, disabled: { $ne: true } },
+    {
+      $set: {
+        passwordHash: await hashPassword(password as string),
+        sessionEndReason: "password",
+        updatedAt: new Date(),
+      },
+      $inc: { sessionVersion: 1 },
+    }
+  );
+  if (!updated) return { ok: false, status: 400, error: "This account can't be signed in to. Ask your admin." };
+  return { ok: true };
+}
+

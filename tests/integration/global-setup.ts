@@ -6,6 +6,7 @@ import { MongoMemoryServer } from "mongodb-memory-server";
 import type { TestProject } from "vitest/node";
 import {
   FAKE_BLOB_TOKEN,
+  FAKE_GRAPH_SECRET,
   FAKE_ELEVENLABS_KEY,
   FAKE_FIGMA_TOKEN,
   FAKE_GOOGLE_KEY,
@@ -130,6 +131,16 @@ async function start(
     VERCEL_BLOB_API_URL: `${replicate.url}/blob`,
     // Browser side (inlined into the test build only)
     NEXT_PUBLIC_VERCEL_BLOB_API_URL: `${replicate.url}/blob`,
+    // Never real email: a stand-in Microsoft Graph that
+    // only records what would be sent
+    MS_GRAPH_TENANT_ID: "fake-tenant",
+    MS_GRAPH_CLIENT_ID: "fake-client",
+    MS_GRAPH_CLIENT_SECRET: FAKE_GRAPH_SECRET,
+    MS_GRAPH_LOGIN_URL: `${replicate.url}/mslogin`,
+    MS_GRAPH_API_URL: `${replicate.url}/graph`,
+    MAIL_FROM: "studio@test.local",
+    MAIL_ENABLED: "true",
+    APP_URL: "",
     SESSION_SECRET: "integration-test-secret-0123456789abcdef",
     SUPER_ADMIN_USERNAME: SUPER_ADMIN.username,
     SUPER_ADMIN_PASSWORD: SUPER_ADMIN.password,

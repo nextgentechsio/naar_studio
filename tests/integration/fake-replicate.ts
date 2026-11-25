@@ -193,6 +193,7 @@ const HF_MODELS = [
 
 // Format: vercel_blob_rw_<storeId>_<secret>
 export const FAKE_BLOB_TOKEN = "vercel_blob_rw_teststore_secret123";
+export const FAKE_GRAPH_SECRET = "fake-graph-secret";
 
 // A w × h RGB PNG: a diagonal gradient from hue to hue+60
 function gradientPng(w: number, h: number, hue: number): Buffer {
@@ -358,6 +359,8 @@ export async function startFakeReplicate() {
     direct.inFlight--;
   };
   const blobRequests: { method: string; path: string; body: unknown }[] = [];
+  // Emails "sent" through the fake Microsoft Graph
+  const mail: { from: string; to: string[]; subject: string; html: string }[] = [];
   // Stored bytes, served at /blobfiles/<pathname>
   const blobBytes = new Map<string, Buffer>();
   // Multipart upload id → parts received so far
@@ -383,6 +386,33 @@ export async function startFakeReplicate() {
       res.writeHead(status, { "content-type": "application/json" });
       res.end(JSON.stringify(data));
     };
+
+    // ---------- fake Microsoft sign-in and Graph (email) ----------
+
+    if (path.startsWith("/mslogin/") && path.endsWith("/oauth2/v2.0/token") && req.method === "POST") {
+      const form = new URLSearchParams(raw.toString());
+      if (form.get("client_secret") !== FAKE_GRAPH_SECRET) return send(401, { error: "invalid_client" });
+      return send(200, { token_type: "Bearer", expires_in: 3599, access_token: "fake-graph-token" });
+    }
+
+    const sendMailPath = path.match(/^\/graph\/users\/([^/]+)\/sendMail$/);
+    if (sendMailPath && req.method === "POST") {
+      if (req.headers.authorization !== "Bearer fake-graph-token") return send(401, { error: { code: "InvalidAuthenticationToken" } });
+      const message = (body as { message?: { subject?: string; body?: { content?: string }; toRecipients?: { emailAddress: { address: string } }[] } })?.message;
+      mail.push({
+        from: decodeURIComponent(sendMailPath[1]),
+        to: (message?.toRecipients ?? []).map((r) => r.emailAddress.address),
+        subject: message?.subject ?? "",
+        html: message?.body?.content ?? "",
+      });
+      res.writeHead(202);
+      return res.end();
+    }
+
+    if (path === "/__control/mail") {
+      if (req.method === "DELETE") mail.length = 0;
+      return send(200, mail);
+    }
 
     // ---------- fake Figma REST API (/figma) ----------
     // One FigJam file (FAKE_FIGMA_FILE_KEY) the token can

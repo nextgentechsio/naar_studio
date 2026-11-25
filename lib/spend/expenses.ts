@@ -120,11 +120,20 @@ export async function recordExpense(
   };
 
   // Insert-only: an existing entry is never changed
-  await (await expensesCollection()).updateOne(
+  const saved = await (await expensesCollection()).updateOne(
     { _id: entry._id },
     { $setOnInsert: entry },
     { upsert: true }
   );
+
+  // A new cost: the project's budget alerts (80%, 100%).
+  // Loaded when needed (it imports the ledger itself),
+  // and never in the way of recording the run.
+  if (saved.upsertedCount && amountUsd) {
+    void import("@/lib/project-budgets/server")
+      .then(({ checkProjectBudgetAlerts }) => checkProjectBudgetAlerts(entry.projectId))
+      .catch((error) => console.error("Project budget alerts failed:", entry.projectId, error));
+  }
 }
 
 // Adds ledger entries for succeeded generations that

@@ -6,6 +6,7 @@ import { audioSeconds, ElevenLabsError, elevenLabsConfigured, runElevenLabs } fr
 import { elevenLabsCostUsd, elevenLabsSchema, findElevenLabsModel } from "@/lib/elevenlabs/models";
 import { finishLocalRun, getGeneration, recordGeneration } from "@/lib/generations";
 import { findActiveProjectByName } from "@/lib/projects";
+import { checkProjectBudget } from "@/lib/project-budgets/server";
 
 // --------------------------------------------------
 // START AN ELEVENLABS RUN
@@ -42,7 +43,7 @@ export type StartElevenLabsResult =
       // requested length (the cost is measured after)
       costUsd: number | null;
     }
-  | { ok: false; status: number; error: string };
+  | { ok: false; status: number; error: string; code?: string };
 
 const fail = (error: string, status = 400): StartElevenLabsResult => ({ ok: false, status, error });
 
@@ -74,6 +75,9 @@ export async function startElevenLabsGeneration(options: StartElevenLabsInput): 
 
   const projectRecord = await findActiveProjectByName(project);
   if (!projectRecord) return fail("Unknown or archived project");
+
+  const budget = await checkProjectBudget(projectRecord, elevenLabsCostUsd(item.id, input));
+  if (!budget.ok) return budget;
 
   const id = randomUUID();
   await recordGeneration({

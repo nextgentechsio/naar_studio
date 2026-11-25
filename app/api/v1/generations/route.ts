@@ -97,7 +97,9 @@ export async function POST(request: Request) {
 
     if (!result.ok) {
       const code =
-        result.status === 422
+        "code" in result && result.code
+          ? result.code
+          : result.status === 422
           ? "invalid_input"
           : result.status === 402
             ? "provider_credits"

@@ -15,6 +15,7 @@ import {
   shapeInputs,
 } from "@/lib/replicate/inputs";
 import { isValidModelId, modelPath } from "@/lib/replicate/model";
+import { checkProjectBudget } from "@/lib/project-budgets/server";
 
 // --------------------------------------------------
 // START A REPLICATE GENERATION
@@ -54,7 +55,7 @@ export type StartReplicateResult =
       // Our estimate from the inputs (null: priced at the end)
       costUsd: number | null;
     }
-  | { ok: false; status: number; error: string };
+  | { ok: false; status: number; error: string; code?: string };
 
 const fail = (error: string, status = 400): StartReplicateResult => ({ ok: false, status, error });
 
@@ -123,6 +124,15 @@ export async function startReplicateGeneration(input: StartReplicateInput): Prom
   if (missing.length) {
     return fail(`Missing required input: ${missing.join(", ")}`, 422);
   }
+
+  // ---------- The project's budget ----------
+
+  const budget = await checkProjectBudget(
+    projectRecord,
+    estimateRunUsd(model, shapedInputs)
+  );
+
+  if (!budget.ok) return budget;
 
   // ---------- Start the prediction ----------
 
@@ -199,4 +209,14 @@ export async function startReplicateGeneration(input: StartReplicateInput): Prom
     prediction,
     costUsd: calculateReplicateCost(model, { ...prediction, input: shapedInputs }),
   };
+}
+
+// What this run should cost, from our price table (null:
+// priced by length, known only at the end)
+function estimateRunUsd(model: string, inputs: Record<string, unknown>): number | null {
+  try {
+    return calculateReplicateCost(model, { status: "succeeded", input: inputs });
+  } catch {
+    return null;
+  }
 }

@@ -18,6 +18,7 @@ import {
 } from "@/lib/higgsfield/client";
 import { approxMeteredCostUsd, higgsfieldPriceKind } from "@/lib/higgsfield/models";
 import { findActiveProjectByName } from "@/lib/projects";
+import { checkProjectBudget } from "@/lib/project-budgets/server";
 
 // --------------------------------------------------
 // START A HIGGSFIELD RUN (any model in its list)
@@ -52,7 +53,7 @@ export type StartHiggsfieldResult =
       // metered models an estimate; null when unknown
       costUsd: number | null;
     }
-  | { ok: false; status: number; error: string };
+  | { ok: false; status: number; error: string; code?: string };
 
 const fail = (error: string, status = 400): StartHiggsfieldResult => ({ ok: false, status, error });
 
@@ -142,6 +143,15 @@ export async function startHiggsfieldGeneration(input: StartHiggsfieldInput): Pr
   // Higgsfield's exact price for this run, asked for
   // alongside the start (models it can quote)
   const quoting = higgsfieldPriceKind(model) === "quoted" ? quoteHiggsfield(model, shaped) : Promise.resolve(null);
+
+  // The project's budget, with the run's price: the quote
+  // (waited for only when the project has a budget), else
+  // our per-second estimate
+  const budget = await checkProjectBudget(
+    projectRecord,
+    quoting.then((quote) => quote ?? approxMeteredCostUsd(model, shaped))
+  );
+  if (!budget.ok) return budget;
 
   try {
     started = await startHiggsfield(model, shaped);

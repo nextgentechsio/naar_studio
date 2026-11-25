@@ -5,6 +5,7 @@ import { recordGeneration } from "@/lib/generations";
 import type { Resolution } from "./shared";
 import { enqueueJob, pumpQueue } from "./queue";
 import { RunError } from "./run";
+import { checkProjectBudget } from "@/lib/project-budgets/server";
 
 // --------------------------------------------------
 // CATALOGUE: images straight from Google (Nano Banana)
@@ -404,6 +405,10 @@ export async function startDirectRun(input: {
     throw new RunError(500, `${input.engine === "google" ? "Google (NANO_BANANA_API_KEY)" : "OpenAI (OPENAI_API_KEY)"} isn't configured on the server`);
   }
   if (input.prompt.length > MAX_PROMPT_CHARS) throw new RunError(400, `The prompt is over ${MAX_PROMPT_CHARS} characters`);
+  // The project's budget (the price is known only once
+  // the image is made)
+  const budget = await checkProjectBudget(input.project);
+  if (!budget.ok) throw new RunError(budget.status, budget.error);
   const id = `${input.engine}-${randomUUID()}`;
   await recordGeneration({
     predictionId: id,

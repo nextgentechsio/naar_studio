@@ -66,14 +66,49 @@ export function rangeInstants(
 // DASHBOARD PERIODS
 // --------------------------------------------------
 
-export type DashboardRange = "7d" | "30d" | "90d" | "month";
+export type DashboardRange = "7d" | "30d" | "90d" | "month" | "custom";
 
 export const DASHBOARD_RANGES: [DashboardRange, string][] = [
   ["7d", "Last 7 days"],
   ["30d", "Last 30 days"],
   ["90d", "Last 90 days"],
   ["month", "This month"],
+  ["custom", "Custom"],
 ];
+
+// The longest custom period (the analytics API's limit)
+export const MAX_CUSTOM_DAYS = 400;
+
+// Days a custom period covers, first and last included
+export function daysBetween(fromDay: string, toDay: string): number | null {
+  const from = dayStart(fromDay);
+  const to = dayStart(toDay);
+  if (!from || !to) return null;
+  return Math.round((to.getTime() - from.getTime()) / 86_400_000) + 1;
+}
+
+// Why a custom period can't be used, or null when it can
+export function customRangeError(fromDay: string, toDay: string, now = new Date()): string | null {
+  if (!dayStart(fromDay) || !dayStart(toDay)) return "Choose a start and an end date";
+  const span = daysBetween(fromDay, toDay)!;
+  if (span < 1) return "The end date must be on or after the start date";
+  if (span > MAX_CUSTOM_DAYS) return `Choose a period of up to ${MAX_CUSTOM_DAYS} days`;
+  if (fromDay > localDay(now)) return "The start date can't be in the future";
+  return null;
+}
+
+// "Oct 1 – Oct 15, 2026" (the year once, when shared)
+export function customRangeLabel(fromDay: string, toDay: string): string {
+  const from = dayStart(fromDay);
+  const to = dayStart(toDay);
+  if (!from || !to) return "Custom";
+  const day = (date: Date, withYear: boolean) =>
+    date.toLocaleDateString(undefined, { month: "short", day: "numeric", ...(withYear ? { year: "numeric" } : {}) });
+  if (fromDay === toDay) return day(from, true);
+  return `${day(from, from.getFullYear() !== to.getFullYear())} – ${day(to, true)}`;
+}
+
+export const todayLocalDay = (now = new Date()) => localDay(now);
 
 export function readDashboardRange(value: string | null): DashboardRange {
   return DASHBOARD_RANGES.some(([range]) => range === value) ? (value as DashboardRange) : "30d";
@@ -90,13 +125,23 @@ function localDay(date: Date): string {
 
 // The period as local midnights (to: tomorrow, exclusive),
 // and every day in it, oldest first
-export function dashboardPeriod(range: DashboardRange, now = new Date()) {
+// (custom: its own days, through the end of the last one)
+export function dashboardPeriod(
+  range: DashboardRange,
+  now = new Date(),
+  custom?: { from: string; to: string } | null
+) {
   const { todayStart, monthStart } = localPeriods(now);
-  const to = new Date(todayStart);
+  let to = new Date(todayStart);
   to.setDate(todayStart.getDate() + 1);
 
   let from: Date;
-  if (range === "month") {
+  const customFrom = range === "custom" && custom ? dayStart(custom.from) : null;
+  const customTo = range === "custom" && custom ? dayStart(custom.to, 1) : null;
+  if (customFrom && customTo) {
+    from = customFrom;
+    to = customTo;
+  } else if (range === "month") {
     from = monthStart;
   } else {
     from = new Date(todayStart);

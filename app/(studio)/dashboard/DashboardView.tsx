@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useStudio } from "@/app/(studio)/_components/StudioProvider";
 import { useApiData } from "@/app/(studio)/_components/useApiData";
 import { Icon } from "@/app/components/ui/Icon";
-import { Alert, cx, formatCost } from "@/app/components/ui/primitives";
+import { Alert, cx, formatCost, inputClass } from "@/app/components/ui/primitives";
 import {
   fetchCostAnalytics,
   fetchHistoryPage,
@@ -15,9 +15,13 @@ import {
   type Platform,
 } from "@/lib/client/data";
 import {
+  customRangeError,
+  customRangeLabel,
   DASHBOARD_RANGES,
   dashboardPeriod,
+  MAX_CUSTOM_DAYS,
   readDashboardRange,
+  todayLocalDay,
 } from "@/lib/client/date-range";
 import { formatDateTime } from "@/lib/client/format";
 import type { CostAnalytics } from "@/lib/spend/cost-analytics";
@@ -161,22 +165,51 @@ export default function DashboardView() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const platform = readPlatform(searchParams.get("platform"));
-  const range = readDashboardRange(searchParams.get("range"));
+  // A custom period (?range=custom&from=YYYY-MM-DD&to=…)
+  // that isn't usable falls back to the last 30 days
+  const asked = readDashboardRange(searchParams.get("range"));
+  const customFrom = searchParams.get("from") ?? "";
+  const customTo = searchParams.get("to") ?? "";
+  const customValid = asked === "custom" && !customRangeError(customFrom, customTo);
+  const range = asked === "custom" && !customValid ? "30d" : asked;
+  // The custom dates being chosen (open when not null)
+  const [picker, setPicker] = useState<{ from: string; to: string } | null>(null);
+  // On phones the periods scroll sideways: keep the chosen
+  // one in view (a custom one is wide)
+  const periodsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const group = periodsRef.current;
+    const chosen = group?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if (!group || !chosen) return;
+    const left = chosen.offsetLeft - group.offsetLeft;
+    if (left < group.scrollLeft || left + chosen.offsetWidth > group.scrollLeft + group.clientWidth) {
+      group.scrollTo({ left: Math.max(0, left - 8), behavior: "smooth" });
+    }
+  }, [range, customFrom, customTo]);
 
-  function setFilter(key: "platform" | "range", value: string) {
+  function setFilter(key: "platform" | "range", value: string, custom?: { from: string; to: string }) {
     const next = new URLSearchParams(searchParams.toString());
     // The defaults stay out of the address
     if (!value || (key === "range" && value === "30d")) next.delete(key);
     else next.set(key, value);
+    if (key === "range") {
+      if (custom) {
+        next.set("from", custom.from);
+        next.set("to", custom.to);
+      } else {
+        next.delete("from");
+        next.delete("to");
+      }
+    }
     const query = next.toString();
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
   }
 
-  const period = dashboardPeriod(range);
+  const period = dashboardPeriod(range, new Date(), customValid ? { from: customFrom, to: customTo } : null);
   const provider = platform || undefined;
 
   const analytics = useApiData<CostAnalytics>(
-    `dashboard:analytics:${platform}:${range}:${period.days[0]}`,
+    `dashboard:analytics:${platform}:${range}:${period.days[0]}:${period.days.at(-1)}`,
     () => fetchCostAnalytics({ from: period.from, to: period.to, monthStart: period.monthStart, provider }),
     "Unable to load cost analytics.",
   );
@@ -213,7 +246,12 @@ export default function DashboardView() {
 
   const totalSpend = data?.total.amountUsd ?? 0;
 
-  const rangeLabel = DASHBOARD_RANGES.find(([value]) => value === range)?.[1] ?? "";
+  const customLabel = customValid ? customRangeLabel(customFrom, customTo) : "";
+  // "last 30 days" (in a sentence), or the custom dates
+  const rangeText =
+    range === "custom" ? customLabel : (DASHBOARD_RANGES.find(([value]) => value === range)?.[1] ?? "").toLowerCase();
+  const pickerError = picker ? customRangeError(picker.from, picker.to) : null;
+  const today = todayLocalDay();
 
   return (
     <div className="space-y-6">
@@ -227,6 +265,7 @@ export default function DashboardView() {
           phones, each scrolls sideways if it doesn't fit) */}
       <div className="flex flex-wrap items-center gap-3">
         <div
+          ref={periodsRef}
           role="group"
           aria-label="Period"
           className="inline-flex [scrollbar-width:none] max-w-full overflow-x-auto rounded-full border border-line bg-surface p-1 shadow-card"
@@ -236,13 +275,27 @@ export default function DashboardView() {
               key={value}
               type="button"
               aria-pressed={range === value}
-              onClick={() => setFilter("range", value)}
+              aria-expanded={value === "custom" ? picker !== null : undefined}
+              onClick={() => {
+                if (value !== "custom") {
+                  setPicker(null);
+                  setFilter("range", value);
+                  return;
+                }
+                // Opens the dates, starting from the period shown
+                setPicker(
+                  picker
+                    ? null
+                    : { from: customValid ? customFrom : period.days[0], to: customValid ? customTo : period.days.at(-1)! },
+                );
+              }}
               className={cx(
-                "shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition-colors sm:px-3.5",
+                "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition-colors sm:px-3.5",
                 range === value ? "bg-accent text-on-accent shadow-sm" : "text-fg-muted hover:text-fg",
               )}
             >
-              {label}
+              {value === "custom" && <Icon name="clock" size={14} />}
+              {value === "custom" && customValid ? customLabel : label}
             </button>
           ))}
         </div>
@@ -272,6 +325,64 @@ export default function DashboardView() {
         </div>
       </div>
 
+      {/* Custom dates: applied together, so the charts
+          don't reload while a date is half chosen */}
+      {picker && (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (pickerError) return;
+            setFilter("range", "custom", picker);
+            setPicker(null);
+          }}
+          className="flex flex-wrap items-end gap-3 rounded-2xl border border-line bg-surface p-4 shadow-card"
+          aria-label="Custom period"
+        >
+          <label className="block space-y-1.5">
+            <span className="block text-xs font-medium text-fg-muted">From</span>
+            <input
+              type="date"
+              value={picker.from}
+              max={picker.to || today}
+              onChange={(event) => setPicker({ ...picker, from: event.target.value })}
+              className={cx(inputClass, "h-10 w-auto min-w-[10.5rem]")}
+              required
+            />
+          </label>
+          <label className="block space-y-1.5">
+            <span className="block text-xs font-medium text-fg-muted">To</span>
+            <input
+              type="date"
+              value={picker.to}
+              min={picker.from || undefined}
+              max={today}
+              onChange={(event) => setPicker({ ...picker, to: event.target.value })}
+              className={cx(inputClass, "h-10 w-auto min-w-[10.5rem]")}
+              required
+            />
+          </label>
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={Boolean(pickerError)}
+              className="h-10 rounded-xl bg-accent px-4 text-sm font-semibold text-on-accent hover:bg-accent-hover disabled:bg-raised disabled:text-fg-subtle"
+            >
+              Apply
+            </button>
+            <button
+              type="button"
+              onClick={() => setPicker(null)}
+              className="h-10 rounded-xl border border-line-strong px-4 text-sm text-fg hover:bg-raised"
+            >
+              Cancel
+            </button>
+          </div>
+          <p className={cx("w-full text-xs", pickerError ? "text-danger" : "text-fg-subtle")} role={pickerError ? "alert" : undefined}>
+            {pickerError ?? `Up to ${MAX_CUSTOM_DAYS} days. Changes are compared with the same number of days just before.`}
+          </p>
+        </form>
+      )}
+
       {analytics.error && <Alert>{analytics.error}</Alert>}
 
       {data && data.total.unpriced > 0 && (
@@ -285,7 +396,7 @@ export default function DashboardView() {
       <div className={cx("space-y-6 transition-opacity", analytics.refreshing && "opacity-60")}>
         <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
           <StatTile
-            label={`Spend · ${rangeLabel.toLowerCase()}`}
+            label={`Spend · ${rangeText}`}
             loading={loading}
             value={formatCost(data?.total.amountUsd ?? 0)}
             footer={
@@ -479,7 +590,7 @@ export default function DashboardView() {
         </Card>
 
         <div className="grid gap-6 lg:grid-cols-2">
-          <Card title="Most expensive runs" subtitle={`In the ${rangeLabel.toLowerCase()}`}>
+          <Card title="Most expensive runs" subtitle={range === "custom" ? rangeText : `In the ${rangeText}`}>
             {loading ? (
               <div aria-hidden className="ui-skeleton h-48 rounded-lg" />
             ) : !data?.topRuns.length ? (
